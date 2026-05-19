@@ -34,8 +34,48 @@ actions:
       - search_filing_form
       - search-form
     query_required: true
-    desc: Search SEC/EDGAR filing form types.
+    mode_kind: search
+    desc: Search SEC/EDGAR filing form types. Exact form-code queries return the exact form and direct amendment only.
+    argument_shapes:
+      - "<form code>"
+      - "<form name text>"
+      - "<family text>"
+      - "<priority text>"
+      - "<descriptive text>"
+    examples:
+      - query: exact annual report form
+        run_cmd: ./xctx discover stock_intelligence_hub::equity_filing search_forms 10-K
+      - query: broad annual filing text
+        run_cmd: ./xctx discover stock_intelligence_hub::equity_filing search_forms annual
+      - query: domain affordance exact current report form
+        run_cmd: ./xctx discover stock_intelligence_hub::search_filing_form 8-K
+    related_commands:
+      - ./xctx discover stock_intelligence_hub::equity_filing list_forms
+      - ./xctx discover stock_intelligence_hub::equity_filing search_families <family|text>
+      - ./xctx observe stock_intelligence_hub::equity_filing form:10-K
+    returns: equity_filing::search_filing_form::result
     run_cmd: ./xctx discover stock_intelligence_hub::equity_filing search_forms <form code|name|family|priority|text>
+  list_forms:
+    priority: 25
+    entrypoint_command: list-forms
+    aliases:
+      - list-forms
+      - forms
+    query_required: false
+    mode_kind: list
+    desc: List a bounded set of SEC/EDGAR filing form taxonomy records without interpreting list_forms as a search term.
+    argument_shapes:
+      - "[--limit N]"
+    examples:
+      - query: list default bounded form set
+        run_cmd: ./xctx discover stock_intelligence_hub::equity_filing list_forms
+      - query: list a smaller bounded form set
+        run_cmd: ./xctx discover stock_intelligence_hub::equity_filing list_forms --limit 10
+    related_commands:
+      - ./xctx discover stock_intelligence_hub::equity_filing::search_forms
+      - ./xctx discover stock_intelligence_hub::equity_filing search_forms 10-K
+    returns: equity_filing_form_list
+    run_cmd: ./xctx discover stock_intelligence_hub::equity_filing list_forms [--limit N]
   search_families:
     domain_affordance: true
     domain_action_name: search_filing_family
@@ -45,8 +85,41 @@ actions:
       - search_filing_family
       - search-family
     query_required: true
-    desc: Search canonical filing families.
+    mode_kind: search
+    desc: Search canonical filing families. Exact family-code queries return the exact family only.
+    argument_shapes:
+      - "<family code>"
+      - "<family name text>"
+      - "<descriptive text>"
+    examples:
+      - query: exact annual report family
+        run_cmd: ./xctx discover stock_intelligence_hub::equity_filing search_families ANNUAL_REPORT
+      - query: broad annual family text
+        run_cmd: ./xctx discover stock_intelligence_hub::search_filing_family annual
+    related_commands:
+      - ./xctx discover stock_intelligence_hub::equity_filing list_families
+      - ./xctx observe stock_intelligence_hub::equity_filing family:ANNUAL_REPORT
+    returns: equity_filing::search_filing_family::result
     run_cmd: ./xctx discover stock_intelligence_hub::equity_filing search_families <family|text>
+  list_families:
+    priority: 35
+    entrypoint_command: list-families
+    aliases:
+      - list-families
+      - families
+    query_required: false
+    mode_kind: list
+    desc: List canonical filing families without interpreting list_families as a search term.
+    argument_shapes:
+      - "[--limit N]"
+    examples:
+      - query: list canonical filing families
+        run_cmd: ./xctx discover stock_intelligence_hub::equity_filing list_families
+    related_commands:
+      - ./xctx discover stock_intelligence_hub::equity_filing::search_families
+      - ./xctx discover stock_intelligence_hub::equity_filing search_families ANNUAL_REPORT
+    returns: equity_filing_family_list
+    run_cmd: ./xctx discover stock_intelligence_hub::equity_filing list_families [--limit N]
   search_priority_buckets:
     domain_affordance: true
     domain_action_name: search_priority_bucket
@@ -56,10 +129,57 @@ actions:
       - search_priority_bucket
       - search-priority-bucket
     query_required: true
-    desc: Search filing priority buckets.
+    mode_kind: search
+    desc: Search filing priority buckets. Exact priority-code queries return the exact bucket only.
+    argument_shapes:
+      - "<priority code>"
+      - "<priority name text>"
+    examples:
+      - query: exact critical bucket
+        run_cmd: ./xctx discover stock_intelligence_hub::equity_filing search_priority_buckets critical_always
+      - query: broad critical bucket text
+        run_cmd: ./xctx discover stock_intelligence_hub::search_priority_bucket critical
+    related_commands:
+      - ./xctx discover stock_intelligence_hub::equity_filing list_priority_buckets
+      - ./xctx observe stock_intelligence_hub::equity_filing priority:critical_always
+    returns: equity_filing::search_priority_bucket::result
     run_cmd: ./xctx discover stock_intelligence_hub::equity_filing search_priority_buckets <priority|text>
+  list_priority_buckets:
+    priority: 45
+    entrypoint_command: list-priority-buckets
+    aliases:
+      - list-priority-buckets
+      - priority_buckets
+      - priorities
+    query_required: false
+    mode_kind: list
+    desc: List filing priority buckets without interpreting list_priority_buckets as a search term.
+    argument_shapes:
+      - "[--limit N]"
+    examples:
+      - query: list priority buckets
+        run_cmd: ./xctx discover stock_intelligence_hub::equity_filing list_priority_buckets
+    related_commands:
+      - ./xctx discover stock_intelligence_hub::equity_filing::search_priority_buckets
+      - ./xctx discover stock_intelligence_hub::equity_filing search_priority_buckets critical_always
+    returns: equity_filing_priority_bucket_list
+    run_cmd: ./xctx discover stock_intelligence_hub::equity_filing list_priority_buckets [--limit N]
   observe:
-    priority: 50
+    priority: 60
     entrypoint_command: observe
+    mode_kind: observe
     desc: Observe form:<code>, family:<code>, priority:<code>, or instrument:<ticker> context.
+    argument_shapes:
+      - "form:<form_code>"
+      - "family:<canonical_family_code>"
+      - "priority:<priority_bucket_code>"
+      - "instrument:<lowercase_ticker>"
+    examples:
+      - query: observe annual report form
+        run_cmd: ./xctx observe stock_intelligence_hub::equity_filing form:10-K
+      - query: observe annual report family
+        run_cmd: ./xctx observe stock_intelligence_hub::equity_filing family:ANNUAL_REPORT
+      - query: observe filing context for an instrument
+        run_cmd: ./xctx observe stock_intelligence_hub::equity_filing instrument:aapl
+    returns: equity_filing_observation
     run_cmd: ./xctx observe stock_intelligence_hub::equity_filing <form:10-K|family:ANNUAL_REPORT|priority:critical_always|instrument:aapl>

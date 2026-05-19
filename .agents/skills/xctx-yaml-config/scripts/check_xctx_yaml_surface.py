@@ -29,8 +29,26 @@ ROOT_SURFACE_FORBIDDEN_TOKENS = (
     "root_affordances",
     "search_entity_instrument",
     "search_market_series",
+    "search_filing_form",
+    "search_forms",
+    "list_forms",
     "latest_price",
     "latest-price",
+)
+
+CORE_RUNTIME_FORBIDDEN_TOKENS = (
+    "stock_intelligence_hub",
+    "market_data_gateway",
+    "equity_filing",
+    "search_entity_instrument",
+    "search_filing_form",
+    "list_forms",
+    "latest_price",
+    "latest-price",
+    "--bars",
+    "--calendar-days",
+    "ticker",
+    "symbol",
 )
 
 
@@ -128,6 +146,29 @@ def main() -> int:
                         "error",
                         f"root_surface:{payload_name}:no_{token}",
                         "root/universe/help/version surfaces must not expose scoped domain action tokens",
+                        token=token,
+                    )
+                )
+
+    for rel in (
+        "xctx",
+        "bin/xctx",
+        "libs/xctx/process/parser.py",
+        "libs/xctx/process/runtime.py",
+        "libs/xctx/commands/discover.py",
+        "libs/xctx/commands/observe.py",
+        "libs/xctx/domain/agent_domains.py",
+        "libs/xctx/domain/identity.py",
+        "libs/xctx/commands/identify.py",
+    ):
+        text = (ROOT / rel).read_text(encoding="utf-8")
+        for token in CORE_RUNTIME_FORBIDDEN_TOKENS:
+            if token in text:
+                findings.append(
+                    finding(
+                        "error",
+                        f"core_runtime:{rel}:no_{token}",
+                        "generic xctx runtime must not contain domain-specific literals",
                         token=token,
                     )
                 )

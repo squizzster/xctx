@@ -90,30 +90,53 @@ def _form_join_sql(where: str = "") -> str:
     return base + (" " + where if where else "")
 
 
+def _exact_form_code_rows(conn: sqlite3.Connection, query: str) -> list[sqlite3.Row]:
+    exact = conn.execute(_form_join_sql("WHERE lower(f.form_code) = lower(?) LIMIT 1"), (query,)).fetchone()
+    if not exact:
+        return []
+    form_code = str(exact["form_code"])
+    if form_code.lower().endswith("/a"):
+        return [exact]
+    amendment_code = f"{form_code}/A"
+    return conn.execute(
+        _form_join_sql(
+            """
+            WHERE lower(f.form_code) IN (lower(?), lower(?))
+            ORDER BY
+              CASE WHEN lower(f.form_code) = lower(?) THEN 0 ELSE 1 END,
+              f.form_code
+            """
+        ),
+        (form_code, amendment_code, form_code),
+    ).fetchall()
+
+
 def search_forms(root: Path, query: str, limit: int = 25) -> list[dict[str, Any]]:
     query = query.strip()
     with connect(root) as conn:
         if not query:
             rows = conn.execute(_form_join_sql("ORDER BY pb.sort_order, cf.sort_order, f.form_code LIMIT ?"), (limit,)).fetchall()
         else:
-            like = f"%{query.lower()}%"
-            rows = conn.execute(
-                _form_join_sql(
-                    """
-                    WHERE lower(f.form_code) LIKE ?
-                       OR lower(f.name) LIKE ?
-                       OR lower(f.description) LIKE ?
-                       OR lower(f.when_to_use) LIKE ?
-                       OR lower(COALESCE(f.sec_edgarlink_category, '')) LIKE ?
-                       OR lower(cf.code) LIKE ?
-                       OR lower(cf.name) LIKE ?
-                       OR lower(cf.description) LIKE ?
-                       OR lower(pb.code) LIKE ?
-                       OR lower(pb.name) LIKE ?
-                    """
-                ),
-                (like, like, like, like, like, like, like, like, like, like),
-            ).fetchall()
+            rows = _exact_form_code_rows(conn, query)
+            if not rows:
+                like = f"%{query.lower()}%"
+                rows = conn.execute(
+                    _form_join_sql(
+                        """
+                        WHERE lower(f.form_code) LIKE ?
+                           OR lower(f.name) LIKE ?
+                           OR lower(f.description) LIKE ?
+                           OR lower(f.when_to_use) LIKE ?
+                           OR lower(COALESCE(f.sec_edgarlink_category, '')) LIKE ?
+                           OR lower(cf.code) LIKE ?
+                           OR lower(cf.name) LIKE ?
+                           OR lower(cf.description) LIKE ?
+                           OR lower(pb.code) LIKE ?
+                           OR lower(pb.name) LIKE ?
+                        """
+                    ),
+                    (like, like, like, like, like, like, like, like, like, like),
+                ).fetchall()
         q = query.lower()
         projected: list[dict[str, Any]] = []
         for row in rows:
@@ -141,9 +164,17 @@ def search_families(root: Path, query: str, limit: int = 25) -> list[dict[str, A
         params: tuple[Any, ...] = ()
         where = ""
         if query:
-            like = f"%{query}%"
-            where = "WHERE lower(cf.code) LIKE ? OR lower(cf.name) LIKE ? OR lower(cf.description) LIKE ?"
-            params = (like, like, like)
+            exact = conn.execute(
+                "SELECT id FROM canonical_families WHERE lower(code) = lower(?) LIMIT 1",
+                (query,),
+            ).fetchone()
+            if exact:
+                where = "WHERE cf.id = ?"
+                params = (exact["id"],)
+            else:
+                like = f"%{query}%"
+                where = "WHERE lower(cf.code) LIKE ? OR lower(cf.name) LIKE ? OR lower(cf.description) LIKE ?"
+                params = (like, like, like)
         rows = conn.execute(
             f"""
             SELECT cf.*, COUNT(f.id) AS form_count
@@ -175,9 +206,17 @@ def search_priority_buckets(root: Path, query: str, limit: int = 25) -> list[dic
         params: tuple[Any, ...] = ()
         where = ""
         if query:
-            like = f"%{query}%"
-            where = "WHERE lower(pb.code) LIKE ? OR lower(pb.name) LIKE ?"
-            params = (like, like)
+            exact = conn.execute(
+                "SELECT id FROM priority_buckets WHERE lower(code) = lower(?) LIMIT 1",
+                (query,),
+            ).fetchone()
+            if exact:
+                where = "WHERE pb.id = ?"
+                params = (exact["id"],)
+            else:
+                like = f"%{query}%"
+                where = "WHERE lower(pb.code) LIKE ? OR lower(pb.name) LIKE ?"
+                params = (like, like)
         rows = conn.execute(
             f"""
             SELECT pb.*, COUNT(f.id) AS form_count
@@ -200,6 +239,59 @@ def search_priority_buckets(root: Path, query: str, limit: int = 25) -> list[dic
         }
         for row in rows
     ]
+
+
+def list_forms(root: Path, limit: int = 50) -> dict[str, Any]:
+    with connect(root) as conn:
+        total = conn.execute("SELECT COUNT(*) FROM forms").fetchone()[0]
+        rows = conn.execute(
+            _form_join_sql("ORDER BY pb.sort_order, cf.sort_order, f.form_code LIMIT ?"),
+            (limit,),
+        ).fetchall()
+    return {
+        "object_type": "equity_filing_form_list",
+        "description": "Bounded list of SEC/EDGAR filing form taxonomy records.",
+        "total_count": total,
+        "returned_count": len(rows),
+        "limit": limit,
+        "forms": [form_projection(row) for row in rows],
+        "next_moves": [
+            "./xctx discover stock_intelligence_hub::equity_filing::search_forms",
+            "./xctx discover stock_intelligence_hub::equity_filing search_forms <form code|text>",
+        ],
+    }
+
+
+def list_families(root: Path, limit: int = 50) -> dict[str, Any]:
+    matches = search_families(root, "", limit=limit)
+    return {
+        "object_type": "equity_filing_family_list",
+        "description": "Bounded list of canonical filing families.",
+        "total_count": stats(root)["canonical_families"],
+        "returned_count": len(matches),
+        "limit": limit,
+        "families": matches,
+        "next_moves": [
+            "./xctx discover stock_intelligence_hub::equity_filing::search_families",
+            "./xctx discover stock_intelligence_hub::equity_filing search_families <family|text>",
+        ],
+    }
+
+
+def list_priority_buckets(root: Path, limit: int = 50) -> dict[str, Any]:
+    matches = search_priority_buckets(root, "", limit=limit)
+    return {
+        "object_type": "equity_filing_priority_bucket_list",
+        "description": "Bounded list of filing priority buckets.",
+        "total_count": stats(root)["priority_buckets"],
+        "returned_count": len(matches),
+        "limit": limit,
+        "priority_buckets": matches,
+        "next_moves": [
+            "./xctx discover stock_intelligence_hub::equity_filing::search_priority_buckets",
+            "./xctx discover stock_intelligence_hub::equity_filing search_priority_buckets <priority|text>",
+        ],
+    }
 
 
 def high_impact_forms(root: Path) -> list[dict[str, Any]]:
@@ -225,6 +317,67 @@ def filing_taxonomy_discovery(root: Path) -> dict[str, Any]:
             "priority": "priority:<priority_bucket_code>, e.g. priority:critical_always",
             "equity_context": "instrument:<lowercase_ticker>, e.g. instrument:aapl",
         },
+        "command_grammar": {
+            "mode_discovery": "./xctx discover stock_intelligence_hub::equity_filing::<mode>",
+            "mode_discovery_alt": "./xctx discover stock_intelligence_hub::equity_filing <mode>",
+            "mode_query": "./xctx discover stock_intelligence_hub::equity_filing <mode> <query>",
+            "domain_affordance": "./xctx discover stock_intelligence_hub::<domain_affordance> <query>",
+            "observation": "./xctx observe stock_intelligence_hub::equity_filing <form|family|priority|instrument id>",
+        },
+        "modes": {
+            "search_forms": {
+                "desc": "Search filing form taxonomy records. Exact form-code queries return the exact form and direct amendment only.",
+                "arguments": ["<form code>", "<form name text>", "<family text>", "<priority text>", "<descriptive text>"],
+                "examples": [
+                    "./xctx discover stock_intelligence_hub::equity_filing search_forms 10-K",
+                    "./xctx discover stock_intelligence_hub::equity_filing search_forms annual",
+                    "./xctx discover stock_intelligence_hub::search_filing_form 8-K",
+                ],
+                "discover_cmd": "./xctx discover stock_intelligence_hub::equity_filing::search_forms",
+            },
+            "search_families": {
+                "desc": "Search canonical filing families. Exact family code queries return the exact family only.",
+                "arguments": ["<family code>", "<family name text>", "<descriptive text>"],
+                "examples": [
+                    "./xctx discover stock_intelligence_hub::equity_filing search_families ANNUAL_REPORT",
+                    "./xctx discover stock_intelligence_hub::search_filing_family annual",
+                ],
+                "discover_cmd": "./xctx discover stock_intelligence_hub::equity_filing::search_families",
+            },
+            "search_priority_buckets": {
+                "desc": "Search filing priority buckets. Exact priority code queries return the exact bucket only.",
+                "arguments": ["<priority code>", "<priority name text>"],
+                "examples": [
+                    "./xctx discover stock_intelligence_hub::equity_filing search_priority_buckets critical_always",
+                    "./xctx discover stock_intelligence_hub::search_priority_bucket critical",
+                ],
+                "discover_cmd": "./xctx discover stock_intelligence_hub::equity_filing::search_priority_buckets",
+            },
+            "list_forms": {
+                "desc": "List a bounded set of form taxonomy records without treating the mode name as a search query.",
+                "arguments": ["optional --limit N"],
+                "run_cmd": "./xctx discover stock_intelligence_hub::equity_filing list_forms",
+            },
+            "list_families": {
+                "desc": "List canonical filing families.",
+                "arguments": ["optional --limit N"],
+                "run_cmd": "./xctx discover stock_intelligence_hub::equity_filing list_families",
+            },
+            "list_priority_buckets": {
+                "desc": "List filing priority buckets.",
+                "arguments": ["optional --limit N"],
+                "run_cmd": "./xctx discover stock_intelligence_hub::equity_filing list_priority_buckets",
+            },
+            "observe": {
+                "desc": "Observe a form, family, priority bucket, or equity instrument filing context.",
+                "arguments": ["form:<code>", "family:<code>", "priority:<code>", "instrument:<ticker>"],
+                "examples": [
+                    "./xctx observe stock_intelligence_hub::equity_filing form:10-K",
+                    "./xctx observe stock_intelligence_hub::equity_filing family:ANNUAL_REPORT",
+                    "./xctx observe stock_intelligence_hub::equity_filing instrument:aapl",
+                ],
+            },
+        },
         "actions": {
             "search_filing_form": {
                 "priority": 10,
@@ -248,6 +401,12 @@ def filing_taxonomy_discovery(root: Path) -> dict[str, Any]:
             },
         },
         "sample_high_impact_forms": high_impact_forms(root),
+        "next_moves": [
+            "./xctx discover stock_intelligence_hub::equity_filing::search_forms",
+            "./xctx discover stock_intelligence_hub::equity_filing list_forms",
+            "./xctx discover stock_intelligence_hub::equity_filing search_forms 10-K",
+            "./xctx observe stock_intelligence_hub::equity_filing form:10-K",
+        ],
     }
 
 

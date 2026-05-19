@@ -32,8 +32,10 @@ Examples:
 ./xctx discover
 ./xctx discover stock_intelligence_hub::
 ./xctx discover stock_intelligence_hub::equity_filing
+./xctx discover stock_intelligence_hub::equity_filing::search_forms
 ./xctx discover stock_intelligence_hub::search_filing_family annual
 ./xctx discover stock_intelligence_hub::equity_filing search_forms 10-K
+./xctx discover stock_intelligence_hub::equity_filing list_forms
 ```
 
 Unscoped affordances are refused:
@@ -125,3 +127,20 @@ alone is not enough. This build performs no domain mutation and returns
 `yaml_dynamic_config/` describes protocol, domains, subdomains, actions, and
 routes. Python entrypoints own read-only live data access. This keeps `xctx` as
 the bootloader and avoids mixing business/domain logic into the protocol runtime.
+
+## Action Discovery
+
+Subdomain actions are discoverable without executing a query:
+
+```bash
+./xctx discover <agent_domain>::<agent_subdomain>::<action>
+./xctx discover <agent_domain>::<agent_subdomain> <action>
+```
+
+If an action requires a query, the no-query form returns interface metadata from
+YAML: argument shapes, examples, related commands, and return type. If an action
+does not require a query, such as a list action, the action may execute directly.
+
+Domain-specific grammar remains scoped. The generic runtime parses the
+`domain::subdomain::action` shape but does not hardcode filing forms, tickers,
+range flags, or other domain nouns.

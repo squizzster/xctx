@@ -97,6 +97,35 @@ def subdomain_action_config(subdomain: dict[str, Any], action_name: str) -> tupl
     return None, None
 
 
+def parse_subdomain_action_ref(
+    store: dict[str, Any],
+    token: str | None,
+) -> tuple[str | None, str | None, str | None, dict[str, Any] | None]:
+    """Parse <agent_domain>::<agent_subdomain>::<action> as action discovery."""
+    if not token or "::" not in token:
+        return None, None, None, None
+    parts = token.split("::")
+    if len(parts) != 3:
+        return None, None, None, None
+    domain_id, subdomain_token, action_token = parts
+    if not domain_id:
+        domain_id = str(store.get("active_agent_domain") or "")
+    if not domain_id or not subdomain_token or not action_token:
+        return None, None, None, None
+    domains = store.get("agent_domains", {})
+    if domain_id not in domains:
+        return None, None, None, None
+    aliases = domains[domain_id].get("_subdomain_aliases", {})
+    subdomain_id = str(aliases.get(subdomain_token, subdomain_token))
+    subdomain = (domains[domain_id].get("_subdomains") or {}).get(subdomain_id)
+    if not subdomain:
+        return None, None, None, None
+    action_name, action = subdomain_action_config(subdomain, action_token)
+    if not action_name or not action:
+        raise XctxError(f"next valid move: choose a known action for {domain_id}::{subdomain_id} ({action_token})")
+    return domain_id, subdomain_id, action_name, action
+
+
 def action_interface_payload(
     store: dict[str, Any],
     action_name: str,
@@ -122,6 +151,22 @@ def action_interface_payload(
     if run_cmd:
         payload["run_cmd"] = run_cmd
         payload["next_moves"] = [run_cmd]
+    for key in (
+        "mode",
+        "mode_kind",
+        "grammar",
+        "argument_shapes",
+        "accepted_arguments",
+        "examples",
+        "example_queries",
+        "related_commands",
+        "related_modes",
+        "returns",
+        "valid_targets",
+        "valid_identity_shapes",
+    ):
+        if key in public_action:
+            payload[key] = public_action[key]
     return payload
 
 
@@ -482,6 +527,19 @@ def discover_payload(
             scoped_domain_id,
             scoped_action_name,
             scoped_action,
+            query_parts,
+        )
+    action_domain_id, action_subdomain_id, subdomain_action_name, subdomain_action = parse_subdomain_action_ref(
+        store, target
+    )
+    if action_domain_id and action_subdomain_id and subdomain_action_name and subdomain_action:
+        subdomain = resolve_subdomain(store, action_domain_id, action_subdomain_id)
+        return "agent_subdomain", scoped_subdomain_action_payload(
+            store,
+            action_domain_id,
+            subdomain,
+            subdomain_action_name,
+            subdomain_action,
             query_parts,
         )
     domain_id, subdomain_id = parse_ref(store, target)

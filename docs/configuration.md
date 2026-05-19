@@ -37,13 +37,25 @@ actions:
     domain_affordance: true
     domain_action_name: search_filing_form
     entrypoint_command: search-forms
+    query_required: true
+    argument_shapes:
+      - "<form code>"
+      - "<descriptive text>"
+    examples:
+      - run_cmd: ./xctx discover stock_intelligence_hub::equity_filing search_forms 10-K
     run_cmd: ./xctx discover stock_intelligence_hub::equity_filing search_forms <form code|name|family|priority|text>
+  list_forms:
+    entrypoint_command: list-forms
+    query_required: false
+    run_cmd: ./xctx discover stock_intelligence_hub::equity_filing list_forms [--limit N]
 ```
 
 That means the following is scoped and legal:
 
 ```bash
+./xctx discover stock_intelligence_hub::equity_filing::search_forms
 ./xctx discover stock_intelligence_hub::search_filing_form 10-K
+./xctx discover stock_intelligence_hub::equity_filing list_forms
 ```
 
 But the root remains clean:
@@ -75,8 +87,8 @@ entrypoint:
 
 The protocol runtime loads YAML declarations and calls the entrypoint only when
 an online action requires live bundled data. The xctx core therefore knows how to
-route a declared action, but it does not need to know what a ticker, CIK, latest
-price, filing form, bar, or calendar day means.
+route a declared domain, subdomain, and action, but it does not need to know what
+a ticker, CIK, latest price, filing form, bar, or calendar day means.
 
 ## Scoped command options
 

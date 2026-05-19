@@ -85,8 +85,11 @@ reference:
 Full subdomain action form also works:
 
 ```bash
+./xctx discover stock_intelligence_hub::market_data_gateway::search_entity_instrument
 ./xctx discover stock_intelligence_hub::market_data_gateway search_entity_instrument Apple
+./xctx discover stock_intelligence_hub::equity_filing::search_forms
 ./xctx discover stock_intelligence_hub::equity_filing search_forms 10-K
+./xctx discover stock_intelligence_hub::equity_filing list_forms
 ```
 
 ## Working read-only data paths
@@ -136,12 +139,22 @@ Filing taxonomy:
 
 ```bash
 ./xctx discover stock_intelligence_hub::equity_filing
+./xctx discover stock_intelligence_hub::equity_filing::search_forms
+./xctx discover stock_intelligence_hub::equity_filing list_forms
+./xctx discover stock_intelligence_hub::equity_filing list_families
+./xctx discover stock_intelligence_hub::equity_filing list_priority_buckets
 ./xctx discover stock_intelligence_hub::search_filing_form 10-K
 ./xctx discover stock_intelligence_hub::search_filing_family annual
 ./xctx discover stock_intelligence_hub::search_priority_bucket critical
 ./xctx observe stock_intelligence_hub::equity_filing form:10-K
 ./xctx observe stock_intelligence_hub::equity_filing instrument:aapl
 ```
+
+`equity_filing` base discovery advertises its modes directly. `search_forms`,
+`search_families`, and `search_priority_buckets` with no query return interface
+metadata; with a query they execute the search. Exact code queries such as
+`10-K`, `8-K`, `ANNUAL_REPORT`, or `critical_always` are resolved exactly before
+broad descriptive text search is used.
 
 ## What is real in this PoC
 

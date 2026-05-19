@@ -107,6 +107,9 @@ def assert_root_surface_clean(payload: object) -> None:
         "root_affordances",
         "search_entity_instrument",
         "search_market_series",
+        "search_filing_form",
+        "search_forms",
+        "list_forms",
         "latest_price",
         "latest-price",
     ):
@@ -159,6 +162,8 @@ def assert_protocol_is_config_driven() -> None:
     filing_subdomain = yaml.safe_load((ROOT / "yaml_dynamic_config" / "agent_domains" / "stock_intelligence_hub" / "subdomains" / "equity_filing" / "subdomain.yaml").read_text())
     assert filing_subdomain["actions"]["search_forms"]["domain_affordance"] is True
     assert filing_subdomain["actions"]["search_forms"]["domain_action_name"] == "search_filing_form"
+    assert filing_subdomain["actions"]["list_forms"]["entrypoint_command"] == "list-forms"
+    assert filing_subdomain["actions"]["list_forms"]["query_required"] is False
 
     runtime = (ROOT / "libs" / "xctx" / "domain" / "agent_domains.py").read_text(encoding="utf-8")
     for forbidden_literal in ("stock_intelligence_hub", "market_data_gateway", "equity_filing"):
@@ -172,7 +177,17 @@ def assert_protocol_is_config_driven() -> None:
         "libs/xctx/commands/identify.py",
     ):
         text = (ROOT / core_rel).read_text(encoding="utf-8")
-        for forbidden_literal in ("--bars", "--calendar-days", "search_entity_instrument", "latest_price", "latest-price", "ticker", "symbol"):
+        for forbidden_literal in (
+            "--bars",
+            "--calendar-days",
+            "search_entity_instrument",
+            "search_filing_form",
+            "list_forms",
+            "latest_price",
+            "latest-price",
+            "ticker",
+            "symbol",
+        ):
             assert forbidden_literal not in text, (core_rel, forbidden_literal)
 
 
@@ -234,6 +249,17 @@ def assert_root_domain_subdomain_discovery() -> None:
     assert filing_live["stats"]["canonical_families"] == 41
     assert filing_live["stats"]["priority_buckets"] == 12
     assert filing_live["stats"]["amendment_forms"] == 176
+    assert set(filing_live["modes"]) >= {
+        "search_forms",
+        "list_forms",
+        "search_families",
+        "list_families",
+        "search_priority_buckets",
+        "list_priority_buckets",
+        "observe",
+    }
+    assert filing_live["command_grammar"]["mode_discovery"].endswith("::equity_filing::<mode>")
+    assert "./xctx discover stock_intelligence_hub::equity_filing list_forms" in filing_live["next_moves"]
 
     market = one(["discover", "stock_intelligence_hub::market_data_gateway"])
     assert market["domain_level"] == "agent_subdomain"
@@ -267,7 +293,37 @@ def assert_scoped_affordance_routing() -> None:
     form = one(["discover", "stock_intelligence_hub::equity_filing", "search_forms", "10-K"])
     assert form["results"]["action"] == "search_forms"
     assert form["results"]["live_data"]["object_type"] == "equity_filing::search_filing_form::result"
-    assert form["results"]["live_data"]["matches"][0]["id"] == "form:10-K"
+    form_ids = [item["id"] for item in form["results"]["live_data"]["matches"]]
+    assert form_ids == ["form:10-K", "form:10-K/A"]
+    assert "form:8-K" not in form_ids
+
+    form_affordance = one(["discover", "stock_intelligence_hub::search_filing_form", "10-K"])
+    affordance_ids = [item["id"] for item in form_affordance["results"]["live_data"]["matches"]]
+    assert affordance_ids == ["form:10-K", "form:10-K/A"]
+
+    eight_k = one(["discover", "stock_intelligence_hub::equity_filing", "search_forms", "8-K"])
+    eight_k_ids = [item["id"] for item in eight_k["results"]["live_data"]["matches"]]
+    assert eight_k_ids == ["form:8-K", "form:8-K/A"]
+    assert "form:10-K" not in eight_k_ids
+
+    form_mode = one(["discover", "stock_intelligence_hub::equity_filing::search_forms"])
+    assert form_mode["results"]["object_type"] == "xctx_action_discovery_interface"
+    assert form_mode["results"]["action"] == "search_forms"
+    assert form_mode["results"]["argument_shapes"]
+    assert form_mode["results"]["examples"][0]["run_cmd"].endswith("search_forms 10-K")
+
+    form_mode_alt = one(["discover", "stock_intelligence_hub::equity_filing", "search_forms"])
+    assert form_mode_alt["results"]["object_type"] == "xctx_action_discovery_interface"
+    assert form_mode_alt["results"]["argument_shapes"] == form_mode["results"]["argument_shapes"]
+
+    list_forms = one(["discover", "stock_intelligence_hub::equity_filing", "list_forms"])
+    assert list_forms["results"]["action"] == "list_forms"
+    assert list_forms["results"]["live_data"]["object_type"] == "equity_filing_form_list"
+    assert list_forms["results"]["live_data"]["returned_count"] > 0
+    assert list_forms["results"]["live_data"]["forms"][0]["id"].startswith("form:")
+
+    exact_family = one(["discover", "stock_intelligence_hub::equity_filing", "search_families", "ANNUAL_REPORT"])
+    assert [item["id"] for item in exact_family["results"]["live_data"]["matches"]] == ["family:ANNUAL_REPORT"]
 
     missing_root_query = one(["discover", "stock_intelligence_hub::search_entity_instrument"])
     assert missing_root_query["ok"] is True
@@ -281,8 +337,14 @@ def assert_scoped_affordance_routing() -> None:
     assert missing_subdomain_query["results"]["query_required"] is True
     assert "live_data" not in missing_subdomain_query["results"]
 
+    missing_subdomain_query_ref = one(["discover", "stock_intelligence_hub::market_data_gateway::search_entity_instrument"])
+    assert missing_subdomain_query_ref["ok"] is True
+    assert missing_subdomain_query_ref["results"]["object_type"] == "xctx_action_discovery_interface"
+    assert missing_subdomain_query_ref["results"]["query_required"] is True
+
     family = one(["discover", "stock_intelligence_hub::search_filing_family", "annual"])
     assert any(item["id"] == "family:ANNUAL_REPORT" for item in family["results"]["live_data"]["matches"])
+    assert len(family["results"]["live_data"]["matches"]) > 1
 
     apple_scoped = one(["discover", "stock_intelligence_hub::search_entity_instrument", "Apple"])
     assert apple_scoped["results"]["agent_subdomain"] == "market_data_gateway"

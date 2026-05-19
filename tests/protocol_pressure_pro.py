@@ -72,6 +72,9 @@ def assert_root_surface_clean(payload: object) -> None:
         "root_affordances",
         "search_entity_instrument",
         "search_market_series",
+        "search_filing_form",
+        "search_forms",
+        "list_forms",
         "latest_price",
         "latest-price",
     ):
@@ -111,7 +114,17 @@ def main() -> int:
         "libs/xctx/commands/identify.py",
     ):
         text = (ROOT / core_rel).read_text(encoding="utf-8")
-        for forbidden_literal in ("--bars", "--calendar-days", "search_entity_instrument", "latest_price", "latest-price", "ticker", "symbol"):
+        for forbidden_literal in (
+            "--bars",
+            "--calendar-days",
+            "search_entity_instrument",
+            "search_filing_form",
+            "list_forms",
+            "latest_price",
+            "latest-price",
+            "ticker",
+            "symbol",
+        ):
             assert forbidden_literal not in text, (core_rel, forbidden_literal)
 
     print("[pressure] domain/subdomain discovery", flush=True)
@@ -133,6 +146,8 @@ def main() -> int:
 
     filings = run_engine(["discover", "stock_intelligence_hub::equity_filing"])
     assert filings["results"]["live_data"]["stats"]["total_lookup_filings"] == 412
+    assert "search_forms" in filings["results"]["live_data"]["modes"]
+    assert "list_forms" in filings["results"]["live_data"]["modes"]
     market = run_engine(["discover", "stock_intelligence_hub::market_data_gateway"])
     assert market["results"]["live_data"]["stats"]["canonical_instruments"] >= 100
     configured_observe_options = market["results"]["configured_options"]["observe"]
@@ -148,11 +163,31 @@ def main() -> int:
 
     family = run_engine(["discover", "stock_intelligence_hub::search_filing_family", "annual"])
     assert any(item["id"] == "family:ANNUAL_REPORT" for item in family["results"]["live_data"]["matches"])
+    assert len(family["results"]["live_data"]["matches"]) > 1
     priority = run_engine(["stock_intelligence_hub::search_priority_bucket", "critical"])
     assert priority["results"]["agent_subdomain"] == "equity_filing"
     assert priority["results"]["live_data"]["matches"][0]["id"] == "priority:critical_always"
 
+    form_mode = run_engine(["discover", "stock_intelligence_hub::equity_filing::search_forms"])
+    assert form_mode["results"]["object_type"] == "xctx_action_discovery_interface"
+    assert form_mode["results"]["argument_shapes"]
+    form_mode_alt = run_engine(["discover", "stock_intelligence_hub::equity_filing", "search_forms"])
+    assert form_mode_alt["results"]["object_type"] == "xctx_action_discovery_interface"
+    list_forms = run_engine(["discover", "stock_intelligence_hub::equity_filing", "list_forms"])
+    assert list_forms["results"]["live_data"]["object_type"] == "equity_filing_form_list"
+
+    exact_10k = run_engine(["discover", "stock_intelligence_hub::equity_filing", "search_forms", "10-K"])
+    exact_10k_ids = [item["id"] for item in exact_10k["results"]["live_data"]["matches"]]
+    assert exact_10k_ids == ["form:10-K", "form:10-K/A"]
+    exact_8k = run_engine(["discover", "stock_intelligence_hub::search_filing_form", "8-K"])
+    exact_8k_ids = [item["id"] for item in exact_8k["results"]["live_data"]["matches"]]
+    assert exact_8k_ids == ["form:8-K", "form:8-K/A"]
+    exact_family = run_engine(["discover", "stock_intelligence_hub::equity_filing", "search_families", "ANNUAL_REPORT"])
+    assert [item["id"] for item in exact_family["results"]["live_data"]["matches"]] == ["family:ANNUAL_REPORT"]
+
     print("[pressure] market identity search", flush=True)
+    market_mode = run_engine(["discover", "stock_intelligence_hub::market_data_gateway::search_entity_instrument"])
+    assert market_mode["results"]["object_type"] == "xctx_action_discovery_interface"
     apple = run_engine(["discover", "stock_intelligence_hub::market_data_gateway", "search_entity_instrument", "Apple"])
     live = apple["results"]["live_data"]
     assert live["matches_returned"] == 1
