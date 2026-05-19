@@ -7,8 +7,8 @@ description: Safely create, modify, or remove xctx YAML domains, subdomains, sco
 
 Use this skill when changing the `xctx` protocol surface through YAML: domains,
 subdomains, scoped domain affordances, action aliases, command arguments,
-observe routes, identity search fields, statuses, audit/repair paths, or
-entrypoint declarations.
+mode/action discovery, list modes, observe routes, identity search fields,
+statuses, audit/repair paths, or entrypoint declarations.
 
 The central rule is strict:
 
@@ -18,6 +18,14 @@ Domain-specific affordances and options appear only after a domain or subdomain
 is explicitly in scope.
 ```
 
+Also strict:
+
+```text
+xctx is the clean interface/protocol layer. It defines what can be done and how
+configured references are routed. Domain::subdomain::mode specifics define what
+those operations mean, and belong in scoped YAML plus adapter code.
+```
+
 ## Boundary rules
 
 1. Do not add domain/action flags to the root command surface.
@@ -25,10 +33,16 @@ is explicitly in scope.
    business noun such as a company name.
 3. Do not add ticker, symbol, CIK, receipt, filing, price, or other domain nouns
    to `libs/xctx` generic code.
-4. Put domain shortcuts on subdomain actions with `domain_affordance: true`.
-5. Put CLI options on the most specific owning action with `cli_options`.
-6. Make stale or unscoped commands fail with a useful `next valid move`.
-7. Keep read-only, plan, execute, audit, repair, and data-boundary claims honest.
+4. Generic `libs/xctx` code may parse reference shape, such as
+   `<domain>::<subdomain>::<mode>`, but it must not interpret mode semantics.
+5. Put domain shortcuts on subdomain actions with `domain_affordance: true`.
+6. Put CLI options on the most specific owning action with `cli_options`.
+7. Put list/discovery/search semantics in scoped subdomain YAML and adapters.
+8. Make stale or unscoped commands fail with a useful `next valid move`.
+9. Keep read-only, plan, execute, audit, repair, and data-boundary claims honest.
+10. If touching generic runtime files, add/keep `## Protocol boundary` comments
+    that say the core routes configured refs only; do not include domain nouns
+    in those comments.
 
 ## Change map
 
@@ -37,6 +51,8 @@ is explicitly in scope.
 | Add/remove domain | `universe.yaml` `agent_domains`; `agent_domains/<id>/domain.yaml` | Root lists domain; scoped domain discovery works |
 | Add/remove subdomain | domain `agent_subdomains`; subdomain `subdomain.yaml` | Scoped subdomain discovery works or truthful offline/maintenance repair appears |
 | Add domain affordance | subdomain `actions.<id>.domain_affordance: true` | `./xctx discover <domain>::<affordance>` works; unscoped equivalent is refused |
+| Add mode discovery | subdomain `actions.<id>` metadata such as `argument_shapes`, `examples`, `related_commands`, `returns` | `./xctx discover <domain>::<subdomain>::<action>` and no-query action discovery explain the mode |
+| Add list mode | subdomain `actions.<id>.query_required: false`; adapter `entrypoint_command` | list command returns a list payload instead of being treated as free-text search |
 | Add command option | owning action `cli_options` | Option appears only on scoped target surface; wrong target/refusal paths work |
 | Change routing | `universe.yaml` `agent_routing` | trusted IDs route correctly; ambiguous IDs do not guess |
 | Change identity fields | `universe.yaml` `identity_resolution.query_fields` | generic fields only, typically `name`, `id`, `aliases` |
@@ -71,6 +87,50 @@ and keeps the unscoped command illegal:
 ```bash
 ./xctx discover <domain_action_name> <query>
 ```
+
+## Mode discovery contract
+
+Every callable subdomain action should be discoverable without guessing:
+
+```bash
+./xctx discover <domain_id>::<subdomain_id>::<action_id>
+./xctx discover <domain_id>::<subdomain_id> <action_id>
+```
+
+For `query_required: true`, no-query discovery must return interface metadata,
+not call the adapter with an empty query. Include these YAML fields when useful:
+
+```yaml
+actions:
+  <action_id>:
+    query_required: true
+    mode_kind: search
+    desc: One precise sentence.
+    argument_shapes:
+      - "<exact code>"
+      - "<descriptive text>"
+    examples:
+      - query: exact code lookup
+        run_cmd: ./xctx discover <domain_id>::<subdomain_id> <action_id> <code>
+    related_commands:
+      - ./xctx discover <domain_id>::<subdomain_id> <related_action>
+    returns: <adapter_object_type>
+```
+
+For list/enumeration modes, use an explicit action instead of relying on a
+free-text fallback:
+
+```yaml
+actions:
+  list_<objects>:
+    entrypoint_command: list-<objects>
+    query_required: false
+    mode_kind: list
+    run_cmd: ./xctx discover <domain_id>::<subdomain_id> list_<objects> [--limit N]
+```
+
+The adapter must implement the declared `entrypoint_command` and return a
+bounded list payload. Do not let mode names become search terms.
 
 ## CLI option contract
 
@@ -178,6 +238,21 @@ Domain-specific identity semantics belong in the adapter or scoped domain data.
 6. Prove positive, wrong-target, bad-value, and conflict paths.
 7. Grep `libs/xctx` for the new public flag and domain-specific nouns. They should not be there.
 
+### Add a mode/action
+
+1. Add the action under the owning subdomain YAML.
+2. Decide whether it is interface-only with `query_required: true`, executable
+   without a query with `query_required: false`, or a domain affordance.
+3. Add `mode_kind`, `argument_shapes`, `examples`, `related_commands`, and
+   `returns` when the mode is not self-evident.
+4. If it executes, implement the adapter command named by `entrypoint_command`.
+5. Prove `./xctx discover <domain>::<subdomain>::<action>` works.
+6. Prove `./xctx discover <domain>::<subdomain> <action>` works.
+7. Prove stale/unscoped equivalents either route to the scoped command or fail
+   with a useful `next valid move`.
+8. If the mode searches exact codes and broad text, exact code matches should be
+   resolved before broad descriptive matching so nearby concepts do not bleed in.
+
 ### Modify a surface
 
 1. Preserve IDs unless the user explicitly asks for a breaking rename.
@@ -212,7 +287,7 @@ python3 tests/smoke_protocol.py
 ```
 
 Run the pressure suite when the change touches routing, options, identity,
-plan/execute, or core protocol behavior:
+mode discovery, plan/execute, or core protocol behavior:
 
 ```bash
 python3 tests/protocol_pressure_pro.py
@@ -222,4 +297,12 @@ Finish with a root leak check for any new domain-specific literal:
 
 ```bash
 grep -RIn --exclude-dir='__pycache__' '<new-domain-specific-literal>' libs/xctx || true
+```
+
+For any runtime/core edit, also run the bundled checker because it scans
+selected `libs/xctx`, `xctx`, and `bin/xctx` files for known scoped-domain
+tokens:
+
+```bash
+python3 .agents/skills/xctx-yaml-config/scripts/check_xctx_yaml_surface.py
 ```

@@ -16,6 +16,10 @@ from xctx.protocol.descriptions import detail_enabled, selected_description, wit
 from xctx.store.plans import resolve_plan, write_plan
 
 
+## Protocol boundary: this module routes configured domains, subdomains, and
+## scoped modes. It must not encode domain-pack business vocabulary or policy.
+
+
 def has_agent_domains(store: dict[str, Any]) -> bool:
     return bool(store.get("agent_domains"))
 
@@ -97,11 +101,13 @@ def subdomain_action_config(subdomain: dict[str, Any], action_name: str) -> tupl
     return None, None
 
 
-def parse_subdomain_action_ref(
+def parse_scoped_subdomain_mode_ref(
     store: dict[str, Any],
     token: str | None,
 ) -> tuple[str | None, str | None, str | None, dict[str, Any] | None]:
-    """Parse <agent_domain>::<agent_subdomain>::<action> as action discovery."""
+    """Parse <agent_domain>::<agent_subdomain>::<mode> structurally."""
+    ## Boundary guard: this parser validates only configured reference shape.
+    ## The resolved mode's meaning is owned by YAML metadata and its adapter.
     if not token or "::" not in token:
         return None, None, None, None
     parts = token.split("::")
@@ -120,13 +126,13 @@ def parse_subdomain_action_ref(
     subdomain = (domains[domain_id].get("_subdomains") or {}).get(subdomain_id)
     if not subdomain:
         return None, None, None, None
-    action_name, action = subdomain_action_config(subdomain, action_token)
-    if not action_name or not action:
+    mode_name, mode = subdomain_action_config(subdomain, action_token)
+    if not mode_name or not mode:
         raise XctxError(f"next valid move: choose a known action for {domain_id}::{subdomain_id} ({action_token})")
-    return domain_id, subdomain_id, action_name, action
+    return domain_id, subdomain_id, mode_name, mode
 
 
-def action_interface_payload(
+def scoped_mode_interface_payload(
     store: dict[str, Any],
     action_name: str,
     action: dict[str, Any],
@@ -136,6 +142,8 @@ def action_interface_payload(
     compact: bool,
     query_required: bool,
 ) -> dict[str, Any]:
+    ## Boundary guard: copy interface metadata declared by the scoped pack.
+    ## Do not synthesize domain-pack examples or argument meaning in core code.
     public_action = {key: value for key, value in action.items() if not key.startswith("_")}
     run_cmd = public_action.get("run_cmd")
     payload: dict[str, Any] = {
@@ -467,7 +475,7 @@ def scoped_action_discovery_payload(
         }
     query = " ".join(query_parts).strip()
     if action.get("query_required", True) and not query:
-        return action_interface_payload(
+        return scoped_mode_interface_payload(
             store, action_name, action, domain_id, subdomain, compact=False, query_required=True
         )
     live_command = action.get("entrypoint_command", "discover")
@@ -496,7 +504,7 @@ def scoped_subdomain_action_payload(
 ) -> dict[str, Any]:
     query = " ".join(action_args).strip()
     if action.get("query_required", False) and not query:
-        return action_interface_payload(
+        return scoped_mode_interface_payload(
             store, action_name, action, domain_id, subdomain, compact=True, query_required=True
         )
     live_command = action.get("entrypoint_command", action_name)
@@ -529,17 +537,17 @@ def discover_payload(
             scoped_action,
             query_parts,
         )
-    action_domain_id, action_subdomain_id, subdomain_action_name, subdomain_action = parse_subdomain_action_ref(
+    mode_domain_id, mode_subdomain_id, scoped_mode_name, scoped_mode = parse_scoped_subdomain_mode_ref(
         store, target
     )
-    if action_domain_id and action_subdomain_id and subdomain_action_name and subdomain_action:
-        subdomain = resolve_subdomain(store, action_domain_id, action_subdomain_id)
+    if mode_domain_id and mode_subdomain_id and scoped_mode_name and scoped_mode:
+        subdomain = resolve_subdomain(store, mode_domain_id, mode_subdomain_id)
         return "agent_subdomain", scoped_subdomain_action_payload(
             store,
-            action_domain_id,
+            mode_domain_id,
             subdomain,
-            subdomain_action_name,
-            subdomain_action,
+            scoped_mode_name,
+            scoped_mode,
             query_parts,
         )
     domain_id, subdomain_id = parse_ref(store, target)

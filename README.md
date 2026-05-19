@@ -17,6 +17,11 @@ The protocol/configuration layer is separated from live read-only data adapters:
   adapter entrypoints.
 - `equity_filings.py` is the read-only EDGAR filing taxonomy adapter.
 
+Boundary for future agents: keep `xctx`, `bin/xctx`, and `libs/xctx` as the
+generic interface/protocol layer. Domain/subdomain/mode meaning belongs in
+scoped YAML and adapter code. Generic runtime comments use `## Protocol
+boundary` markers to make that separation explicit.
+
 The active online agent domain is `stock_intelligence_hub`. Its online
 subdomains are:
 

@@ -10,6 +10,10 @@ from xctx.protocol.accessors import canonical_command, configured_command_names
 from xctx.protocol.options import command_cli_option_specs
 
 
+## Protocol boundary: argparse may expose configured option syntax so the
+## interface can parse argv, but option meaning must stay in scoped packs.
+
+
 class XctxParser(argparse.ArgumentParser):
     """Argument parser that keeps errors inside the xctx JSON contract."""
 
@@ -35,6 +39,8 @@ def _argparse_type(option_type: str) -> Callable[[str], Any]:
 
 def _add_configured_cli_options(parser: argparse.ArgumentParser, store: dict[str, Any], command: str) -> None:
     """Attach YAML-declared options without hardcoding domain option names."""
+    ## Boundary guard: register opaque configured flags; never branch on their
+    ## domain-pack semantics in the generic parser.
     for spec in command_cli_option_specs(store, command):
         flags = [str(flag) for flag in spec.get("_flags", [])]
         if not flags:

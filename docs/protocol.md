@@ -91,6 +91,24 @@ They may expose configured agent domains and generic commands, but not scoped
 stock affordances or range flags. Domain-specific affordances appear only after a
 specific agent domain or subdomain is selected.
 
+## AI Agent Boundary
+
+Future agents should treat `xctx` as the protocol/interface layer, not as a
+place for domain-pack implementation. Generic `xctx` code may parse configured
+reference shapes, emit envelopes, validate option structure, route to declared
+entrypoints, and enforce root/scoped boundaries. It must not learn what a scoped
+mode means.
+
+The meaning of a scoped operation belongs in two places:
+
+- YAML under the owning domain/subdomain/action.
+- The adapter entrypoint and live support library for that domain pack.
+
+If a change requires business vocabulary, exact-code ranking, list payload
+shape, provider behavior, or domain-specific examples, put that logic outside
+`libs/xctx`. Add `## Protocol boundary` comments when editing generic runtime
+files so later agents do not collapse scoped behavior back into the core.
+
 ## Configured option surface
 
 The protocol core can parse YAML-declared command options, but option names are

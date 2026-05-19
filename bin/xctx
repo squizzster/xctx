@@ -11,6 +11,8 @@ LIBS = ROOT / "libs"
 if str(LIBS) not in sys.path:
     sys.path.insert(0, str(LIBS))
 
+## Protocol boundary: import only the generic xctx interface here.
+## Scoped domain-pack semantics are loaded from YAML and adapter entrypoints.
 from xctx.cli import main  # noqa: E402
 
 if __name__ == "__main__":

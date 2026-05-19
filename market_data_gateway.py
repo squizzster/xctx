@@ -28,6 +28,10 @@ from xctx_live.instruments import (  # noqa: E402
 )
 
 
+## Domain-pack boundary: this adapter owns market-data semantics.
+## xctx only routes to this entrypoint and envelopes its JSON result.
+
+
 def parse_observe_args(args: list[str]) -> tuple[str, dict[str, int] | None]:
     identifier_parts: list[str] = []
     range_request: dict[str, int] = {}

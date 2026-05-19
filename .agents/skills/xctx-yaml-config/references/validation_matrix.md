@@ -38,6 +38,34 @@ Expected proof:
 - scoped action works.
 - unscoped action is refused with a next valid move.
 
+## Mode/action discovery additions
+
+```bash
+./xctx --json discover <domain_id>::<subdomain_id>::<action_id>
+./xctx --json discover <domain_id>::<subdomain_id> <action_id>
+./xctx --json discover <domain_id>::<subdomain_id> <action_id> <query>
+```
+
+Expected proof:
+
+- no-query action discovery returns interface metadata when `query_required: true`.
+- executable no-query actions return their declared list/discovery payload when `query_required: false`.
+- query execution calls the declared adapter command.
+- action metadata is visible only after domain/subdomain scope is selected.
+
+## List mode additions
+
+```bash
+./xctx --json discover <domain_id>::<subdomain_id> list_<objects>
+./xctx --json discover <domain_id>::<subdomain_id> list_<objects> --limit 2
+```
+
+Expected proof:
+
+- list mode returns a bounded list object.
+- the literal list mode name is not treated as a free-text search query.
+- bad list arguments fail with scoped guidance.
+
 ## CLI option additions
 
 ```bash
@@ -92,9 +120,11 @@ Expected proof:
 
 ```bash
 grep -RIn --exclude-dir='__pycache__' '<new-domain-specific-literal>' libs/xctx || true
+python3 .agents/skills/xctx-yaml-config/scripts/check_xctx_yaml_surface.py
 ```
 
 Expected proof:
 
 - no matches in generic core for product-specific words, flags, route prefixes, adapter commands, or identity fields.
+- the bundled checker reports `error_count: 0`; it also checks known scoped-token leakage in selected core files.
 ```

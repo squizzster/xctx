@@ -31,6 +31,10 @@ from xctx_live.filings import (  # noqa: E402
 )
 
 
+## Domain-pack boundary: this adapter owns filing-taxonomy semantics.
+## The generic xctx runtime may route here, but must not duplicate this logic.
+
+
 def parse_limit(args: list[str], *, default: int = 50, maximum: int = 200) -> int:
     if not args:
         return default

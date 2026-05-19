@@ -1,8 +1,8 @@
 """Config-driven CLI option surface for xctx commands.
 
 The protocol core is allowed to know that commands can have options. It should
-not know domain-specific option names such as a market-data range selector.
-Those names live in YAML under an action's ``cli_options`` declaration.
+not know what those options mean inside any domain pack. Names and semantics
+live in YAML under an action's ``cli_options`` declaration.
 """
 
 from __future__ import annotations
@@ -16,6 +16,9 @@ from xctx.protocol.accessors import canonical_command
 
 
 SUPPORTED_OPTION_TYPES = {"str", "int", "float", "bool"}
+
+## Protocol boundary: this file parses and validates configured option shape.
+## It does not own scoped-pack semantics; it only carries values to adapters.
 
 
 def _as_list(value: Any) -> list[Any]:

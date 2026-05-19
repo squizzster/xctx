@@ -21,6 +21,10 @@ from xctx.protocol.accessors import canonical_command, configured_command_names,
 from xctx.protocol.emitter import emit_final_stderr, emit_minimal_error, emit_record, emit_stderr_event
 
 
+## Protocol boundary: this module owns process-level xctx mechanics only.
+## It may recognize configured reference shapes, but not domain-pack meaning.
+
+
 def _stdout_is_tty() -> bool:
     return bool(getattr(sys.stdout, "isatty", lambda: False)())
 
@@ -55,6 +59,8 @@ def _with_discover_shortcut(store: dict, argv: list[str]) -> list[str]:
     the first token is already a scoped xctx reference. Unknown natural-language
     phrases still go to the `other` extension lane.
     """
+    ## Boundary guard: this is structural shorthand only. Do not inspect or infer
+    ## business vocabulary here; scoped packs own that through config/adapters.
     if not argv or argv[0] in configured_command_names(store) or argv[0] in help_aliases(store):
         return argv
     token = argv[0]

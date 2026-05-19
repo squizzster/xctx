@@ -22,6 +22,10 @@ from xctx.errors import XctxError
 from xctx.protocol.actions import action_matches
 
 
+## Protocol boundary: this port calls scoped adapter entrypoints and envelopes
+## their JSON. It must not interpret scoped-pack business semantics.
+
+
 def _adapter_error_message_from_text(returncode: int, stdout: str, stderr: str, executable: str) -> str:
     for text in (stdout.strip(), stderr.strip()):
         if not text:
@@ -130,6 +134,8 @@ def call_external_command(
     subdomain: dict[str, Any],
     args: list[str],
 ) -> dict[str, Any]:
+    ## Boundary guard: adapter args are selected by YAML routing before this
+    ## point. This function executes the declared port and validates JSON shape.
     entrypoint = subdomain.get("entrypoint") or {}
     executable = entrypoint.get("file") or entrypoint.get("command")
     if not executable:

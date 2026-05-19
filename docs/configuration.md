@@ -18,6 +18,26 @@ The root/universe protocol surface stays generic. Domain affordances are declare
 inside subdomain YAML and can opt into an agent-domain shortcut with
 `domain_affordance: true`.
 
+## AI Agent Boundary
+
+`xctx` is the interface contract. It answers: which commands exist, which
+references are valid, which subdomain/action is in scope, which options are
+syntactically valid, and which adapter should receive the request.
+
+Scoped YAML and adapters answer: what the request means. Put domain nouns,
+ranking rules, list payloads, exact-match policy, data-source behavior, and
+examples here, not in `libs/xctx`.
+
+When editing generic runtime files, keep comments generic and explicit:
+
+```python
+## Protocol boundary: this code routes configured refs only.
+## Scoped domain-pack semantics belong in YAML and adapters.
+```
+
+Do not include concrete domain nouns in generic runtime comments; the guardrail
+checker scans selected core files for known scoped tokens.
+
 Example from the stock market-data subdomain:
 
 ```yaml

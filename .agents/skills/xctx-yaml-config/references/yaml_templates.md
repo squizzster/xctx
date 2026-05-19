@@ -91,6 +91,61 @@ actions:
     run_cmd: ./xctx discover <domain_id>::<subdomain_id> <action_id> <query-shape>
 ```
 
+Add interface metadata when the action should teach its own grammar:
+
+```yaml
+actions:
+  <action_id>:
+    priority: 20
+    entrypoint_command: <adapter-command>
+    query_required: true
+    mode_kind: search
+    desc: <one precise sentence.>
+    argument_shapes:
+      - "<exact code>"
+      - "<descriptive text>"
+    examples:
+      - query: <example intent>
+        run_cmd: ./xctx discover <domain_id>::<subdomain_id> <action_id> <example-query>
+    related_commands:
+      - ./xctx discover <domain_id>::<subdomain_id> list_<objects>
+    returns: <adapter_object_type>
+    run_cmd: ./xctx discover <domain_id>::<subdomain_id> <action_id> <query-shape>
+```
+
+This should make both forms useful:
+
+```bash
+./xctx discover <domain_id>::<subdomain_id>::<action_id>
+./xctx discover <domain_id>::<subdomain_id> <action_id>
+```
+
+## New list mode
+
+Use list modes for explicit enumeration so mode names are not interpreted as
+free-text searches:
+
+```yaml
+actions:
+  list_<objects>:
+    priority: 30
+    entrypoint_command: list-<objects>
+    aliases:
+      - list-<objects>
+    query_required: false
+    mode_kind: list
+    desc: List bounded <objects> records.
+    argument_shapes:
+      - "[--limit N]"
+    examples:
+      - query: list bounded records
+        run_cmd: ./xctx discover <domain_id>::<subdomain_id> list_<objects>
+    related_commands:
+      - ./xctx discover <domain_id>::<subdomain_id>::<search_action>
+    returns: <adapter_list_object_type>
+    run_cmd: ./xctx discover <domain_id>::<subdomain_id> list_<objects> [--limit N]
+```
+
 ## New scoped domain affordance
 
 Use this when a subdomain action should also be callable as
