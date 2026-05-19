@@ -170,12 +170,66 @@ def scoped_mode_interface_payload(
         "related_commands",
         "related_modes",
         "returns",
+        "collection",
         "valid_targets",
         "valid_identity_shapes",
     ):
         if key in public_action:
             payload[key] = public_action[key]
     return payload
+
+
+def _collection_contract(action: dict[str, Any]) -> dict[str, Any]:
+    collection = action.get("collection") or {}
+    return collection if isinstance(collection, dict) else {}
+
+
+def _has_collection_cursor(collection: dict[str, Any]) -> bool:
+    return str(collection.get("cursor", "none")).lower() not in {"", "none", "false", "no"}
+
+
+def _collection_shapes(collection: dict[str, Any]) -> set[str]:
+    raw = collection.get("item_shapes", collection.get("shapes", [])) or []
+    if isinstance(raw, str):
+        raw = [raw]
+    return {str(item) for item in raw}
+
+
+def validate_declared_collection_args(action: dict[str, Any], action_args: list[str]) -> None:
+    ## Protocol boundary: validate generic collection controls only when a
+    ## scoped pack declares them. Cursor tokens stay opaque to xctx.
+    collection = _collection_contract(action)
+    index = 0
+    while index < len(action_args):
+        token = action_args[index]
+        if token not in {"--limit", "--cursor", "--shape"}:
+            index += 1
+            continue
+        if not collection:
+            raise XctxError(f"next valid move: remove {token}; this action does not declare collection controls")
+        if index + 1 >= len(action_args):
+            raise XctxError(f"next valid move: provide a value for {token}")
+        value = action_args[index + 1]
+        if token == "--cursor":
+            if not _has_collection_cursor(collection):
+                raise XctxError("next valid move: remove --cursor; this collection does not declare cursor support")
+        elif token == "--shape":
+            shapes = _collection_shapes(collection)
+            if not shapes:
+                raise XctxError("next valid move: remove --shape; this collection does not declare item shapes")
+            if value not in shapes:
+                raise XctxError(f"next valid move: choose --shape {'|'.join(sorted(shapes))}")
+        elif token == "--limit":
+            try:
+                limit = int(value)
+            except ValueError as exc:
+                raise XctxError("next valid move: --limit requires an integer") from exc
+            if limit < 1:
+                raise XctxError("next valid move: --limit must be at least 1")
+            max_limit = collection.get("max_limit")
+            if max_limit is not None and limit > int(max_limit):
+                raise XctxError(f"next valid move: choose --limit <= {max_limit}")
+        index += 2
 
 
 def agent_routing(store: dict[str, Any]) -> dict[str, Any]:
@@ -478,6 +532,7 @@ def scoped_action_discovery_payload(
         return scoped_mode_interface_payload(
             store, action_name, action, domain_id, subdomain, compact=False, query_required=True
         )
+    validate_declared_collection_args(action, query_parts)
     live_command = action.get("entrypoint_command", "discover")
     live = call_external_command(store, subdomain, [live_command, *query_parts])
     payload = {
@@ -507,6 +562,7 @@ def scoped_subdomain_action_payload(
         return scoped_mode_interface_payload(
             store, action_name, action, domain_id, subdomain, compact=True, query_required=True
         )
+    validate_declared_collection_args(action, action_args)
     live_command = action.get("entrypoint_command", action_name)
     live = call_external_command(store, subdomain, [live_command, *action_args])
     payload = {

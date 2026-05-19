@@ -1,0 +1,215 @@
+#!/usr/bin/env python3
+"""Walk the configured xctx protocol/domain surface without executing adapters."""
+
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+from typing import Any
+
+ROOT = Path(__file__).resolve().parents[1]
+LIBS = ROOT / "libs"
+if str(LIBS) not in sys.path:
+    sys.path.insert(0, str(LIBS))
+
+## Protocol boundary: this walker reads configured xctx surfaces only.
+## Domain-pack behavior remains in scoped YAML and adapter entrypoints.
+from xctx.config.loader import load_store  # noqa: E402
+from xctx.domain.agent_domains import (  # noqa: E402
+    compact_domain,
+    compact_subdomain,
+    iter_domain_action_configs,
+    universe_discovery_payload,
+)
+from xctx.io.stdout import write_stdout_record  # noqa: E402
+from xctx.protocol.accessors import command_aliases, protocol_version  # noqa: E402
+from xctx.protocol.descriptions import selected_description  # noqa: E402
+from xctx.protocol.options import target_option_surface  # noqa: E402
+
+
+def _public_mapping(value: dict[str, Any]) -> dict[str, Any]:
+    return {key: _jsonable(child) for key, child in value.items() if not str(key).startswith("_")}
+
+
+def _jsonable(value: Any) -> Any:
+    if isinstance(value, Path):
+        return str(value.relative_to(ROOT) if value.is_relative_to(ROOT) else value)
+    if isinstance(value, dict):
+        return _public_mapping(value)
+    if isinstance(value, list):
+        return [_jsonable(item) for item in value]
+    if isinstance(value, tuple):
+        return [_jsonable(item) for item in value]
+    return value
+
+
+def _source_path(configured: dict[str, Any]) -> str | None:
+    path = configured.get("_config_path")
+    return str(path) if path else None
+
+
+def _subdomain_surface(store: dict[str, Any], domain_id: str, subdomain: dict[str, Any]) -> dict[str, Any]:
+    actions = {
+        action_name: _public_mapping(action)
+        for action_name, action in sorted((subdomain.get("actions") or {}).items())
+    }
+    payload = compact_subdomain(store, domain_id, subdomain)
+    payload.update(
+        {
+            "config_path": _source_path(subdomain),
+            "entrypoint": _jsonable(subdomain.get("entrypoint", {})),
+            "data": _jsonable(subdomain.get("data", {})),
+            "actions": actions,
+            "configured_options": target_option_surface(store, subdomain),
+        }
+    )
+    return {key: value for key, value in payload.items() if value not in (None, {}, [])}
+
+
+def _domain_surface(store: dict[str, Any], domain_id: str, domain: dict[str, Any]) -> dict[str, Any]:
+    subdomains = [
+        _subdomain_surface(store, domain_id, subdomain)
+        for subdomain in sorted(
+            (domain.get("_subdomains") or {}).values(),
+            key=lambda item: (item.get("_priority", 9999), str(item.get("id", ""))),
+        )
+    ]
+    affordances = {
+        name: _public_mapping(config)
+        for name, config in sorted(iter_domain_action_configs(store, domain_id))
+    }
+    payload = compact_domain(store, domain)
+    payload.update(
+        {
+            "config_path": _source_path(domain),
+            "description": selected_description(store, domain),
+            "agent_subdomains": subdomains,
+            "domain_affordances": affordances,
+        }
+    )
+    return {key: value for key, value in payload.items() if value not in (None, {}, [])}
+
+
+def protocol_surface() -> dict[str, Any]:
+    store = load_store(root=ROOT)
+    universe = universe_discovery_payload(store)
+    domains = [
+        _domain_surface(store, domain_id, domain)
+        for domain_id, domain in sorted((store.get("agent_domains") or {}).items())
+    ]
+    return {
+        "object_type": "xctx_protocol_walker_surface",
+        "version_xctx": protocol_version(store),
+        "active_agent_domain": store.get("active_agent_domain"),
+        "active_system": store.get("active_system"),
+        "root": str(ROOT),
+        "config_files": [str(path.relative_to(ROOT)) for path in store.get("config_files", [])],
+        "command_surface": universe.get("command_surface", {}),
+        "domain_surface": {
+            "agent_domain_count": len(domains),
+            "agent_domains": domains,
+        },
+    }
+
+
+def _add_unique(commands: list[str], seen: set[str], command: str | None) -> None:
+    command = str(command or "").strip()
+    if not command or command in seen:
+        return
+    seen.add(command)
+    commands.append(command)
+
+
+def _discover_words(store: dict[str, Any]) -> list[str]:
+    aliases = command_aliases(store).get("discover", [])
+    return ["discover", *[str(alias) for alias in aliases]]
+
+
+def _add_discover_target(commands: list[str], seen: set[str], store: dict[str, Any], target: str) -> None:
+    for word in _discover_words(store):
+        _add_unique(commands, seen, f"./xctx {word} {target}".strip())
+
+
+def _add_run_cmd(commands: list[str], seen: set[str], store: dict[str, Any], run_cmd: str | None) -> None:
+    run_cmd = str(run_cmd or "").strip()
+    if not run_cmd:
+        return
+    _add_unique(commands, seen, run_cmd)
+    prefix = "./xctx discover"
+    if run_cmd == prefix:
+        for word in _discover_words(store)[1:]:
+            _add_unique(commands, seen, f"./xctx {word}")
+    elif run_cmd.startswith(prefix + " "):
+        suffix = run_cmd[len(prefix) + 1 :]
+        for word in _discover_words(store)[1:]:
+            _add_unique(commands, seen, f"./xctx {word} {suffix}")
+
+
+def _root_command_surface(commands: list[str], seen: set[str], store: dict[str, Any]) -> None:
+    universe = universe_discovery_payload(store)
+    _add_unique(commands, seen, "./xctx")
+    for group in ("xctx", "xctx_other"):
+        for command_name, command_spec in (universe.get("command_surface", {}).get(group) or {}).items():
+            _add_unique(commands, seen, f"./xctx {command_name}")
+            if isinstance(command_spec, dict):
+                for syntax in command_spec.values():
+                    syntax = str(syntax or "").strip()
+                    if syntax:
+                        _add_unique(commands, seen, f"./xctx {command_name} {syntax}")
+    for canonical, aliases in command_aliases(store).items():
+        for alias in aliases:
+            _add_unique(commands, seen, f"./xctx {alias}")
+            _add_unique(commands, seen, f"./xctx {alias} [TARGET [TEXT...] | --id ID]" if canonical == "discover" else None)
+
+
+def valid_commands() -> list[str]:
+    store = load_store(root=ROOT)
+    commands: list[str] = []
+    seen: set[str] = set()
+
+    _root_command_surface(commands, seen, store)
+    _add_run_cmd(commands, seen, store, "./xctx discover")
+
+    for domain_id, domain in sorted((store.get("agent_domains") or {}).items()):
+        _add_discover_target(commands, seen, store, domain_id)
+        _add_discover_target(commands, seen, store, f"{domain_id}::")
+        _add_run_cmd(commands, seen, store, compact_domain(store, domain).get("run_cmd"))
+
+        for affordance_name, affordance in sorted(iter_domain_action_configs(store, domain_id)):
+            _add_discover_target(commands, seen, store, f"{domain_id}::{affordance_name}")
+            _add_run_cmd(commands, seen, store, affordance.get("run_cmd"))
+
+        for subdomain_id, subdomain in sorted(
+            (domain.get("_subdomains") or {}).items(),
+            key=lambda item: (item[1].get("_priority", 9999), item[0]),
+        ):
+            _add_discover_target(commands, seen, store, f"{domain_id}::{subdomain_id}")
+            _add_run_cmd(commands, seen, store, compact_subdomain(store, domain_id, subdomain).get("run_cmd"))
+            for alias in subdomain.get("aliases", []) or []:
+                _add_discover_target(commands, seen, store, f"{domain_id}::{alias}")
+
+            for action_name, action in sorted((subdomain.get("actions") or {}).items()):
+                _add_discover_target(commands, seen, store, f"{domain_id}::{subdomain_id}::{action_name}")
+                _add_discover_target(commands, seen, store, f"{domain_id}::{subdomain_id} {action_name}")
+                _add_run_cmd(commands, seen, store, action.get("run_cmd"))
+                for alias in action.get("aliases", []) or []:
+                    _add_discover_target(commands, seen, store, f"{domain_id}::{subdomain_id}::{alias}")
+                    _add_discover_target(commands, seen, store, f"{domain_id}::{subdomain_id} {alias}")
+
+    return commands
+
+
+def main() -> int:
+    output_format = "yaml" if sys.stdout.isatty() else "jsonl"
+    if sys.argv[1:] == ["--list-valid-commands"]:
+        write_stdout_record(valid_commands(), output_format)
+        return 0
+    if sys.argv[1:]:
+        sys.stderr.write("usage: ./bin/protocol_walker [--list-valid-commands]\n")
+        return 2
+    write_stdout_record(protocol_surface(), output_format)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

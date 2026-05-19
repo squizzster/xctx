@@ -92,9 +92,12 @@ Full subdomain action form also works:
 ```bash
 ./xctx discover stock_intelligence_hub::market_data_gateway::search_entity_instrument
 ./xctx discover stock_intelligence_hub::market_data_gateway search_entity_instrument Apple
+./xctx discover stock_intelligence_hub::market_data_gateway list_instruments --limit 25 --cursor 25
+./xctx discover stock_intelligence_hub::market_data_gateway list_instruments --shape full
 ./xctx discover stock_intelligence_hub::equity_filing::search_forms
 ./xctx discover stock_intelligence_hub::equity_filing search_forms 10-K
-./xctx discover stock_intelligence_hub::equity_filing list_forms
+./xctx discover stock_intelligence_hub::equity_filing list_forms --limit 25 --cursor 25
+./xctx discover stock_intelligence_hub::equity_filing list_forms --shape full
 ```
 
 ## Working read-only data paths
@@ -160,6 +163,10 @@ Filing taxonomy:
 metadata; with a query they execute the search. Exact code queries such as
 `10-K`, `8-K`, `ANNUAL_REPORT`, or `critical_always` are resolved exactly before
 broad descriptive text search is used.
+
+List modes return compact index rows by default. Use `--shape full` only when
+bulk detail is needed; use `observe` for one full object. Cursor support is
+declared per scoped list action and cursor values are adapter-owned.
 
 ## What is real in this PoC
 
@@ -252,4 +259,5 @@ This build intentionally tightens several edges that were easy to get almost rig
 - Unknown command names are refused with a pointer to `./xctx other --topic ...`; they are not silently treated as protocol commands.
 - `receipt_sha5` is compatibility sugar, not authority. It must bind to a recorded plan in `.xctx_runtime/plans/`.
 - Instrument search emits minimal identity results and next moves; latest price and market-series detail require explicit discovery or observe transitions.
+- List actions emit compact index rows by default; full bulk rows require `--shape full`, and cursor support is scoped/optional.
 - Latest price is a read-only bundled-data observation, not a live quote, and this boundary is stated in every latest/range payload.

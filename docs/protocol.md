@@ -162,3 +162,9 @@ does not require a query, such as a list action, the action may execute directly
 Domain-specific grammar remains scoped. The generic runtime parses the
 `domain::subdomain::action` shape but does not hardcode filing forms, tickers,
 range flags, or other domain nouns.
+
+Collection controls are optional scoped action metadata. If an action declares a
+`collection` block, xctx may validate generic `--limit`, `--cursor`, and
+`--shape` syntax before forwarding the request. Cursor values remain opaque and
+adapter-owned. Default list payloads should be compact indexes; full bulk rows
+require explicit `--shape full`, targeted search, or observe.

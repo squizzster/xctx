@@ -175,6 +175,14 @@ def main() -> int:
     assert form_mode_alt["results"]["object_type"] == "xctx_action_discovery_interface"
     list_forms = run_engine(["discover", "stock_intelligence_hub::equity_filing", "list_forms"])
     assert list_forms["results"]["live_data"]["object_type"] == "equity_filing_form_list"
+    assert list_forms["results"]["live_data"]["shape"] == "compact"
+    assert "run_cmd" not in list_forms["results"]["live_data"]["forms"][0]
+    list_forms_full = run_engine(["discover", "stock_intelligence_hub::equity_filing", "list_forms", "--limit", "2", "--shape", "full"])
+    assert list_forms_full["results"]["live_data"]["pagination"]["returned_count"] == 2
+    assert "run_cmd" in list_forms_full["results"]["live_data"]["forms"][0]
+    instruments = run_engine(["discover", "stock_intelligence_hub::market_data_gateway", "list_instruments", "--limit", "2"])
+    assert instruments["results"]["live_data"]["shape"] == "compact"
+    assert instruments["results"]["live_data"]["pagination"]["next_cursor"] == "2"
 
     exact_10k = run_engine(["discover", "stock_intelligence_hub::equity_filing", "search_forms", "10-K"])
     exact_10k_ids = [item["id"] for item in exact_10k["results"]["live_data"]["matches"]]

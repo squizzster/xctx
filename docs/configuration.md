@@ -67,7 +67,16 @@ actions:
   list_forms:
     entrypoint_command: list-forms
     query_required: false
-    run_cmd: ./xctx discover stock_intelligence_hub::equity_filing list_forms [--limit N]
+    mode_kind: list
+    collection:
+      result_path: forms
+      default_limit: 25
+      max_limit: 100
+      cursor: optional
+      cursor_type: opaque
+      default_shape: compact
+      item_shapes: [compact, full]
+    run_cmd: ./xctx discover stock_intelligence_hub::equity_filing list_forms [--limit N] [--cursor CURSOR] [--shape compact|full]
 ```
 
 That means the following is scoped and legal:
@@ -77,6 +86,10 @@ That means the following is scoped and legal:
 ./xctx discover stock_intelligence_hub::search_filing_form 10-K
 ./xctx discover stock_intelligence_hub::equity_filing list_forms
 ```
+
+List modes are discovery indexes by default. Use compact rows for fast scanning,
+declare optional cursor support in `collection`, and reserve full nested records
+for `--shape full`, targeted search, or observe payloads.
 
 But the root remains clean:
 

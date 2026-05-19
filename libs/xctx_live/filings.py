@@ -7,6 +7,8 @@ from typing import Any
 from xctx_live.instruments import find_instrument, public_instrument, search_instruments
 
 SQLITE_PATH = Path("data/edgar_form_reference_taxonomy.sqlite")
+LIST_DEFAULT_LIMIT = 25
+LIST_MAX_LIMIT = 100
 
 
 def sqlite_path(root: Path) -> Path:
@@ -62,6 +64,74 @@ def form_projection(row: sqlite3.Row | dict[str, Any]) -> dict[str, Any]:
         "sec_edgarlink_category": d.get("sec_edgarlink_category"),
         "run_cmd": f"./xctx observe stock_intelligence_hub::equity_filing form:{form_code}",
     }
+
+
+def compact_form_projection(row: sqlite3.Row | dict[str, Any]) -> dict[str, Any]:
+    d = dict(row)
+    form_code = d.get("form_code")
+    family = d.get("family_code")
+    priority = d.get("priority_code")
+    if family is None and isinstance(d.get("canonical_family"), dict):
+        family = d["canonical_family"].get("code")
+    if priority is None and isinstance(d.get("priority_bucket"), dict):
+        priority = d["priority_bucket"].get("code")
+    return {
+        "id": f"form:{form_code}",
+        "form_code": form_code,
+        "name": d.get("name"),
+        "family": family,
+        "priority": priority,
+        "is_amendment": bool(d.get("is_amendment")),
+    }
+
+
+def compact_family_projection(row: sqlite3.Row | dict[str, Any]) -> dict[str, Any]:
+    d = dict(row)
+    return {
+        "id": f"family:{d.get('code')}",
+        "code": d.get("code"),
+        "name": d.get("name"),
+        "form_count": d.get("form_count"),
+    }
+
+
+def compact_priority_projection(row: sqlite3.Row | dict[str, Any]) -> dict[str, Any]:
+    d = dict(row)
+    return {
+        "id": f"priority:{d.get('code')}",
+        "code": d.get("code"),
+        "name": d.get("name"),
+        "form_count": d.get("form_count"),
+    }
+
+
+def pagination_payload(
+    *,
+    limit: int,
+    cursor: int | None,
+    returned_count: int,
+    total_count: int,
+    next_cursor: int | None,
+) -> dict[str, Any]:
+    return {
+        "limit": limit,
+        "returned_count": returned_count,
+        "cursor": str(cursor) if cursor else None,
+        "next_cursor": str(next_cursor) if next_cursor is not None else None,
+        "has_more": next_cursor is not None,
+        "total_count": total_count,
+    }
+
+
+def list_page_run_cmd(action: str, *, limit: int, cursor: int | None, shape: str) -> str:
+    parts = [f"./xctx discover stock_intelligence_hub::equity_filing {action}"]
+    if limit != LIST_DEFAULT_LIMIT:
+        parts.append(f"--limit {limit}")
+    if cursor is not None:
+        parts.append(f"--cursor {cursor}")
+    if shape != "compact":
+        parts.append(f"--shape {shape}")
+    return " ".join(parts)
 
 
 def _form_join_sql(where: str = "") -> str:
@@ -241,52 +311,138 @@ def search_priority_buckets(root: Path, query: str, limit: int = 25) -> list[dic
     ]
 
 
-def list_forms(root: Path, limit: int = 50) -> dict[str, Any]:
+def list_forms(root: Path, *, limit: int = LIST_DEFAULT_LIMIT, cursor: int = 0, shape: str = "compact") -> dict[str, Any]:
     with connect(root) as conn:
         total = conn.execute("SELECT COUNT(*) FROM forms").fetchone()[0]
         rows = conn.execute(
-            _form_join_sql("ORDER BY pb.sort_order, cf.sort_order, f.form_code LIMIT ?"),
-            (limit,),
+            _form_join_sql("ORDER BY pb.sort_order, cf.sort_order, f.form_code LIMIT ? OFFSET ?"),
+            (limit, cursor),
         ).fetchall()
+    next_cursor = cursor + limit if cursor + limit < total else None
+    projection = form_projection if shape == "full" else compact_form_projection
+    pagination = pagination_payload(
+        limit=limit,
+        cursor=cursor,
+        returned_count=len(rows),
+        total_count=total,
+        next_cursor=next_cursor,
+    )
+    next_moves = [
+        "./xctx discover stock_intelligence_hub::equity_filing::search_forms",
+        "./xctx discover stock_intelligence_hub::equity_filing search_forms <form code|text>",
+    ]
+    if next_cursor is not None:
+        next_moves.append(list_page_run_cmd("list_forms", limit=limit, cursor=next_cursor, shape=shape))
     return {
         "object_type": "equity_filing_form_list",
-        "description": "Bounded list of SEC/EDGAR filing form taxonomy records.",
+        "description": "Compact bounded index of SEC/EDGAR filing form taxonomy records.",
+        "shape": shape,
+        "observe_shape": "./xctx observe stock_intelligence_hub::equity_filing form:<form_code>",
         "total_count": total,
         "returned_count": len(rows),
         "limit": limit,
-        "forms": [form_projection(row) for row in rows],
-        "next_moves": [
-            "./xctx discover stock_intelligence_hub::equity_filing::search_forms",
-            "./xctx discover stock_intelligence_hub::equity_filing search_forms <form code|text>",
-        ],
+        "cursor": str(cursor) if cursor else None,
+        "next_cursor": str(next_cursor) if next_cursor is not None else None,
+        "pagination": pagination,
+        "forms": [projection(row) for row in rows],
+        "next_moves": next_moves,
     }
 
 
-def list_families(root: Path, limit: int = 50) -> dict[str, Any]:
-    matches = search_families(root, "", limit=limit)
+def list_families(root: Path, *, limit: int = LIST_DEFAULT_LIMIT, cursor: int = 0, shape: str = "compact") -> dict[str, Any]:
+    with connect(root) as conn:
+        total = conn.execute("SELECT COUNT(*) FROM canonical_families").fetchone()[0]
+        rows = conn.execute(
+            """
+            SELECT cf.*, COUNT(f.id) AS form_count
+            FROM canonical_families cf
+            LEFT JOIN forms f ON f.canonical_families_id = cf.id
+            GROUP BY cf.id
+            ORDER BY cf.sort_order
+            LIMIT ? OFFSET ?
+            """,
+            (limit, cursor),
+        ).fetchall()
+    next_cursor = cursor + limit if cursor + limit < total else None
+    projection = (
+        lambda row: {
+            "id": f"family:{row['code']}",
+            "code": row["code"],
+            "name": row["name"],
+            "description": row["description"],
+            "form_count": row["form_count"],
+            "run_cmd": f"./xctx observe stock_intelligence_hub::equity_filing family:{row['code']}",
+        }
+    ) if shape == "full" else compact_family_projection
+    pagination = pagination_payload(
+        limit=limit,
+        cursor=cursor,
+        returned_count=len(rows),
+        total_count=total,
+        next_cursor=next_cursor,
+    )
+    next_moves = [
+        "./xctx discover stock_intelligence_hub::equity_filing::search_families",
+        "./xctx discover stock_intelligence_hub::equity_filing search_families <family|text>",
+    ]
+    if next_cursor is not None:
+        next_moves.append(list_page_run_cmd("list_families", limit=limit, cursor=next_cursor, shape=shape))
     return {
         "object_type": "equity_filing_family_list",
-        "description": "Bounded list of canonical filing families.",
-        "total_count": stats(root)["canonical_families"],
-        "returned_count": len(matches),
+        "description": "Compact bounded index of canonical filing families.",
+        "shape": shape,
+        "observe_shape": "./xctx observe stock_intelligence_hub::equity_filing family:<family_code>",
+        "total_count": total,
+        "returned_count": len(rows),
         "limit": limit,
-        "families": matches,
-        "next_moves": [
-            "./xctx discover stock_intelligence_hub::equity_filing::search_families",
-            "./xctx discover stock_intelligence_hub::equity_filing search_families <family|text>",
-        ],
+        "cursor": str(cursor) if cursor else None,
+        "next_cursor": str(next_cursor) if next_cursor is not None else None,
+        "pagination": pagination,
+        "families": [projection(row) for row in rows],
+        "next_moves": next_moves,
     }
 
 
-def list_priority_buckets(root: Path, limit: int = 50) -> dict[str, Any]:
-    matches = search_priority_buckets(root, "", limit=limit)
+def list_priority_buckets(root: Path, *, limit: int = LIST_DEFAULT_LIMIT, shape: str = "compact") -> dict[str, Any]:
+    with connect(root) as conn:
+        total = conn.execute("SELECT COUNT(*) FROM priority_buckets").fetchone()[0]
+        rows = conn.execute(
+            """
+            SELECT pb.*, COUNT(f.id) AS form_count
+            FROM priority_buckets pb
+            LEFT JOIN forms f ON f.priority_buckets_id = pb.id
+            GROUP BY pb.id
+            ORDER BY pb.sort_order
+            LIMIT ?
+            """,
+            (limit,),
+        ).fetchall()
+    projection = (
+        lambda row: {
+            "id": f"priority:{row['code']}",
+            "code": row["code"],
+            "name": row["name"],
+            "form_count": row["form_count"],
+            "run_cmd": f"./xctx observe stock_intelligence_hub::equity_filing priority:{row['code']}",
+        }
+    ) if shape == "full" else compact_priority_projection
+    pagination = pagination_payload(
+        limit=limit,
+        cursor=None,
+        returned_count=len(rows),
+        total_count=total,
+        next_cursor=None,
+    )
     return {
         "object_type": "equity_filing_priority_bucket_list",
-        "description": "Bounded list of filing priority buckets.",
-        "total_count": stats(root)["priority_buckets"],
-        "returned_count": len(matches),
+        "description": "Compact bounded index of filing priority buckets.",
+        "shape": shape,
+        "observe_shape": "./xctx observe stock_intelligence_hub::equity_filing priority:<priority_code>",
+        "total_count": total,
+        "returned_count": len(rows),
         "limit": limit,
-        "priority_buckets": matches,
+        "pagination": pagination,
+        "priority_buckets": [projection(row) for row in rows],
         "next_moves": [
             "./xctx discover stock_intelligence_hub::equity_filing::search_priority_buckets",
             "./xctx discover stock_intelligence_hub::equity_filing search_priority_buckets <priority|text>",
@@ -300,7 +456,7 @@ def high_impact_forms(root: Path) -> list[dict[str, Any]]:
     for code in codes:
         found = search_forms(root, code, limit=1)
         if found:
-            results.append(found[0])
+            results.append(compact_form_projection(found[0]))
     return results
 
 
@@ -354,19 +510,19 @@ def filing_taxonomy_discovery(root: Path) -> dict[str, Any]:
                 "discover_cmd": "./xctx discover stock_intelligence_hub::equity_filing::search_priority_buckets",
             },
             "list_forms": {
-                "desc": "List a bounded set of form taxonomy records without treating the mode name as a search query.",
-                "arguments": ["optional --limit N"],
-                "run_cmd": "./xctx discover stock_intelligence_hub::equity_filing list_forms",
+                "desc": "List a compact, bounded form taxonomy index without treating the mode name as a search query.",
+                "arguments": ["optional --limit N", "optional --cursor CURSOR", "optional --shape compact|full"],
+                "run_cmd": "./xctx discover stock_intelligence_hub::equity_filing list_forms [--limit N] [--cursor CURSOR] [--shape compact|full]",
             },
             "list_families": {
-                "desc": "List canonical filing families.",
-                "arguments": ["optional --limit N"],
-                "run_cmd": "./xctx discover stock_intelligence_hub::equity_filing list_families",
+                "desc": "List a compact, bounded canonical filing-family index.",
+                "arguments": ["optional --limit N", "optional --cursor CURSOR", "optional --shape compact|full"],
+                "run_cmd": "./xctx discover stock_intelligence_hub::equity_filing list_families [--limit N] [--cursor CURSOR] [--shape compact|full]",
             },
             "list_priority_buckets": {
-                "desc": "List filing priority buckets.",
-                "arguments": ["optional --limit N"],
-                "run_cmd": "./xctx discover stock_intelligence_hub::equity_filing list_priority_buckets",
+                "desc": "List a compact, bounded filing-priority bucket index.",
+                "arguments": ["optional --limit N", "optional --shape compact|full"],
+                "run_cmd": "./xctx discover stock_intelligence_hub::equity_filing list_priority_buckets [--limit N] [--shape compact|full]",
             },
             "observe": {
                 "desc": "Observe a form, family, priority bucket, or equity instrument filing context.",

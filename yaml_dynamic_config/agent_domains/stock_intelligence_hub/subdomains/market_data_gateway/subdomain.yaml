@@ -68,8 +68,38 @@ actions:
       - list
       - list-instruments
     query_required: false
-    desc: Enumerate canonical instruments with optional pagination and simple filters.
-    run_cmd: ./xctx discover stock_intelligence_hub::market_data_gateway list_instruments [--limit N] [--cursor CURSOR] [--status STATUS] [--exchange EXCHANGE] [--security-type TYPE]
+    mode_kind: list
+    desc: Enumerate a compact canonical instrument index with optional pagination and simple filters.
+    collection:
+      result_path: instruments
+      default_limit: 25
+      max_limit: 100
+      cursor: optional
+      cursor_type: opaque
+      default_shape: compact
+      item_shapes:
+        - compact
+        - full
+      filters:
+        - --status
+        - --exchange
+        - --security-type
+    argument_shapes:
+      - "[--limit N]"
+      - "[--cursor CURSOR]"
+      - "[--shape compact|full]"
+      - "[--status STATUS]"
+      - "[--exchange EXCHANGE]"
+      - "[--security-type TYPE]"
+    examples:
+      - query: list default compact instrument page
+        run_cmd: ./xctx discover stock_intelligence_hub::market_data_gateway list_instruments
+      - query: list next compact page with explicit limit
+        run_cmd: ./xctx discover stock_intelligence_hub::market_data_gateway list_instruments --limit 10 --cursor 10
+      - query: list full detail instrument records explicitly
+        run_cmd: ./xctx discover stock_intelligence_hub::market_data_gateway list_instruments --limit 10 --shape full
+    returns: market_data_gateway_instrument_list
+    run_cmd: ./xctx discover stock_intelligence_hub::market_data_gateway list_instruments [--limit N] [--cursor CURSOR] [--shape compact|full] [--status STATUS] [--exchange EXCHANGE] [--security-type TYPE]
   observe:
     priority: 40
     entrypoint_command: observe

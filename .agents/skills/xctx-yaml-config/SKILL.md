@@ -52,7 +52,7 @@ those operations mean, and belong in scoped YAML plus adapter code.
 | Add/remove subdomain | domain `agent_subdomains`; subdomain `subdomain.yaml` | Scoped subdomain discovery works or truthful offline/maintenance repair appears |
 | Add domain affordance | subdomain `actions.<id>.domain_affordance: true` | `./xctx discover <domain>::<affordance>` works; unscoped equivalent is refused |
 | Add mode discovery | subdomain `actions.<id>` metadata such as `argument_shapes`, `examples`, `related_commands`, `returns` | `./xctx discover <domain>::<subdomain>::<action>` and no-query action discovery explain the mode |
-| Add list mode | subdomain `actions.<id>.query_required: false`; adapter `entrypoint_command` | list command returns a list payload instead of being treated as free-text search |
+| Add list mode | subdomain `actions.<id>.query_required: false`; adapter `entrypoint_command`; optional `collection` contract | list command returns a compact bounded payload instead of being treated as free-text search |
 | Add command option | owning action `cli_options` | Option appears only on scoped target surface; wrong target/refusal paths work |
 | Change routing | `universe.yaml` `agent_routing` | trusted IDs route correctly; ambiguous IDs do not guess |
 | Change identity fields | `universe.yaml` `identity_resolution.query_fields` | generic fields only, typically `name`, `id`, `aliases` |
@@ -118,7 +118,8 @@ actions:
 ```
 
 For list/enumeration modes, use an explicit action instead of relying on a
-free-text fallback:
+free-text fallback. Lists are discovery surfaces, so default rows should be
+compact indexes. Full bulk detail requires an explicit shape/observe transition:
 
 ```yaml
 actions:
@@ -126,11 +127,27 @@ actions:
     entrypoint_command: list-<objects>
     query_required: false
     mode_kind: list
-    run_cmd: ./xctx discover <domain_id>::<subdomain_id> list_<objects> [--limit N]
+    collection:
+      result_path: <objects>
+      default_limit: 25
+      max_limit: 100
+      cursor: none|optional
+      cursor_type: opaque
+      default_shape: compact
+      item_shapes: [compact, full]
+    run_cmd: ./xctx discover <domain_id>::<subdomain_id> list_<objects> [--limit N] [--cursor CURSOR] [--shape compact|full]
 ```
 
 The adapter must implement the declared `entrypoint_command` and return a
-bounded list payload. Do not let mode names become search terms.
+bounded list payload. Do not let mode names become search terms. Do not put
+large nested records, per-row run commands, or detailed descriptions into the
+default compact list shape; put those in `--shape full`, targeted search, or
+observe payloads.
+
+Cursor support is an optional protocol convention, not a root command. xctx may
+validate declared `--limit`, `--cursor`, and `--shape` syntax from the action's
+`collection` block, but cursor values remain opaque and adapter-owned. Do not
+make root-level cursor flags or teach generic xctx code what a cursor means.
 
 ## CLI option contract
 
@@ -245,12 +262,14 @@ Domain-specific identity semantics belong in the adapter or scoped domain data.
    without a query with `query_required: false`, or a domain affordance.
 3. Add `mode_kind`, `argument_shapes`, `examples`, `related_commands`, and
    `returns` when the mode is not self-evident.
-4. If it executes, implement the adapter command named by `entrypoint_command`.
-5. Prove `./xctx discover <domain>::<subdomain>::<action>` works.
-6. Prove `./xctx discover <domain>::<subdomain> <action>` works.
-7. Prove stale/unscoped equivalents either route to the scoped command or fail
+4. For list modes, add a `collection` contract and keep the default adapter
+   projection compact; use explicit `--shape full` or observe for detailed rows.
+5. If it executes, implement the adapter command named by `entrypoint_command`.
+6. Prove `./xctx discover <domain>::<subdomain>::<action>` works.
+7. Prove `./xctx discover <domain>::<subdomain> <action>` works.
+8. Prove stale/unscoped equivalents either route to the scoped command or fail
    with a useful `next valid move`.
-8. If the mode searches exact codes and broad text, exact code matches should be
+9. If the mode searches exact codes and broad text, exact code matches should be
    resolved before broad descriptive matching so nearby concepts do not bleed in.
 
 ### Modify a surface

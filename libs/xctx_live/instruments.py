@@ -17,6 +17,8 @@ MINI_STOCKS_DB = Path("data/mini_stocks.sqlite")
 EXPORT_DIR = Path(".xctx_runtime/exports")
 PRICE_SCALE = 1_000_000
 DEFAULT_SEARCH_LIMIT = 10
+LIST_DEFAULT_LIMIT = 25
+LIST_MAX_LIMIT = 100
 INLINE_BAR_LIMIT = 30
 BAR_CSV_COLUMNS = ["bar_start_ts", "date", "open", "high", "low", "close", "vwap", "volume_raw", "transaction_count"]
 
@@ -352,6 +354,45 @@ def public_instrument(record: dict[str, Any], *, include_aliases: bool = False) 
     return out
 
 
+def compact_public_instrument(record: dict[str, Any]) -> dict[str, Any]:
+    out = {
+        key: record.get(key)
+        for key in (
+            "instrument_id",
+            "issuer_id",
+            "ticker",
+            "name",
+            "cik",
+            "exchange",
+            "security_type",
+            "status",
+        )
+        if key in record
+    }
+    ticker = str(record.get("ticker", "")).lower()
+    if ticker and record.get("ohlcv_series_id"):
+        out["market_series_id"] = f"market_series:{ticker}:daily"
+    return out
+
+
+def pagination_payload(
+    *,
+    limit: int,
+    cursor: int | None,
+    returned_count: int,
+    total_count: int,
+    next_cursor: int | None,
+) -> dict[str, Any]:
+    return {
+        "limit": limit,
+        "returned_count": returned_count,
+        "cursor": str(cursor) if cursor else None,
+        "next_cursor": str(next_cursor) if next_cursor is not None else None,
+        "has_more": next_cursor is not None,
+        "total_count": total_count,
+    }
+
+
 def _candidate_values(record: dict[str, Any]) -> list[str]:
     return [
         normalize_search_text(record.get("instrument_id")),
@@ -514,16 +555,17 @@ def _parse_positive_int(value: str, option_name: str) -> int:
 
 def parse_list_options(args: list[str]) -> dict[str, Any]:
     options: dict[str, Any] = {
-        "limit": 50,
+        "limit": LIST_DEFAULT_LIMIT,
         "cursor": 0,
         "status": None,
         "exchange": None,
         "security_type": None,
+        "shape": "compact",
     }
     index = 0
     while index < len(args):
         token = args[index]
-        if token in {"--limit", "--cursor", "--status", "--exchange", "--security-type"}:
+        if token in {"--limit", "--cursor", "--status", "--exchange", "--security-type", "--shape"}:
             if index + 1 >= len(args):
                 raise ValueError(f"{token} requires a value")
             value = args[index + 1]
@@ -531,9 +573,13 @@ def parse_list_options(args: list[str]) -> dict[str, Any]:
                 limit = _parse_positive_int(value, token)
                 if limit == 0:
                     raise ValueError("--limit must be greater than zero")
-                options["limit"] = min(limit, 100)
+                options["limit"] = min(limit, LIST_MAX_LIMIT)
             elif token == "--cursor":
                 options["cursor"] = _parse_positive_int(value, token)
+            elif token == "--shape":
+                if value not in {"compact", "full"}:
+                    raise ValueError("--shape must be compact or full")
+                options["shape"] = value
             elif token == "--security-type":
                 options["security_type"] = value
             else:
@@ -552,7 +598,7 @@ def _matches_filter(record: dict[str, Any], key: str, expected: str | None) -> b
 
 def _list_run_cmd(options: dict[str, Any], cursor: int | None = None) -> str:
     parts = [f"./xctx discover {scoped_ref()} list_instruments"]
-    if options.get("limit") != 50:
+    if options.get("limit") != LIST_DEFAULT_LIMIT:
         parts.append(f"--limit {options['limit']}")
     if cursor is not None:
         parts.append(f"--cursor {cursor}")
@@ -564,6 +610,8 @@ def _list_run_cmd(options: dict[str, Any], cursor: int | None = None) -> str:
         parts.append(f"--exchange {options['exchange']}")
     if options.get("security_type"):
         parts.append(f"--security-type {options['security_type']}")
+    if options.get("shape") != "compact":
+        parts.append(f"--shape {options['shape']}")
     return " ".join(parts)
 
 
@@ -592,15 +640,27 @@ def list_instruments(root: Path, args: list[str]) -> dict[str, Any]:
     }
     payload = {
         "object_type": "market_data_gateway_instrument_list",
-        "description": f"Canonical instruments currently known to the {scoped_ref()} subdomain.",
+        "description": f"Compact canonical instrument index currently known to the {scoped_ref()} subdomain.",
+        "shape": options["shape"],
+        "observe_shape": f"./xctx observe {scoped_ref()} <instrument_id|ticker|CIK|market_series:ticker:daily>",
         "total_count": len(instruments),
         "filtered_count": len(filtered),
         "returned_count": len(page),
         "limit": limit,
-        "cursor": str(cursor),
+        "cursor": str(cursor) if cursor else None,
         "next_cursor": str(next_cursor) if next_cursor is not None else None,
+        "pagination": pagination_payload(
+            limit=limit,
+            cursor=cursor,
+            returned_count=len(page),
+            total_count=len(filtered),
+            next_cursor=next_cursor,
+        ),
         "filters": filters,
-        "instruments": [public_instrument(item) for item in page],
+        "instruments": [
+            public_instrument(item) if options["shape"] == "full" else compact_public_instrument(item)
+            for item in page
+        ],
     }
     if next_cursor is not None:
         payload["next_page_run_cmd"] = _list_run_cmd(options, next_cursor)
@@ -1154,8 +1214,8 @@ def instrument_registry_discovery(root: Path) -> dict[str, Any]:
             },
             "list_instruments": {
                 "priority": 20,
-                "desc": "Enumerate canonical instruments without guessing a company name or ticker.",
-                "run_cmd": f"./xctx discover {scoped_ref()} list_instruments [--limit N] [--cursor CURSOR] [--status STATUS] [--exchange EXCHANGE] [--security-type TYPE]",
+                "desc": "Enumerate a compact canonical instrument index without guessing a company name or ticker.",
+                "run_cmd": f"./xctx discover {scoped_ref()} list_instruments [--limit N] [--cursor CURSOR] [--shape compact|full] [--status STATUS] [--exchange EXCHANGE] [--security-type TYPE]",
             },
             "observe_instrument_or_series": {
                 "priority": 30,
@@ -1163,7 +1223,7 @@ def instrument_registry_discovery(root: Path) -> dict[str, Any]:
                 "run_cmd": f"./xctx observe {scoped_ref()} <instrument_id|ticker|CIK|market_series:ticker:daily>",
             },
         },
-        "sample_records": [public_instrument(item) for item in instruments[:3]],
+        "sample_records": [compact_public_instrument(item) for item in instruments[:3]],
         "sample_market_series": search_market_series(root, "", limit=3),
     }
 

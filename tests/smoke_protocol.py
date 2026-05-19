@@ -164,6 +164,9 @@ def assert_protocol_is_config_driven() -> None:
     assert filing_subdomain["actions"]["search_forms"]["domain_action_name"] == "search_filing_form"
     assert filing_subdomain["actions"]["list_forms"]["entrypoint_command"] == "list-forms"
     assert filing_subdomain["actions"]["list_forms"]["query_required"] is False
+    assert filing_subdomain["actions"]["list_forms"]["collection"]["default_shape"] == "compact"
+    assert filing_subdomain["actions"]["list_forms"]["collection"]["cursor"] == "optional"
+    assert market_subdomain["actions"]["list_instruments"]["collection"]["cursor"] == "optional"
 
     runtime = (ROOT / "libs" / "xctx" / "domain" / "agent_domains.py").read_text(encoding="utf-8")
     for forbidden_literal in ("stock_intelligence_hub", "market_data_gateway", "equity_filing"):
@@ -320,7 +323,27 @@ def assert_scoped_affordance_routing() -> None:
     assert list_forms["results"]["action"] == "list_forms"
     assert list_forms["results"]["live_data"]["object_type"] == "equity_filing_form_list"
     assert list_forms["results"]["live_data"]["returned_count"] > 0
-    assert list_forms["results"]["live_data"]["forms"][0]["id"].startswith("form:")
+    list_forms_live = list_forms["results"]["live_data"]
+    assert list_forms_live["shape"] == "compact"
+    assert list_forms_live["pagination"]["has_more"] is True
+    assert list_forms_live["forms"][0]["id"].startswith("form:")
+    assert "canonical_family" not in list_forms_live["forms"][0]
+    assert "priority_bucket" not in list_forms_live["forms"][0]
+    assert "run_cmd" not in list_forms_live["forms"][0]
+
+    list_forms_full = one(["discover", "stock_intelligence_hub::equity_filing", "list_forms", "--limit", "2", "--shape", "full"])
+    full_live = list_forms_full["results"]["live_data"]
+    assert full_live["shape"] == "full"
+    assert full_live["pagination"]["returned_count"] == 2
+    assert "canonical_family" in full_live["forms"][0]
+    assert "run_cmd" in full_live["forms"][0]
+
+    list_forms_page = one(["discover", "stock_intelligence_hub::equity_filing", "list_forms", "--limit", "2", "--cursor", "2"])
+    assert list_forms_page["results"]["live_data"]["pagination"]["cursor"] == "2"
+    assert list_forms_page["results"]["live_data"]["forms"][0]["id"] != list_forms_live["forms"][0]["id"]
+
+    bad_cursor = one(["discover", "stock_intelligence_hub::equity_filing", "list_priority_buckets", "--cursor", "1"], expected_code=1)
+    assert "does not declare cursor support" in bad_cursor["error"]
 
     exact_family = one(["discover", "stock_intelligence_hub::equity_filing", "search_families", "ANNUAL_REPORT"])
     assert [item["id"] for item in exact_family["results"]["live_data"]["matches"]] == ["family:ANNUAL_REPORT"]
@@ -398,6 +421,19 @@ def assert_scoped_affordance_routing() -> None:
     assert latest_live["latest_available_price"]["is_live_quote"] is False
     latest_subdomain = one(["discover", "stock_intelligence_hub::market_data_gateway", "latest_price", "issuer:cik:0000320193"])
     assert latest_subdomain["results"]["live_data"]["ticker"] == "AAPL"
+    instruments_page = one(["discover", "stock_intelligence_hub::market_data_gateway", "list_instruments", "--limit", "2"])
+    instruments_live = instruments_page["results"]["live_data"]
+    assert instruments_live["shape"] == "compact"
+    assert instruments_live["pagination"]["returned_count"] == 2
+    assert instruments_live["pagination"]["next_cursor"] == "2"
+    assert "run_cmd" not in instruments_live["instruments"][0]
+    assert "next_moves" not in instruments_live["instruments"][0]
+
+    instruments_full = one(["discover", "stock_intelligence_hub::market_data_gateway", "list_instruments", "--limit", "2", "--shape", "full"])
+    full_instruments_live = instruments_full["results"]["live_data"]
+    assert full_instruments_live["shape"] == "full"
+    assert "run_cmd" in full_instruments_live["instruments"][0]
+    assert "next_moves" in full_instruments_live["instruments"][0]
     broad_series = one(["discover", "stock_intelligence_hub::market_data_gateway", "search_market_series", "A"])
     broad_ids = [item["market_series_id"] for item in broad_series["results"]["live_data"]["matches"]]
     assert len(broad_ids) == len(set(broad_ids)), broad_ids
