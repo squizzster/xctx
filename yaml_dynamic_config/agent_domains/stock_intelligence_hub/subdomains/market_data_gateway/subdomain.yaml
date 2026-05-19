@@ -7,7 +7,7 @@ aliases:
 status: online
 basic_description: Market data gateway for canonical equity instrument identity and bundled OHLCV series lookup.
 full_description: >-
-  This subdomain is the stock-domain market data gateway surface. It exposes a small curated canonical instrument inventory for trusted cross-subdomain handoff and a bundled read-only SQLite OHLCV fixture for market-series discovery. It is not a live quote feed and does not mutate provider-backed data.
+  This subdomain is the stock-domain market data gateway surface. It exposes a small curated canonical instrument inventory for trusted cross-subdomain handoff and a bundled read-only SQLite OHLCV fixture for discovering observable market-series objects. It is not a live quote feed and does not mutate provider-backed data.
 data_description: >-
   Bundled read-only YAML reference data for canonical instrument IDs plus bundled read-only SQLite mini_stocks market-series fixture. Instrument IDs are stable stock_intelligence_hub identifiers; market_series IDs identify local OHLCV fixtures.
 entrypoint:
@@ -24,8 +24,20 @@ actions:
   discover:
     priority: 10
     entrypoint_command: discover
-    desc: Explain the market data gateway instrument registry, market-series lookup, available fields, and read-only constraints.
-    run_cmd: ./xctx discover stock_intelligence_hub::market_data_gateway
+    desc: Discover market-data gateway modes, observable object shapes, and next discovery commands.
+    discovery_shapes:
+      default_shape: compact
+      shapes:
+        - compact
+        - full
+    argument_shapes:
+      - "[--shape compact|full]"
+    examples:
+      - query: compact market-data gateway discovery
+        run_cmd: ./xctx discover stock_intelligence_hub::market_data_gateway
+      - query: full market-data gateway discovery
+        run_cmd: ./xctx discover stock_intelligence_hub::market_data_gateway --shape full
+    run_cmd: ./xctx discover stock_intelligence_hub::market_data_gateway [--shape compact|full]
   search_entity_instrument:
     domain_affordance: true
     priority: 20
@@ -46,7 +58,7 @@ actions:
       - search-series
       - search_series
     query_required: true
-    desc: Search bundled read-only OHLCV market series by ticker, issuer, provider, or local series id.
+    desc: Discover bundled read-only OHLCV market-series objects by ticker, issuer, provider, or local series id without returning bar values.
     run_cmd: ./xctx discover stock_intelligence_hub::market_data_gateway search_market_series <ticker|issuer|provider|text>
   latest_price:
     domain_affordance: true
@@ -59,7 +71,7 @@ actions:
       - quote
       - latest_quote
     query_required: true
-    desc: Return the latest available bundled daily OHLCV close for a ticker, instrument id, CIK, issuer id, or market-series id. Not a live quote feed.
+    desc: Discover how to observe the latest available bundled daily close for a ticker, instrument id, CIK, issuer id, or market-series id. Not a live quote feed.
     run_cmd: ./xctx discover stock_intelligence_hub::market_data_gateway latest_price <ticker|instrument_id|CIK|market_series:ticker:daily>
   list_instruments:
     priority: 30

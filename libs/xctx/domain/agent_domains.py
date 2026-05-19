@@ -171,6 +171,8 @@ def scoped_mode_interface_payload(
         "related_modes",
         "returns",
         "collection",
+        "discovery_shapes",
+        "output_shapes",
         "valid_targets",
         "valid_identity_shapes",
     ):
@@ -195,9 +197,68 @@ def _collection_shapes(collection: dict[str, Any]) -> set[str]:
     return {str(item) for item in raw}
 
 
-def validate_declared_collection_args(action: dict[str, Any], action_args: list[str]) -> None:
-    ## Protocol boundary: validate generic collection controls only when a
-    ## scoped pack declares them. Cursor tokens stay opaque to xctx.
+def _action_shape_contract(action: dict[str, Any]) -> dict[str, Any]:
+    for key in ("discovery_shapes", "output_shapes", "shapes"):
+        raw = action.get(key)
+        if isinstance(raw, dict):
+            return raw
+        if isinstance(raw, list):
+            return {"shapes": raw}
+    collection = _collection_contract(action)
+    if collection:
+        return {
+            "default_shape": collection.get("default_shape"),
+            "shapes": collection.get("item_shapes", collection.get("shapes", [])),
+        }
+    return {}
+
+
+def _action_shapes(action: dict[str, Any]) -> set[str]:
+    contract = _action_shape_contract(action)
+    raw = contract.get("item_shapes", contract.get("shapes", [])) or []
+    if isinstance(raw, str):
+        raw = [raw]
+    return {str(item) for item in raw}
+
+
+def selected_action_shape(action: dict[str, Any] | None, action_args: list[str]) -> str | None:
+    if not action:
+        return None
+    contract = _action_shape_contract(action)
+    if not contract:
+        return None
+    shape = contract.get("default_shape", contract.get("default"))
+    index = 0
+    while index < len(action_args):
+        if action_args[index] == "--shape" and index + 1 < len(action_args):
+            shape = action_args[index + 1]
+            index += 2
+            continue
+        index += 1
+    return str(shape) if shape else None
+
+
+def compact_action_index(actions: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    out: dict[str, dict[str, Any]] = {}
+    for name, action in sorted(actions.items(), key=lambda item: item[1].get("priority", 9999)):
+        entry = {
+            "priority": action.get("priority"),
+            "mode_kind": action.get("mode_kind"),
+            "query_required": action.get("query_required"),
+            "desc": action.get("desc"),
+            "run_cmd": action.get("run_cmd"),
+        }
+        if action.get("domain_affordance"):
+            entry["domain_affordance"] = True
+            if action.get("domain_action_name"):
+                entry["domain_action_name"] = action.get("domain_action_name")
+        out[name] = {key: value for key, value in entry.items() if value is not None}
+    return out
+
+
+def validate_declared_action_args(action: dict[str, Any], action_args: list[str]) -> None:
+    ## Protocol boundary: validate generic controls only when a scoped pack
+    ## declares them. Cursor and shape values stay opaque to xctx.
     collection = _collection_contract(action)
     index = 0
     while index < len(action_args):
@@ -205,21 +266,23 @@ def validate_declared_collection_args(action: dict[str, Any], action_args: list[
         if token not in {"--limit", "--cursor", "--shape"}:
             index += 1
             continue
-        if not collection:
-            raise XctxError(f"next valid move: remove {token}; this action does not declare collection controls")
         if index + 1 >= len(action_args):
             raise XctxError(f"next valid move: provide a value for {token}")
         value = action_args[index + 1]
         if token == "--cursor":
+            if not collection:
+                raise XctxError(f"next valid move: remove {token}; this action does not declare collection controls")
             if not _has_collection_cursor(collection):
                 raise XctxError("next valid move: remove --cursor; this collection does not declare cursor support")
         elif token == "--shape":
-            shapes = _collection_shapes(collection)
+            shapes = _action_shapes(action)
             if not shapes:
-                raise XctxError("next valid move: remove --shape; this collection does not declare item shapes")
+                raise XctxError("next valid move: remove --shape; this action does not declare output shapes")
             if value not in shapes:
                 raise XctxError(f"next valid move: choose --shape {'|'.join(sorted(shapes))}")
         elif token == "--limit":
+            if not collection:
+                raise XctxError(f"next valid move: remove {token}; this action does not declare collection controls")
             try:
                 limit = int(value)
             except ValueError as exc:
@@ -496,15 +559,25 @@ def subdomain_discovery_payload(
         action_name, action = subdomain_action_config(subdomain, query_parts[0])
         if action_name and action:
             return scoped_subdomain_action_payload(store, domain_id, subdomain, action_name, action, query_parts[1:])
+    _discover_action_name, discover_action = subdomain_action_config(subdomain, "discover")
+    if discover_action:
+        validate_declared_action_args(discover_action, query_parts)
+    shape = selected_action_shape(discover_action, query_parts)
     live = call_external_command(store, subdomain, ["discover", *query_parts])
+    actions = subdomain.get("actions", {})
     payload = {
         "agent_domain": domain_id,
         "agent_subdomain": compact_subdomain(store, domain_id, subdomain),
         "description": selected_description(store, subdomain),
-        "configured_actions": subdomain.get("actions", {}),
         "configured_options": target_option_surface(store, subdomain),
         "live_data": live,
     }
+    if shape:
+        payload["shape"] = shape
+    if shape == "compact":
+        payload["configured_action_index"] = compact_action_index(actions)
+    else:
+        payload["configured_actions"] = actions
     if detail_enabled(store) and subdomain.get("data_description"):
         payload["data_description"] = subdomain["data_description"]
     return payload
@@ -532,7 +605,7 @@ def scoped_action_discovery_payload(
         return scoped_mode_interface_payload(
             store, action_name, action, domain_id, subdomain, compact=False, query_required=True
         )
-    validate_declared_collection_args(action, query_parts)
+    validate_declared_action_args(action, query_parts)
     live_command = action.get("entrypoint_command", "discover")
     live = call_external_command(store, subdomain, [live_command, *query_parts])
     payload = {
@@ -562,7 +635,7 @@ def scoped_subdomain_action_payload(
         return scoped_mode_interface_payload(
             store, action_name, action, domain_id, subdomain, compact=True, query_required=True
         )
-    validate_declared_collection_args(action, action_args)
+    validate_declared_action_args(action, action_args)
     live_command = action.get("entrypoint_command", action_name)
     live = call_external_command(store, subdomain, [live_command, *action_args])
     payload = {

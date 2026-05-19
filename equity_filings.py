@@ -37,6 +37,27 @@ from xctx_live.filings import (  # noqa: E402
 ## The generic xctx runtime may route here, but must not duplicate this logic.
 
 
+def parse_discover_args(args: list[str]) -> tuple[str, str]:
+    shape = "compact"
+    query_parts: list[str] = []
+    index = 0
+    while index < len(args):
+        token = args[index]
+        if token == "--shape":
+            if index + 1 >= len(args):
+                raise ValueError("--shape requires a value")
+            shape = args[index + 1]
+            if shape not in {"compact", "full"}:
+                raise ValueError("--shape must be compact or full")
+            index += 2
+            continue
+        if token.startswith("--"):
+            raise ValueError("supported discover argument shape: [--shape compact|full]")
+        query_parts.append(token)
+        index += 1
+    return joined_query(query_parts), shape
+
+
 def parse_list_args(args: list[str], *, cursor_supported: bool = False) -> dict[str, int | str]:
     options: dict[str, int | str] = {
         "limit": LIST_DEFAULT_LIMIT,
@@ -84,8 +105,11 @@ def main(argv: list[str] | None = None) -> int:
     rest = args[1:]
 
     if command == "discover":
-        query = joined_query(rest)
-        payload = discover_with_query(ROOT, query) if query else filing_taxonomy_discovery(ROOT)
+        try:
+            query, shape = parse_discover_args(rest)
+        except ValueError as exc:
+            return usage_error(str(exc))
+        payload = discover_with_query(ROOT, query) if query else filing_taxonomy_discovery(ROOT, shape=shape)
     elif command == "search-forms":
         query = joined_query(rest)
         matches = search_forms(ROOT, query)

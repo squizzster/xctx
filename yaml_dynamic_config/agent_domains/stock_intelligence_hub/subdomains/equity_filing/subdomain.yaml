@@ -23,8 +23,20 @@ actions:
   discover:
     priority: 10
     entrypoint_command: discover
-    desc: Explain filing taxonomy capabilities and high-level dataset stats.
-    run_cmd: ./xctx discover stock_intelligence_hub::equity_filing
+    desc: Discover filing taxonomy modes, observable object shapes, and next discovery commands.
+    discovery_shapes:
+      default_shape: compact
+      shapes:
+        - compact
+        - full
+    argument_shapes:
+      - "[--shape compact|full]"
+    examples:
+      - query: compact filing taxonomy discovery
+        run_cmd: ./xctx discover stock_intelligence_hub::equity_filing
+      - query: full filing taxonomy discovery
+        run_cmd: ./xctx discover stock_intelligence_hub::equity_filing --shape full
+    run_cmd: ./xctx discover stock_intelligence_hub::equity_filing [--shape compact|full]
   search_forms:
     domain_affordance: true
     domain_action_name: search_filing_form

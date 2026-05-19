@@ -22,7 +22,7 @@ from xctx_live.instruments import (  # noqa: E402
     instrument_observation,
     instrument_registry_discovery,
     instrument_search_payload,
-    latest_price_observation,
+    latest_price_discovery,
     list_instruments,
     market_series_search_payload,
 )
@@ -30,6 +30,27 @@ from xctx_live.instruments import (  # noqa: E402
 
 ## Domain-pack boundary: this adapter owns market-data semantics.
 ## xctx only routes to this entrypoint and envelopes its JSON result.
+
+
+def parse_discover_args(args: list[str]) -> tuple[str, str]:
+    shape = "compact"
+    query_parts: list[str] = []
+    index = 0
+    while index < len(args):
+        token = args[index]
+        if token == "--shape":
+            if index + 1 >= len(args):
+                raise ValueError("--shape requires a value")
+            shape = args[index + 1]
+            if shape not in {"compact", "full"}:
+                raise ValueError("--shape must be compact or full")
+            index += 2
+            continue
+        if token.startswith("--"):
+            raise ValueError("supported discover argument shape: [--shape compact|full]")
+        query_parts.append(token)
+        index += 1
+    return joined_query(query_parts), shape
 
 
 def parse_observe_args(args: list[str]) -> tuple[str, dict[str, int] | None]:
@@ -65,8 +86,11 @@ def main(argv: list[str] | None = None) -> int:
     rest = args[1:]
 
     if command == "discover":
-        query = joined_query(rest)
-        payload = instrument_search_payload(ROOT, query) if query else instrument_registry_discovery(ROOT)
+        try:
+            query, shape = parse_discover_args(rest)
+        except ValueError as exc:
+            return usage_error(str(exc))
+        payload = instrument_search_payload(ROOT, query) if query else instrument_registry_discovery(ROOT, shape=shape)
     elif command in {"search", "search_entity_instrument", "search-instruments", "search-instrument", "search_entity"}:
         query = joined_query(rest)
         if not query:
@@ -81,7 +105,7 @@ def main(argv: list[str] | None = None) -> int:
         query = joined_query(rest)
         if not query:
             return usage_error("latest-price requires a ticker, instrument id, CIK, issuer id, or market_series id")
-        payload = latest_price_observation(ROOT, query)
+        payload = latest_price_discovery(ROOT, query)
     elif command in {"list", "list_instruments", "list-instruments"}:
         try:
             payload = list_instruments(ROOT, rest)

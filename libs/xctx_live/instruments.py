@@ -21,6 +21,8 @@ LIST_DEFAULT_LIMIT = 25
 LIST_MAX_LIMIT = 100
 INLINE_BAR_LIMIT = 30
 BAR_CSV_COLUMNS = ["bar_start_ts", "date", "open", "high", "low", "close", "vwap", "volume_raw", "transaction_count"]
+DAILY_BAR_MULTIPLIER = 1
+DAILY_BAR_TIMESPAN_CODE = 1
 
 EXCHANGE_NAMES = {
     "XNAS": "Nasdaq",
@@ -326,7 +328,7 @@ def public_instrument(record: dict[str, Any], *, include_aliases: bool = False) 
     if ticker and has_series_hint:
         next_moves.append(
             {
-                "desc": "Get the latest available bundled daily price for this ticker.",
+                "desc": "Discover the latest-price observable for this ticker.",
                 "run_cmd": f"./xctx discover {agent_domain_id()}::latest_price {record.get('ticker')}",
             }
         )
@@ -845,6 +847,8 @@ def _series_query_sql(where: str = "") -> str:
           SELECT d2.dataset_id
           FROM bar_datasets d2
           WHERE d2.ohlcv_series_id = s.ohlcv_series_id
+            AND d2.multiplier = {DAILY_BAR_MULTIPLIER}
+            AND d2.timespan_code = {DAILY_BAR_TIMESPAN_CODE}
           ORDER BY d2.max_date_key DESC, d2.bar_count DESC, d2.dataset_id DESC
           LIMIT 1
         )
@@ -861,7 +865,7 @@ def _series_query_sql(where: str = "") -> str:
     """
 
 
-def _market_series_projection(row: sqlite3.Row) -> dict[str, Any]:
+def _market_series_projection(row: sqlite3.Row, *, include_observed_data: bool = True) -> dict[str, Any]:
     ticker = str(row["latest_ticker"]).upper()
     series_id = f"market_series:{ticker.lower()}:daily"
     payload = {
@@ -883,13 +887,15 @@ def _market_series_projection(row: sqlite3.Row) -> dict[str, Any]:
         "dataset_id": row["dataset_id"],
         "bar_count": row["bar_count"],
         "coverage": {"min_date": _date_key(row["min_date_key"]), "max_date": _date_key(row["max_date_key"])},
-        "latest_bar": _bar_payload(row),
+        "latest_available_bar_date": _date_key(row["bar_date_key"]),
         "evidence": {
             "request_hash": row["request_hash"],
             "evidence_ledger_hash": row["evidence_ledger_hash"],
         },
         "run_cmd": f"./xctx observe {scoped_ref()} {series_id}",
     }
+    if include_observed_data:
+        payload["latest_bar"] = _bar_payload(row)
     return {key: value for key, value in payload.items() if value is not None}
 
 
@@ -915,11 +921,11 @@ def _series_identifier_where(identifier: str) -> tuple[str, tuple[Any, ...]]:
     )
 
 
-def find_market_series(root: Path, identifier: str) -> dict[str, Any] | None:
+def find_market_series(root: Path, identifier: str, *, include_observed_data: bool = True) -> dict[str, Any] | None:
     where, params = _series_identifier_where(identifier)
     with connect_market(root) as conn:
         row = conn.execute(_series_query_sql(where + " ORDER BY d.max_date_key DESC LIMIT 1"), params).fetchone()
-    return _market_series_projection(row) if row else None
+    return _market_series_projection(row, include_observed_data=include_observed_data) if row else None
 
 
 def search_market_series(root: Path, query: str, limit: int = 20) -> list[dict[str, Any]]:
@@ -931,11 +937,11 @@ def search_market_series(root: Path, query: str, limit: int = 20) -> list[dict[s
             lowered = query.lower()
             identifier_like = lowered.startswith(("market_series:", "ohlcv_series:", "instrument:", "issuer:cik:", "cik:")) or bool(_query_cik_key(query))
             if identifier_like:
-                found = find_market_series(root, query)
+                found = find_market_series(root, query, include_observed_data=False)
                 if not found:
                     record = find_instrument(root, query)
                     if record:
-                        found = find_market_series(root, str(record.get("ticker", "")))
+                        found = find_market_series(root, str(record.get("ticker", "")), include_observed_data=False)
                 return [found] if found else []
             like = f"%{lowered}%"
             rows = conn.execute(
@@ -954,7 +960,7 @@ def search_market_series(root: Path, query: str, limit: int = 20) -> list[dict[s
                 ),
                 (like, like, like, like, like, query, limit),
             ).fetchall()
-    return [_market_series_projection(row) for row in rows]
+    return [_market_series_projection(row, include_observed_data=False) for row in rows]
 
 
 def _sample_bars(root: Path, dataset_id: int | None, limit: int = 5) -> list[dict[str, Any]]:
@@ -1149,6 +1155,50 @@ def latest_price_observation(root: Path, identifier: str) -> dict[str, Any]:
     }
 
 
+def latest_price_discovery(root: Path, identifier: str) -> dict[str, Any]:
+    """Discover the latest-price observable without materializing price values."""
+    found = find_market_series(root, identifier)
+    record = find_instrument(root, identifier)
+    if not found and record:
+        found = find_market_series(root, str(record.get("ticker", "")))
+    if not found:
+        return {
+            "object_type": "market_data_gateway_latest_price_discovery",
+            "query": identifier,
+            "found": False,
+            "candidate_instruments": search_instruments(root, identifier, limit=5),
+            "candidate_series": search_market_series(root, identifier, limit=5),
+            "empty_result_guidance": "Try ticker, instrument:<ticker>, issuer:cik:<CIK>, or a company name first.",
+            "next_move": f"./xctx discover {scoped_ref()} search_entity_instrument <company|ticker|CIK|alias>",
+            "data_boundary": "Discovery only. Use observe to return latest price data.",
+        }
+
+    observe_cmd = f"./xctx observe {scoped_ref()} {found['ticker']}"
+    return {
+        "object_type": "market_data_gateway_latest_price_discovery",
+        "found": True,
+        "requested_identifier": identifier,
+        "market_series_id": found["market_series_id"],
+        "ohlcv_series_id": found.get("ohlcv_series_id"),
+        "instrument_id": found["instrument_id"],
+        "issuer_id": found.get("issuer_id"),
+        "ticker": found["ticker"],
+        "issuer_name": found.get("issuer_name"),
+        "coverage": found.get("coverage"),
+        "bar_count": found.get("bar_count"),
+        "provider": found.get("provider"),
+        "evidence": found.get("evidence"),
+        "latest_available_bar_date": found.get("latest_bar", {}).get("date"),
+        "observe_cmd": observe_cmd,
+        "data_boundary": "Discovery only. Use observe to return latest price data.",
+        "next_moves": [
+            observe_cmd,
+            f"./xctx observe {scoped_ref()} {found['ticker']} --bars 5",
+            f"./xctx observe {scoped_ref()} {found['ticker']} --calendar-days 30",
+        ],
+    }
+
+
 def market_series_observation(root: Path, identifier: str) -> dict[str, Any]:
     found = find_market_series(root, identifier)
     if not found:
@@ -1179,22 +1229,83 @@ def market_series_observation(root: Path, identifier: str) -> dict[str, Any]:
     return payload
 
 
-def instrument_registry_discovery(root: Path) -> dict[str, Any]:
+def instrument_registry_discovery(root: Path, *, shape: str = "compact") -> dict[str, Any]:
     instruments = load_all_instruments(root)
     mstats = market_stats(root)
+    stats_payload = {
+        "canonical_instruments": len(instruments),
+        "active_instruments": sum(1 for item in instruments if item.get("status") == "active"),
+        "id_namespace": "instrument:<lowercase_primary_ticker>",
+        "issuer_namespace": "issuer:cik:<10_digit_cik>",
+        "market_series_namespace": "market_series:<lowercase_ticker>:daily",
+        **mstats,
+    }
+    if shape == "compact":
+        return {
+            "object_type": "market_data_gateway_discovery",
+            "shape": "compact",
+            "context_state": "without_equity",
+            "description": "Discover instrument identity and market-series modes.",
+            "stats": {
+                "canonical_instruments": stats_payload["canonical_instruments"],
+                "active_instruments": stats_payload["active_instruments"],
+                "ohlcv_series": stats_payload.get("ohlcv_series"),
+                "ohlcv_bars": stats_payload.get("ohlcv_bars"),
+            },
+            "observable_objects": {
+                "instrument": {
+                    "id_shape": "instrument:<lowercase_primary_ticker>",
+                    "observe_shape": f"./xctx observe {scoped_ref()} instrument:<ticker>",
+                },
+                "issuer": {
+                    "id_shape": "issuer:cik:<10_digit_cik>",
+                    "observe_shape": f"./xctx observe {scoped_ref()} issuer:cik:<CIK>",
+                },
+                "market_series": {
+                    "id_shape": "market_series:<lowercase_ticker>:daily",
+                    "observe_shape": f"./xctx observe {scoped_ref()} market_series:<ticker>:daily",
+                },
+            },
+            "discoverable_modes": [
+                {
+                    "id": "search_entity_instrument",
+                    "mode_kind": "search",
+                    "query_shape": "<company|ticker|CIK|alias>",
+                    "run_cmd": f"./xctx discover {scoped_ref()} search_entity_instrument <query>",
+                },
+                {
+                    "id": "search_market_series",
+                    "mode_kind": "search",
+                    "query_shape": "<ticker|issuer|provider|text>",
+                    "run_cmd": f"./xctx discover {scoped_ref()} search_market_series <query>",
+                },
+                {
+                    "id": "latest_price",
+                    "mode_kind": "search",
+                    "query_shape": "<ticker|instrument_id|CIK|market_series:ticker:daily>",
+                    "run_cmd": f"./xctx discover {agent_domain_id()}::latest_price <query>",
+                },
+                {
+                    "id": "list_instruments",
+                    "mode_kind": "list",
+                    "run_cmd": f"./xctx discover {scoped_ref()} list_instruments [--limit N] [--shape compact|full]",
+                },
+            ],
+            "full_shape_cmd": f"./xctx discover {scoped_ref()} --shape full",
+            "next_moves": [
+                f"./xctx discover {scoped_ref()} search_entity_instrument <company|ticker|CIK|alias>",
+                f"./xctx discover {scoped_ref()} search_market_series <ticker|issuer|provider|text>",
+                f"./xctx discover {agent_domain_id()}::latest_price <ticker|instrument|CIK>",
+                f"./xctx observe {scoped_ref()} <instrument_id|ticker|CIK|market_series:ticker:daily>",
+            ],
+        }
     return {
         "object_type": "market_data_gateway_discovery",
+        "shape": "full",
         "context_state": "without_equity",
         "description": "Search this subdomain first when an agent has a company, ticker, CIK, or alias and needs the canonical local ID or a bundled OHLCV series.",
         "data_description": "Bundled read-only canonical instrument seed set plus bundled read-only mini_stocks SQLite market-series fixture.",
-        "stats": {
-            "canonical_instruments": len(instruments),
-            "active_instruments": sum(1 for item in instruments if item.get("status") == "active"),
-            "id_namespace": "instrument:<lowercase_primary_ticker>",
-            "issuer_namespace": "issuer:cik:<10_digit_cik>",
-            "market_series_namespace": "market_series:<lowercase_ticker>:daily",
-            **mstats,
-        },
+        "stats": stats_payload,
         "search_fields": ["instrument_id", "issuer_id", "ticker", "name", "cik", "aliases", "ticker_aliases", "exchange", "mic", "market_series_id", "provider", "figi"],
         "actions": {
             "search_entity_instrument": {
@@ -1209,7 +1320,7 @@ def instrument_registry_discovery(root: Path) -> dict[str, Any]:
             },
             "latest_price": {
                 "priority": 18,
-                "desc": "Return the latest available bundled daily OHLCV close for a resolved instrument or series; not a live quote.",
+                "desc": "Discover how to observe the latest available bundled daily close for a resolved instrument or series.",
                 "run_cmd": f"./xctx discover {agent_domain_id()}::latest_price <ticker|instrument|CIK>",
             },
             "list_instruments": {
@@ -1238,7 +1349,7 @@ def instrument_search_payload(root: Path, query: str) -> dict[str, Any]:
         "limit": DEFAULT_SEARCH_LIMIT,
         "resolver_policy": "Exact ticker, instrument id, and CIK matches rank before exact aliases, normalized legal-name matches, prefixes, and broad text matches.",
         "matches": matches,
-        "data_boundary": "Minimum identity result only. Use each match next_moves to discover filings, latest available price, or market series explicitly.",
+        "data_boundary": "Minimum identity result only. Use each match next_moves to discover filings, latest-price observables, or market series explicitly.",
         "empty_result_guidance": None if matches else "Try ticker, company legal name, CIK, or issuer:cik:<CIK>.",
     }
 

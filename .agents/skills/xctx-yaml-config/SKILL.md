@@ -44,6 +44,37 @@ those operations mean, and belong in scoped YAML plus adapter code.
     that say the core routes configured refs only; do not include domain nouns
     in those comments.
 
+## Discover/observe data boundary
+
+`discover` finds observable data objects and returns enough identity, scope,
+coverage, shape, and next-move metadata to choose what to observe. `observe`
+returns the materialized contents or state of a selected object.
+
+A discovered thing may itself be a data object, such as `order:400`,
+`form:10-K`, or `market_series:<ticker>:daily`. The discovery payload should
+still be an index or pointer to that object, not the raw/final observed data.
+
+Discovery may return identifiers, labels, normalized refs, compact summaries,
+coverage ranges, counts, capabilities, schemas, examples, and `observe` command
+pointers. Discovery must not return final/raw observed data such as latest
+prices, OHLCV bars, filing bodies, full observed records, raw documents, CSV
+payloads, or bulk observation datasets.
+
+Domain-specific meaning belongs in scoped YAML and adapter code. Generic
+`libs/xctx` code may present and route configured surfaces, but it must not know
+what application tokens such as tickers, form codes, order ids, prices, or
+filing concepts mean.
+
+Before adding or changing a discovery action:
+
+1. Ask whether the payload is an index/pointer to observable data, or the
+   materialized data itself.
+2. If it is materialized data, route it through `observe`.
+3. Keep compatibility discovery aliases only when they return pointers and next
+   moves, not observed data.
+4. Add or update tests proving discovery payloads do not leak observation
+   fields for that domain pack.
+
 ## Change map
 
 | Change | YAML location | Required proof |
@@ -52,6 +83,7 @@ those operations mean, and belong in scoped YAML plus adapter code.
 | Add/remove subdomain | domain `agent_subdomains`; subdomain `subdomain.yaml` | Scoped subdomain discovery works or truthful offline/maintenance repair appears |
 | Add domain affordance | subdomain `actions.<id>.domain_affordance: true` | `./xctx discover <domain>::<affordance>` works; unscoped equivalent is refused |
 | Add mode discovery | subdomain `actions.<id>` metadata such as `argument_shapes`, `examples`, `related_commands`, `returns` | `./xctx discover <domain>::<subdomain>::<action>` and no-query action discovery explain the mode |
+| Add subdomain discovery shapes | subdomain `actions.discover.discovery_shapes` and adapter discover handling | Default subdomain discovery is compact; `--shape full` returns richer surface |
 | Add list mode | subdomain `actions.<id>.query_required: false`; adapter `entrypoint_command`; optional `collection` contract | list command returns a compact bounded payload instead of being treated as free-text search |
 | Add command option | owning action `cli_options` | Option appears only on scoped target surface; wrong target/refusal paths work |
 | Change routing | `universe.yaml` `agent_routing` | trusted IDs route correctly; ambiguous IDs do not guess |
@@ -148,6 +180,47 @@ Cursor support is an optional protocol convention, not a root command. xctx may
 validate declared `--limit`, `--cursor`, and `--shape` syntax from the action's
 `collection` block, but cursor values remain opaque and adapter-owned. Do not
 make root-level cursor flags or teach generic xctx code what a cursor means.
+
+## Subdomain discovery shape contract
+
+Dense subdomain discovery should default to a compact directory of what can be
+discovered next. Use `actions.discover.discovery_shapes` when a subdomain has a
+large surface:
+
+```yaml
+actions:
+  discover:
+    entrypoint_command: discover
+    desc: Discover modes, observable object shapes, and next discovery commands.
+    discovery_shapes:
+      default_shape: compact
+      shapes: [compact, full]
+    argument_shapes:
+      - "[--shape compact|full]"
+    examples:
+      - query: compact subdomain discovery
+        run_cmd: ./xctx discover <domain_id>::<subdomain_id>
+      - query: full subdomain discovery
+        run_cmd: ./xctx discover <domain_id>::<subdomain_id> --shape full
+    run_cmd: ./xctx discover <domain_id>::<subdomain_id> [--shape compact|full]
+```
+
+The generic xctx layer may validate the declared shape and switch its own
+presentation between a compact action index and full configured actions. The
+adapter still owns the meaning of `compact` and `full` for its live discovery
+payload.
+
+Compact subdomain discovery should return:
+
+1. Subdomain identity and a short description.
+2. Observable object shapes and observe target shapes.
+3. Discoverable modes with query shapes and run commands.
+4. Bounded stats or coverage summaries.
+5. A `--shape full` next move when richer interface detail is available.
+
+Full subdomain discovery may include richer mode metadata, examples, samples,
+schema notes, or adapter-owned guidance. It still must obey the discover/observe
+data boundary.
 
 ## CLI option contract
 
@@ -264,12 +337,14 @@ Domain-specific identity semantics belong in the adapter or scoped domain data.
    `returns` when the mode is not self-evident.
 4. For list modes, add a `collection` contract and keep the default adapter
    projection compact; use explicit `--shape full` or observe for detailed rows.
-5. If it executes, implement the adapter command named by `entrypoint_command`.
-6. Prove `./xctx discover <domain>::<subdomain>::<action>` works.
-7. Prove `./xctx discover <domain>::<subdomain> <action>` works.
-8. Prove stale/unscoped equivalents either route to the scoped command or fail
+5. For dense subdomain discovery, declare `actions.discover.discovery_shapes`
+   and implement adapter-owned compact/full discovery payloads.
+6. If it executes, implement the adapter command named by `entrypoint_command`.
+7. Prove `./xctx discover <domain>::<subdomain>::<action>` works.
+8. Prove `./xctx discover <domain>::<subdomain> <action>` works.
+9. Prove stale/unscoped equivalents either route to the scoped command or fail
    with a useful `next valid move`.
-9. If the mode searches exact codes and broad text, exact code matches should be
+10. If the mode searches exact codes and broad text, exact code matches should be
    resolved before broad descriptive matching so nearby concepts do not bleed in.
 
 ### Modify a surface

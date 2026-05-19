@@ -157,11 +157,13 @@ def assert_protocol_is_config_driven() -> None:
     assert market_subdomain["actions"]["search_entity_instrument"]["domain_affordance"] is True
     assert market_subdomain["actions"]["latest_price"]["domain_affordance"] is True
     assert market_subdomain["actions"]["latest_price"]["entrypoint_command"] == "latest-price"
+    assert market_subdomain["actions"]["discover"]["discovery_shapes"]["default_shape"] == "compact"
     observe_flags = [option["flags"][0] for option in market_subdomain["actions"]["observe"]["cli_options"]]
     assert observe_flags == ["--bars", "--calendar-days"]
     filing_subdomain = yaml.safe_load((ROOT / "yaml_dynamic_config" / "agent_domains" / "stock_intelligence_hub" / "subdomains" / "equity_filing" / "subdomain.yaml").read_text())
     assert filing_subdomain["actions"]["search_forms"]["domain_affordance"] is True
     assert filing_subdomain["actions"]["search_forms"]["domain_action_name"] == "search_filing_form"
+    assert filing_subdomain["actions"]["discover"]["discovery_shapes"]["default_shape"] == "compact"
     assert filing_subdomain["actions"]["list_forms"]["entrypoint_command"] == "list-forms"
     assert filing_subdomain["actions"]["list_forms"]["query_required"] is False
     assert filing_subdomain["actions"]["list_forms"]["collection"]["default_shape"] == "compact"
@@ -248,33 +250,57 @@ def assert_root_domain_subdomain_discovery() -> None:
     assert filing["domain_level"] == "agent_subdomain"
     filing_live = filing["results"]["live_data"]
     assert filing_live["object_type"] == "equity_filing_discovery"
+    assert filing["results"]["shape"] == "compact"
+    assert filing_live["shape"] == "compact"
+    assert "configured_action_index" in filing["results"]
+    assert "configured_actions" not in filing["results"]
     assert filing_live["stats"]["total_lookup_filings"] == 412
     assert filing_live["stats"]["canonical_families"] == 41
     assert filing_live["stats"]["priority_buckets"] == 12
     assert filing_live["stats"]["amendment_forms"] == 176
-    assert set(filing_live["modes"]) >= {
+    assert {item["id"] for item in filing_live["discoverable_modes"]} >= {
         "search_forms",
         "list_forms",
         "search_families",
         "list_families",
         "search_priority_buckets",
         "list_priority_buckets",
-        "observe",
     }
-    assert filing_live["command_grammar"]["mode_discovery"].endswith("::equity_filing::<mode>")
     assert "./xctx discover stock_intelligence_hub::equity_filing list_forms" in filing_live["next_moves"]
+    filing_full = one(["discover", "stock_intelligence_hub::equity_filing", "--shape", "full"])
+    filing_full_live = filing_full["results"]["live_data"]
+    assert filing_full["results"]["shape"] == "full"
+    assert "configured_actions" in filing_full["results"]
+    assert filing_full_live["shape"] == "full"
+    assert "modes" in filing_full_live
+    assert filing_full_live["command_grammar"]["mode_discovery"].endswith("::equity_filing::<mode>")
+    bad_shape = one(["discover", "stock_intelligence_hub::equity_filing", "--shape", "wide"], expected_code=1)
+    assert "choose --shape compact|full" in bad_shape["error"]
 
     market = one(["discover", "stock_intelligence_hub::market_data_gateway"])
     assert market["domain_level"] == "agent_subdomain"
     market_live = market["results"]["live_data"]
     assert market_live["object_type"] == "market_data_gateway_discovery"
-    assert market_live["stats"]["reference_universe_snapshots"] == 100
+    assert market["results"]["shape"] == "compact"
+    assert market_live["shape"] == "compact"
     assert market_live["stats"]["canonical_instruments"] >= 100
     observe_options = market["results"]["configured_options"]["observe"]
     assert [item["flags"][0] for item in observe_options] == ["--bars", "--calendar-days"]
     assert observe_options[0]["source"]["agent_subdomain"] == "market_data_gateway"
-    sample_series_ids = [item["market_series_id"] for item in market_live["sample_market_series"]]
+    assert {item["id"] for item in market_live["discoverable_modes"]} >= {
+        "search_entity_instrument",
+        "search_market_series",
+        "latest_price",
+        "list_instruments",
+    }
+    market_full = one(["discover", "stock_intelligence_hub::market_data_gateway", "--shape", "full"])
+    market_full_live = market_full["results"]["live_data"]
+    assert market_full["results"]["shape"] == "full"
+    assert market_full_live["shape"] == "full"
+    assert market_full_live["stats"]["reference_universe_snapshots"] == 100
+    sample_series_ids = [item["market_series_id"] for item in market_full_live["sample_market_series"]]
     assert len(sample_series_ids) == len(set(sample_series_ids)), sample_series_ids
+    assert all("latest_bar" not in item for item in market_full_live["sample_market_series"])
 
 
 def assert_scoped_affordance_routing() -> None:
@@ -411,16 +437,19 @@ def assert_scoped_affordance_routing() -> None:
 
     series = one(["discover", "stock_intelligence_hub::search_market_series", "AAPL"])
     assert series["results"]["live_data"]["matches"][0]["market_series_id"] == "market_series:aapl:daily"
+    assert "latest_bar" not in series["results"]["live_data"]["matches"][0]
     series_by_cik = one(["discover", "stock_intelligence_hub::search_market_series", "issuer:cik:0000320193"])
     assert series_by_cik["results"]["live_data"]["matches"][0]["market_series_id"] == "market_series:aapl:daily"
+    assert "latest_bar" not in series_by_cik["results"]["live_data"]["matches"][0]
     latest = one(["discover", "stock_intelligence_hub::latest_price", "AAPL"])
     latest_live = latest["results"]["live_data"]
-    assert latest_live["object_type"] == "market_data_gateway_latest_price_observation"
+    assert latest_live["object_type"] == "market_data_gateway_latest_price_discovery"
     assert latest_live["found"] is True
-    assert latest_live["latest_available_price"]["price"] == latest_live["latest_available_price"]["close"]
-    assert latest_live["latest_available_price"]["is_live_quote"] is False
+    assert latest_live["observe_cmd"] == "./xctx observe stock_intelligence_hub::market_data_gateway AAPL"
+    assert "latest_available_price" not in latest_live
     latest_subdomain = one(["discover", "stock_intelligence_hub::market_data_gateway", "latest_price", "issuer:cik:0000320193"])
     assert latest_subdomain["results"]["live_data"]["ticker"] == "AAPL"
+    assert "latest_available_price" not in latest_subdomain["results"]["live_data"]
     instruments_page = one(["discover", "stock_intelligence_hub::market_data_gateway", "list_instruments", "--limit", "2"])
     instruments_live = instruments_page["results"]["live_data"]
     assert instruments_live["shape"] == "compact"
@@ -453,6 +482,8 @@ def assert_observe_audit_repair() -> None:
     observed_series = one(["observe", "stock_intelligence_hub::market_data_gateway", "market_series:a:daily"])
     series_live = observed_series["results"]["live_data"]
     assert series_live["latest_bar"] == series_live["sample_bars_last_5"][-1]
+    sample_dates = [bar["date"] for bar in series_live["sample_bars_last_5"]]
+    assert len(sample_dates) == len(set(sample_dates)), sample_dates
 
     ranged_small = one(["observe", "stock_intelligence_hub::market_data_gateway", "market_series:aapl:daily", "--bars", "5"])
     small_live = ranged_small["results"]["live_data"]

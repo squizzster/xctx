@@ -460,13 +460,89 @@ def high_impact_forms(root: Path) -> list[dict[str, Any]]:
     return results
 
 
-def filing_taxonomy_discovery(root: Path) -> dict[str, Any]:
+def filing_taxonomy_discovery(root: Path, *, shape: str = "compact") -> dict[str, Any]:
+    stats_payload = stats(root)
+    next_moves = [
+        "./xctx discover stock_intelligence_hub::equity_filing::search_forms",
+        "./xctx discover stock_intelligence_hub::equity_filing list_forms",
+        "./xctx discover stock_intelligence_hub::equity_filing search_forms 10-K",
+        "./xctx observe stock_intelligence_hub::equity_filing form:10-K",
+    ]
+    if shape == "compact":
+        return {
+            "object_type": "equity_filing_discovery",
+            "shape": "compact",
+            "context_state": "without_equity",
+            "description": "Discover filing taxonomy modes and observable filing objects.",
+            "stats": {
+                "total_lookup_filings": stats_payload["total_lookup_filings"],
+                "canonical_families": stats_payload["canonical_families"],
+                "priority_buckets": stats_payload["priority_buckets"],
+                "amendment_forms": stats_payload["amendment_forms"],
+            },
+            "observable_objects": {
+                "form": {
+                    "id_shape": "form:<form_code>",
+                    "observe_shape": "./xctx observe stock_intelligence_hub::equity_filing form:<form_code>",
+                },
+                "family": {
+                    "id_shape": "family:<canonical_family_code>",
+                    "observe_shape": "./xctx observe stock_intelligence_hub::equity_filing family:<family_code>",
+                },
+                "priority": {
+                    "id_shape": "priority:<priority_bucket_code>",
+                    "observe_shape": "./xctx observe stock_intelligence_hub::equity_filing priority:<priority_code>",
+                },
+                "equity_context": {
+                    "id_shape": "instrument:<lowercase_ticker>",
+                    "observe_shape": "./xctx observe stock_intelligence_hub::equity_filing instrument:<ticker>",
+                },
+            },
+            "discoverable_modes": [
+                {
+                    "id": "search_forms",
+                    "mode_kind": "search",
+                    "query_shape": "<form code|name|family|priority|text>",
+                    "run_cmd": "./xctx discover stock_intelligence_hub::equity_filing search_forms <query>",
+                },
+                {
+                    "id": "search_families",
+                    "mode_kind": "search",
+                    "query_shape": "<family code|name|text>",
+                    "run_cmd": "./xctx discover stock_intelligence_hub::equity_filing search_families <query>",
+                },
+                {
+                    "id": "search_priority_buckets",
+                    "mode_kind": "search",
+                    "query_shape": "<priority code|name>",
+                    "run_cmd": "./xctx discover stock_intelligence_hub::equity_filing search_priority_buckets <query>",
+                },
+                {
+                    "id": "list_forms",
+                    "mode_kind": "list",
+                    "run_cmd": "./xctx discover stock_intelligence_hub::equity_filing list_forms [--limit N] [--shape compact|full]",
+                },
+                {
+                    "id": "list_families",
+                    "mode_kind": "list",
+                    "run_cmd": "./xctx discover stock_intelligence_hub::equity_filing list_families [--limit N] [--shape compact|full]",
+                },
+                {
+                    "id": "list_priority_buckets",
+                    "mode_kind": "list",
+                    "run_cmd": "./xctx discover stock_intelligence_hub::equity_filing list_priority_buckets [--limit N] [--shape compact|full]",
+                },
+            ],
+            "full_shape_cmd": "./xctx discover stock_intelligence_hub::equity_filing --shape full",
+            "next_moves": next_moves,
+        }
     return {
         "object_type": "equity_filing_discovery",
+        "shape": "full",
         "context_state": "without_equity",
         "description": "Use this subdomain when the agent needs to understand SEC/EDGAR company filing forms, families, priorities, amendments, and when-to-use guidance.",
         "data_description": "Bundled read-only SQLite filing taxonomy. It is a real lookup database, not a simulated YAML list and not an issuer-specific submission history feed.",
-        "stats": stats(root),
+        "stats": stats_payload,
         "identity_shapes": {
             "form": "form:<form_code>, e.g. form:10-K",
             "family": "family:<canonical_family_code>, e.g. family:ANNUAL_REPORT",
@@ -557,12 +633,7 @@ def filing_taxonomy_discovery(root: Path) -> dict[str, Any]:
             },
         },
         "sample_high_impact_forms": high_impact_forms(root),
-        "next_moves": [
-            "./xctx discover stock_intelligence_hub::equity_filing::search_forms",
-            "./xctx discover stock_intelligence_hub::equity_filing list_forms",
-            "./xctx discover stock_intelligence_hub::equity_filing search_forms 10-K",
-            "./xctx observe stock_intelligence_hub::equity_filing form:10-K",
-        ],
+        "next_moves": next_moves,
     }
 
 

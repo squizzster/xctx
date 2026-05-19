@@ -146,15 +146,26 @@ def main() -> int:
 
     filings = run_engine(["discover", "stock_intelligence_hub::equity_filing"])
     assert filings["results"]["live_data"]["stats"]["total_lookup_filings"] == 412
-    assert "search_forms" in filings["results"]["live_data"]["modes"]
-    assert "list_forms" in filings["results"]["live_data"]["modes"]
+    assert filings["results"]["shape"] == "compact"
+    assert "configured_action_index" in filings["results"]
+    assert "configured_actions" not in filings["results"]
+    filing_mode_ids = {item["id"] for item in filings["results"]["live_data"]["discoverable_modes"]}
+    assert "search_forms" in filing_mode_ids
+    assert "list_forms" in filing_mode_ids
+    filings_full = run_engine(["discover", "stock_intelligence_hub::equity_filing", "--shape", "full"])
+    assert filings_full["results"]["shape"] == "full"
+    assert "modes" in filings_full["results"]["live_data"]
     market = run_engine(["discover", "stock_intelligence_hub::market_data_gateway"])
     assert market["results"]["live_data"]["stats"]["canonical_instruments"] >= 100
+    assert market["results"]["shape"] == "compact"
     configured_observe_options = market["results"]["configured_options"]["observe"]
     assert [item["flags"][0] for item in configured_observe_options] == ["--bars", "--calendar-days"]
     assert configured_observe_options[0]["source"]["kind"] == "agent_subdomain_action"
-    sample_series_ids = [item["market_series_id"] for item in market["results"]["live_data"]["sample_market_series"]]
+    market_full = run_engine(["discover", "stock_intelligence_hub::market_data_gateway", "--shape", "full"])
+    assert market_full["results"]["shape"] == "full"
+    sample_series_ids = [item["market_series_id"] for item in market_full["results"]["live_data"]["sample_market_series"]]
     assert len(sample_series_ids) == len(set(sample_series_ids)), sample_series_ids
+    assert all("latest_bar" not in item for item in market_full["results"]["live_data"]["sample_market_series"])
 
     print("[pressure] scoped affordance routing", flush=True)
     invalid_unscoped = run_engine(["discover", "search_filing_family", "annual"], code=1)
@@ -222,11 +233,14 @@ def main() -> int:
 
     series = run_engine(["discover", "stock_intelligence_hub::search_market_series", "AAPL"])
     assert series["results"]["live_data"]["matches"][0]["market_series_id"] == "market_series:aapl:daily"
+    assert "latest_bar" not in series["results"]["live_data"]["matches"][0]
     series_by_cik = run_engine(["discover", "stock_intelligence_hub::search_market_series", "320193"])
     assert series_by_cik["results"]["live_data"]["matches"][0]["market_series_id"] == "market_series:aapl:daily"
+    assert "latest_bar" not in series_by_cik["results"]["live_data"]["matches"][0]
     latest = run_engine(["discover", "stock_intelligence_hub::latest_price", "AAPL"])
-    assert latest["results"]["live_data"]["latest_available_price"]["is_live_quote"] is False
-    assert latest["results"]["live_data"]["latest_available_price"]["price"] == latest["results"]["live_data"]["latest_available_price"]["close"]
+    assert latest["results"]["live_data"]["object_type"] == "market_data_gateway_latest_price_discovery"
+    assert latest["results"]["live_data"]["observe_cmd"] == "./xctx observe stock_intelligence_hub::market_data_gateway AAPL"
+    assert "latest_available_price" not in latest["results"]["live_data"]
     broad_series = run_engine(["discover", "stock_intelligence_hub::market_data_gateway", "search_market_series", "A"])
     broad_ids = [item["market_series_id"] for item in broad_series["results"]["live_data"]["matches"]]
     assert len(broad_ids) == len(set(broad_ids)), broad_ids
@@ -242,6 +256,8 @@ def main() -> int:
     observed_series = run_engine(["observe", "stock_intelligence_hub::market_data_gateway", "market_series:a:daily"])
     series_live = observed_series["results"]["live_data"]
     assert series_live["latest_bar"] == series_live["sample_bars_last_5"][-1]
+    sample_dates = [bar["date"] for bar in series_live["sample_bars_last_5"]]
+    assert len(sample_dates) == len(set(sample_dates)), sample_dates
     ranged_small = run_engine(["observe", "stock_intelligence_hub::market_data_gateway", "market_series:aapl:daily", "--bars", "5"])
     small_live = ranged_small["results"]["live_data"]
     assert small_live["returned_bars"] == 5
