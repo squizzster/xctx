@@ -1,0 +1,13 @@
+id: crypto_intelligence_hub
+name: crypto_intelligence_hub
+desc: Crypto intelligence compatibility registry; down for maintenance in this build.
+full_name: Crypto intelligence compatibility registry; down for maintenance in this build.
+source_data:
+  schema: v4.2
+  storage_engine_current: yaml
+  storage_engine_target: sqlite
+  layout: agent-domain YAML registry with external read-only adapters
+config:
+  commands: ../../shared/command_sets/core_commands.yaml
+  status_checks: status/status_checks.yaml
+  subsystems: registries/subsystems.yaml

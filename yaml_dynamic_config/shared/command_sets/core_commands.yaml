@@ -1,0 +1,16 @@
+xctx:
+  discover:
+    Discover lawful next affordances from root, an agent domain, an agent subdomain, an identity, or a scoped named affordance.: '[TARGET [TEXT...] | --id ID]'
+  observe:
+    Observe a discovered object, agent domain, agent subdomain, or target-specific result in detail.: '[TARGET] [ID] [--id ID] [CONFIGURED_OPTIONS...]'
+  plan:
+    Rehearse an operation without mutating state and return the lawful next move plus deterministic sha256/sha5 receipts.: '[OPERATION] [TARGET]'
+  execute:
+    Execute a committed plan only when the active surface exposes a lawful commit path.: '[PLAN_ID|SHA256|SHA5] [--commit]'
+  audit:
+    Audit root, agent-domain, or agent-subdomain availability and live adapter health.: '[SCOPE]'
+  repair:
+    Return repair guidance for an audit finding or terminal maintenance state.: '<FINDING_ID|TARGET>'
+xctx_other:
+  other:
+    Backup extension lane for task dynamics outside the main agent-domain command set.: '--topic TOPIC [--reason TEXT]'

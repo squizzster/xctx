@@ -1,0 +1,11 @@
+[project]
+name = "xctx-modular-workspace"
+version = "4.2.0"
+description = "Modular xctx protocol workspace with process, IO, protocol, config, store, domain, and command layers."
+requires-python = ">=3.10"
+dependencies = ["PyYAML>=6.0"]
+
+[tool.xctx]
+engine = "libs/xctx"
+entrypoint = "bin/xctx"
+protocol = "yaml_dynamic_config/protocols/xctx_v4_2.yaml"

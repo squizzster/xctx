@@ -1,0 +1,8 @@
+id: fundamentals_gateway
+kind: agent_subdomain
+status: down_for_maintenance
+basic_description: Fundamentals gateway. Down for maintenance; no repair path is exposed.
+full_description: >-
+  This placeholder is intentionally terminal for repair testing. Agents should inspect terminal_reason and repair_path before assuming a repair route exists.
+offline_reason: down for maintenance
+repair_path: null

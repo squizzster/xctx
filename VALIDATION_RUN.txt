@@ -1,0 +1,57 @@
+xctx v4.2 boundary-hardened validation run
+
+Commands executed from repository root:
+
+  python3 .agents/skills/xctx-yaml-config/scripts/check_xctx_yaml_surface.py
+  python3 tests/smoke_protocol.py
+  python3 tests/protocol_pressure_pro.py
+  python3 -m compileall -q libs market_data_gateway.py equity_filings.py equity_instruments.py tests
+
+Results:
+
+  check_xctx_yaml_surface.py: ok=true; error_count=0; warning_count=0
+  smoke_protocol.py: hardened xctx protocol smoke checks passed
+  protocol_pressure_pro.py: PRO xctx protocol pressure checks passed
+  compileall: ok
+
+Root/universe leak guard:
+
+  ./xctx --json: clean
+  ./xctx --json help: clean
+  ./xctx --json --version: clean
+  ./xctx --json discover: clean
+
+Forbidden on those root/universe surfaces:
+
+  --bars
+  --calendar-days
+  --name
+  configured_options
+  search_entity_instrument
+  search_market_series
+  latest_price
+  latest-price
+
+Scoped market-data surface still advertises the market-only range options:
+
+  ./xctx --json discover stock_intelligence_hub::market_data_gateway
+
+  configured_options.observe:
+    --bars
+    --calendar-days
+
+Representative positive probes:
+
+  ./xctx --json discover stock_intelligence_hub::search_entity_instrument Apple
+  ./xctx --json discover stock_intelligence_hub::search_entity_instrument FB
+  ./xctx --json discover stock_intelligence_hub::latest_price AAPL
+  ./xctx --json observe stock_intelligence_hub::market_data_gateway instrument:aapl --bars 5
+  ./xctx --json observe stock_intelligence_hub::market_data_gateway AAPL --calendar-days 50
+  ./xctx --json discover stock_intelligence_hub::search_filing_form 10-K
+
+Representative refusal probes:
+
+  ./xctx --json discover search_filing_family annual
+  ./xctx --json discover --name Apple
+  ./xctx --json observe form:10-K --bars 5
+  ./xctx --json observe stock_intelligence_hub::market_data_gateway market_series:aapl:daily --bars 3 --calendar-days 7

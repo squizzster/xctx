@@ -1,0 +1,15 @@
+id: macro_intelligence_hub
+kind: agent_domain
+status: offline
+basic_description: Macro intelligence domain. Offline in this proof-of-concept.
+full_description: Macro calendar and central-bank intelligence are not bundled in this build.
+offline_reason: Macro data adapters are waiting for configuration.
+repair_path:
+  finding_id: offline:macro_intelligence_hub
+  run_cmd: ./xctx repair offline:macro_intelligence_hub
+  steps:
+    - Register macro data providers.
+    - Attach calendar and economic-series storage.
+    - Audit source freshness and schema coverage.
+    - Mark domain online after checks pass.
+agent_subdomains: {}

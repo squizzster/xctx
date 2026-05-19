@@ -1,0 +1,15 @@
+id: options_intelligence_hub
+kind: agent_domain
+status: offline
+basic_description: Options intelligence domain. Offline in this proof-of-concept.
+full_description: Options chain and volatility surface intelligence are not bundled in this build.
+offline_reason: Options chain provider and vol-surface store are waiting for configuration.
+repair_path:
+  finding_id: offline:options_intelligence_hub
+  run_cmd: ./xctx repair offline:options_intelligence_hub
+  steps:
+    - Configure listed-options chain provider.
+    - Attach option-contract and volatility-surface storage.
+    - Audit contract symbology and expiry coverage.
+    - Mark domain online after checks pass.
+agent_subdomains: {}

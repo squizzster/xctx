@@ -1,0 +1,91 @@
+name: xctx_multi_system_universe
+active_system: stock_intelligence_hub
+active_agent_domain: stock_intelligence_hub
+version_xctx: v4.2
+protocol: protocols/xctx_v4_2.yaml
+commands: shared/command_sets/core_commands.yaml
+expectations:
+  min_system_count: 4
+identity_resolution:
+  query_fields:
+    - name
+    - id
+    - aliases
+root:
+  domain_level: root
+  basic_description: xctx (executable context) is an agent-facing gateway for discovering domain capabilities, observing read-only facts, auditing availability, and following lawful repair paths.
+  full_description: >-
+    xctx is designed for agents that start with general world knowledge but no local domain knowledge. The root surface advertises agent domains, their statuses, trusted ID boundaries, and next commands an agent can run. The protocol separates YAML capability description from external read-only entrypoints that touch real bundled data.
+xctx_interface:
+  id: xctx
+  kind: executable_context_protocol
+  name: xctx
+  basic_description: xctx is the executable context protocol for discovering this universe and moving lawfully into its agent domains.
+  full_description: >-
+    xctx is the first object an agent discovers. It describes the universe, the active protocol version, the command surface, and the next command that discovers configured agent domains. It is not the business domain itself; it is the agent-facing gateway into the domains.
+  run_cmd: ./xctx
+  discover_domains_run_cmd: ./xctx discover
+  help_run_cmd: ./xctx help
+agent_domains:
+  - id: stock_intelligence_hub
+    path: agent_domains/stock_intelligence_hub/domain.yaml
+  - id: macro_intelligence_hub
+    path: agent_domains/macro_intelligence_hub/domain.yaml
+  - id: crypto_intelligence_hub
+    path: agent_domains/crypto_intelligence_hub/domain.yaml
+  - id: options_intelligence_hub
+    path: agent_domains/options_intelligence_hub/domain.yaml
+agent_routing:
+  observe_routes:
+    - id: canonical_equity_instrument_ids
+      agent_domain: stock_intelligence_hub
+      agent_subdomain: market_data_gateway
+      prefixes:
+        - "instrument:"
+        - "issuer:cik:"
+    - id: market_series_ids
+      agent_domain: stock_intelligence_hub
+      agent_subdomain: market_data_gateway
+      prefixes:
+        - "market_series:"
+        - "ohlcv_series:"
+    - id: equity_filing_taxonomy_ids
+      agent_domain: stock_intelligence_hub
+      agent_subdomain: equity_filing
+      prefixes:
+        - "form:"
+        - "family:"
+        - "priority:"
+      unprefixed_exact:
+        - 10-K
+        - 10-Q
+        - 8-K
+        - DEF 14A
+        - SC 13D
+        - S-3
+        - 424B5
+  default_observe_route:
+    agent_domain: stock_intelligence_hub
+    agent_subdomain: market_data_gateway
+  discovery_fallback:
+    agent_domain: stock_intelligence_hub
+    agent_subdomain: equity_filing
+    entrypoint_command: discover
+    interpretation: free_text_discovery_routed_to_configured_fallback
+systems:
+  - id: stock_intelligence_hub
+    name: stock_intelligence_hub
+    path: systems/stock_intelligence_hub/system.yaml
+    desc: Equity-market intelligence operating system with active market identity/series and filing taxonomy proof-of-concept surfaces.
+  - id: macro_intelligence_hub
+    name: macro_intelligence_hub
+    path: systems/macro_intelligence_hub/system.yaml
+    desc: Macroeconomic calendar and central-bank intelligence operating system example. Offline in this build.
+  - id: crypto_intelligence_hub
+    name: crypto_intelligence_hub
+    path: systems/crypto_intelligence_hub/system.yaml
+    desc: Digital-asset market and on-chain signal operating system example. Down for maintenance in this build.
+  - id: options_intelligence_hub
+    name: options_intelligence_hub
+    path: systems/options_intelligence_hub/system.yaml
+    desc: Equity options chain and volatility-surface intelligence operating system example. Offline in this build.

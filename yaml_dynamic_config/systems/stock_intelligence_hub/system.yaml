@@ -1,0 +1,13 @@
+id: stock_intelligence_hub
+name: stock_intelligence_hub
+desc: Equity-market intelligence operating system compatibility registry for the agent-domain proof-of-concept.
+full_name: Equity-market intelligence operating system compatibility registry for the agent-domain proof-of-concept.
+source_data:
+  schema: v4.2
+  storage_engine_current: yaml
+  storage_engine_target: sqlite
+  layout: agent-domain YAML registry with external read-only adapters
+config:
+  commands: ../../shared/command_sets/core_commands.yaml
+  status_checks: status/status_checks.yaml
+  subsystems: registries/subsystems.yaml

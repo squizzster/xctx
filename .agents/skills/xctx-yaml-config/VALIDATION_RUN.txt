@@ -1,0 +1,21 @@
+xctx-yaml-config skill validation
+
+Validated from repository root after adding the repo-scoped skill bundle.
+
+Commands run:
+
+  python3 .agents/skills/xctx-yaml-config/scripts/check_xctx_yaml_surface.py
+  ./xctx --json discover >/tmp/xctx-discover-root.json
+  ./xctx --json audit root >/tmp/xctx-audit-root.json
+  python3 tests/smoke_protocol.py
+
+Results:
+
+  check_xctx_yaml_surface.py: ok=true, error_count=0, warning_count=0
+  discover root: record_type=discovery, ok=true, domain_level=root
+  audit root: record_type=audit, ok=true, domain_level=root; expected offline/maintenance findings only
+  smoke_protocol.py: hardened xctx protocol smoke checks passed
+
+Pressure suite note:
+
+  The skill adds repository-scoped instructions, references, and a guard script only. It does not alter xctx runtime code or YAML behavior. Run python3 tests/protocol_pressure_pro.py after future YAML changes that touch routing, configured options, identity resolution, command shortcuts, or core protocol behavior.

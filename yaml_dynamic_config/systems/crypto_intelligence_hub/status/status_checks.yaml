@@ -1,0 +1,11 @@
+status_checks:
+  - id: check:crypto_intelligence_hub:source_data_integrity
+    name: source_data_integrity
+    severity: critical
+    status: pass
+    desc: Required YAML source files can be parsed.
+  - id: check:crypto_intelligence_hub:agent_domain_status_controls_availability
+    name: agent_domain_status_controls_availability
+    severity: info
+    status: pass
+    desc: Compatibility registry loaded. Agent-domain status controls operational availability.

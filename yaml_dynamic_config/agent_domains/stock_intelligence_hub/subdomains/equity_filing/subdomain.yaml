@@ -1,0 +1,65 @@
+id: equity_filing
+kind: agent_subdomain
+aliases:
+  - entity_filing_gateway
+  - filings
+  - equity_filings
+status: online
+basic_description: SEC/EDGAR company filing taxonomy lookup for equity research agents.
+full_description: >-
+  This subdomain exposes a bundled SQLite filing-form taxonomy. It can explain form codes, canonical filing families, priority buckets, amendment status, and SEC category labels. With an equity instrument context it can tell an agent how to reason about filings for that company, while clearly stating that issuer-specific submission history is not bundled in this proof-of-concept.
+data_description: >-
+  Bundled read-only SQLite database: 412 EDGAR form lookup records, 41 canonical families, 12 priority buckets, 51 category labels, and 176 amendment forms.
+entrypoint:
+  file: equity_filings.py
+  protocol: json_stdout
+  compact_flag: --compact
+  timeout_seconds: 30
+data:
+  storage_engine: sqlite
+  path: data/edgar_form_reference_taxonomy.sqlite
+  read_only: true
+actions:
+  discover:
+    priority: 10
+    entrypoint_command: discover
+    desc: Explain filing taxonomy capabilities and high-level dataset stats.
+    run_cmd: ./xctx discover stock_intelligence_hub::equity_filing
+  search_forms:
+    domain_affordance: true
+    domain_action_name: search_filing_form
+    priority: 20
+    entrypoint_command: search-forms
+    aliases:
+      - search_filing_form
+      - search-form
+    query_required: true
+    desc: Search SEC/EDGAR filing form types.
+    run_cmd: ./xctx discover stock_intelligence_hub::equity_filing search_forms <form code|name|family|priority|text>
+  search_families:
+    domain_affordance: true
+    domain_action_name: search_filing_family
+    priority: 30
+    entrypoint_command: search-families
+    aliases:
+      - search_filing_family
+      - search-family
+    query_required: true
+    desc: Search canonical filing families.
+    run_cmd: ./xctx discover stock_intelligence_hub::equity_filing search_families <family|text>
+  search_priority_buckets:
+    domain_affordance: true
+    domain_action_name: search_priority_bucket
+    priority: 40
+    entrypoint_command: search-priority-buckets
+    aliases:
+      - search_priority_bucket
+      - search-priority-bucket
+    query_required: true
+    desc: Search filing priority buckets.
+    run_cmd: ./xctx discover stock_intelligence_hub::equity_filing search_priority_buckets <priority|text>
+  observe:
+    priority: 50
+    entrypoint_command: observe
+    desc: Observe form:<code>, family:<code>, priority:<code>, or instrument:<ticker> context.
+    run_cmd: ./xctx observe stock_intelligence_hub::equity_filing <form:10-K|family:ANNUAL_REPORT|priority:critical_always|instrument:aapl>

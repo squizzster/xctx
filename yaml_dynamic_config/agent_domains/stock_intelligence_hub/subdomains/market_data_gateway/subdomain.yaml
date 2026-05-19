@@ -1,0 +1,96 @@
+id: market_data_gateway
+kind: agent_subdomain
+aliases:
+  - price_series_gateway
+  - instrument_registry
+  - equity_instruments
+status: online
+basic_description: Market data gateway for canonical equity instrument identity and bundled OHLCV series lookup.
+full_description: >-
+  This subdomain is the stock-domain market data gateway surface. It exposes a small curated canonical instrument inventory for trusted cross-subdomain handoff and a bundled read-only SQLite OHLCV fixture for market-series discovery. It is not a live quote feed and does not mutate provider-backed data.
+data_description: >-
+  Bundled read-only YAML reference data for canonical instrument IDs plus bundled read-only SQLite mini_stocks market-series fixture. Instrument IDs are stable stock_intelligence_hub identifiers; market_series IDs identify local OHLCV fixtures.
+entrypoint:
+  file: market_data_gateway.py
+  protocol: json_stdout
+  compact_flag: --compact
+  timeout_seconds: 30
+data:
+  storage_engine: mixed_yaml_sqlite
+  instrument_path: yaml_dynamic_config/agent_domains/stock_intelligence_hub/subdomains/market_data_gateway/instruments.yaml
+  market_data_path: data/mini_stocks.sqlite
+  read_only: true
+actions:
+  discover:
+    priority: 10
+    entrypoint_command: discover
+    desc: Explain the market data gateway instrument registry, market-series lookup, available fields, and read-only constraints.
+    run_cmd: ./xctx discover stock_intelligence_hub::market_data_gateway
+  search_entity_instrument:
+    domain_affordance: true
+    priority: 20
+    entrypoint_command: search
+    aliases:
+      - search_entity
+      - search-instruments
+      - search-instrument
+    query_required: true
+    desc: Search company name, ticker, CIK, issuer id, instrument id, or alias.
+    run_cmd: ./xctx discover stock_intelligence_hub::market_data_gateway search_entity_instrument <company|ticker|CIK|alias>
+  search_market_series:
+    domain_affordance: true
+    priority: 25
+    entrypoint_command: search-market-series
+    aliases:
+      - search_market_series
+      - search-series
+      - search_series
+    query_required: true
+    desc: Search bundled read-only OHLCV market series by ticker, issuer, provider, or local series id.
+    run_cmd: ./xctx discover stock_intelligence_hub::market_data_gateway search_market_series <ticker|issuer|provider|text>
+  latest_price:
+    domain_affordance: true
+    priority: 27
+    entrypoint_command: latest-price
+    aliases:
+      - latest-price
+      - latest_price
+      - latest
+      - quote
+      - latest_quote
+    query_required: true
+    desc: Return the latest available bundled daily OHLCV close for a ticker, instrument id, CIK, issuer id, or market-series id. Not a live quote feed.
+    run_cmd: ./xctx discover stock_intelligence_hub::market_data_gateway latest_price <ticker|instrument_id|CIK|market_series:ticker:daily>
+  list_instruments:
+    priority: 30
+    entrypoint_command: list
+    aliases:
+      - list
+      - list-instruments
+    query_required: false
+    desc: Enumerate canonical instruments with optional pagination and simple filters.
+    run_cmd: ./xctx discover stock_intelligence_hub::market_data_gateway list_instruments [--limit N] [--cursor CURSOR] [--status STATUS] [--exchange EXCHANGE] [--security-type TYPE]
+  observe:
+    priority: 40
+    entrypoint_command: observe
+    desc: Observe a canonical instrument, issuer, ticker, CIK, market_series:<ticker>:daily, or ohlcv_series:<id> in detail; optional configured range flags return bundled daily price ranges.
+    run_cmd: ./xctx observe stock_intelligence_hub::market_data_gateway <instrument_id|ticker|CIK|market_series:ticker:daily> [--bars N|--calendar-days N]
+    cli_options:
+      - flags:
+          - --bars
+        dest: bars
+        type: int
+        min: 0
+        adapter_arg: --bars
+        mutex_group: market_series_range_window
+        conflict_message: choose either --bars or --calendar-days
+        desc: Return the last N bars for a resolved market series; 0 means all available bars.
+      - flags:
+          - --calendar-days
+        dest: calendar_days
+        type: int
+        min: 0
+        adapter_arg: --calendar-days
+        mutex_group: market_series_range_window
+        conflict_message: choose either --bars or --calendar-days
+        desc: Return bars whose dates fall within the last N calendar days; 0 means all available bars.

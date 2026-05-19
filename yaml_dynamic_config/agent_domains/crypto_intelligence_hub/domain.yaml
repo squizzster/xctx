@@ -1,0 +1,8 @@
+id: crypto_intelligence_hub
+kind: agent_domain
+status: down_for_maintenance
+basic_description: Crypto intelligence domain. Down for maintenance; no repair path is exposed.
+full_description: Crypto market and on-chain intelligence are intentionally in maintenance mode for terminal maintenance-flow testing.
+offline_reason: down for maintenance
+repair_path: null
+agent_subdomains: {}

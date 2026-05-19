@@ -1,0 +1,81 @@
+schema_version: v1
+id_policy: instrument:<lowercase_primary_ticker>
+description: Small read-only canonical equity instrument seed set for proof-of-concept ID handoff.
+instruments:
+  - instrument_id: instrument:aapl
+    issuer_id: issuer:cik:0000320193
+    cik: "0000320193"
+    ticker: AAPL
+    name: Apple Inc.
+    aliases: [Apple, Apple Computer, Apple Incorporated]
+    exchange: Nasdaq
+    mic: XNAS
+    security_type: common_stock
+    currency: USD
+    status: active
+  - instrument_id: instrument:msft
+    issuer_id: issuer:cik:0000789019
+    cik: "0000789019"
+    ticker: MSFT
+    name: Microsoft Corporation
+    aliases: [Microsoft, Microsoft Corp]
+    exchange: Nasdaq
+    mic: XNAS
+    security_type: common_stock
+    currency: USD
+    status: active
+  - instrument_id: instrument:nvda
+    issuer_id: issuer:cik:0001045810
+    cik: "0001045810"
+    ticker: NVDA
+    name: NVIDIA Corporation
+    aliases: [Nvidia, NVIDIA Corp]
+    exchange: Nasdaq
+    mic: XNAS
+    security_type: common_stock
+    currency: USD
+    status: active
+  - instrument_id: instrument:tsla
+    issuer_id: issuer:cik:0001318605
+    cik: "0001318605"
+    ticker: TSLA
+    name: Tesla, Inc.
+    aliases: [Tesla, Tesla Motors]
+    exchange: Nasdaq
+    mic: XNAS
+    security_type: common_stock
+    currency: USD
+    status: active
+  - instrument_id: instrument:amzn
+    issuer_id: issuer:cik:0001018724
+    cik: "0001018724"
+    ticker: AMZN
+    name: Amazon.com, Inc.
+    aliases: [Amazon, Amazon.com]
+    exchange: Nasdaq
+    mic: XNAS
+    security_type: common_stock
+    currency: USD
+    status: active
+  - instrument_id: instrument:googl
+    issuer_id: issuer:cik:0001652044
+    cik: "0001652044"
+    ticker: GOOGL
+    name: Alphabet Inc.
+    aliases: [Alphabet, Google, GOOG]
+    exchange: Nasdaq
+    mic: XNAS
+    security_type: class_a_common_stock
+    currency: USD
+    status: active
+  - instrument_id: instrument:meta
+    issuer_id: issuer:cik:0001326801
+    cik: "0001326801"
+    ticker: META
+    name: Meta Platforms, Inc.
+    aliases: [Meta, Facebook, Facebook Inc, "Facebook, Inc.", FB]
+    exchange: Nasdaq
+    mic: XNAS
+    security_type: common_stock
+    currency: USD
+    status: active

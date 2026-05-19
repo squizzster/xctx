@@ -1,0 +1,5 @@
+interface:
+  display_name: xctx YAML Config Guard
+  short_description: Safely edit xctx YAML protocol surfaces without leaking domain assumptions into core.
+policy:
+  allow_implicit_invocation: true

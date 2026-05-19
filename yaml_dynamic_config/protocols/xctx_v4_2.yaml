@@ -1,0 +1,57 @@
+version_xctx: v4.2
+stdout:
+  format: jsonl
+  default_format: jsonl
+  tty_default_format: yaml
+  supported_formats:
+    - jsonl
+    - yaml
+  envelope_keys:
+    version: version_xctx
+    command: cmdline_arg
+    record_type: record_type
+    ok: ok
+    domain_level: domain_level
+    payload: results
+    error: error
+record_types:
+  discovery: Discovery records describing root, agent-domain, agent-subdomain, or named affordance surfaces.
+  result: Discovery and non-mutating command result records.
+  observation: Read-only observation of a discovered object or domain surface.
+  plan: Non-mutating plan or refusal-to-plan record.
+  execution_result: Execute command outcome. Mutation can be gated behind explicit commit semantics.
+  audit: Audit finding bundle or scoped audit check output.
+  repair_result: Repair guidance or terminal maintenance result.
+  extension: Extension-lane response for work outside the core command set.
+  error: Protocol-shaped error response.
+stderr:
+  emit_for_instant_yaml: false
+  format_when_active: yaml_documents
+hint_keys:
+  run_command: run_cmd
+help_aliases:
+  - help
+  - -h
+  - --help
+  - "–h"
+command_groups:
+  main:
+    - discover
+    - observe
+    - plan
+    - execute
+    - audit
+    - repair
+  other:
+    - other
+command_aliases:
+  discover:
+    - discovery
+response_templates:
+  help:
+    version_key: version_xctx
+    system_key: active_agent_domain
+    main_commands_key: xctx
+    other_commands_key: xctx_other
+guidance:
+  discover_root_run_cmd: ./xctx discover
