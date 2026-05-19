@@ -46,6 +46,12 @@ those operations mean, and belong in scoped YAML plus adapter code.
 
 ## Discover/observe data boundary
 
+The compact rule:
+
+```text
+You discover what you can observe.
+```
+
 `discover` finds observable data objects and returns enough identity, scope,
 coverage, shape, and next-move metadata to choose what to observe. `observe`
 returns the materialized contents or state of a selected object.
@@ -59,6 +65,13 @@ coverage ranges, counts, capabilities, schemas, examples, and `observe` command
 pointers. Discovery must not return final/raw observed data such as latest
 prices, OHLCV bars, filing bodies, full observed records, raw documents, CSV
 payloads, or bulk observation datasets.
+
+Explicit `--shape full` discovery indexes are acceptable for now when they are
+bounded, intentionally requested, and still serve as discovery/index records
+rather than raw observed payloads. Full discovery rows may include richer
+metadata, descriptions, examples, and observe commands when useful for black-box
+exploration. Raw documents, raw price series, bodies, line items, CSV exports,
+or final materialized object state still belong behind `observe`.
 
 Domain-specific meaning belongs in scoped YAML and adapter code. Generic
 `libs/xctx` code may present and route configured surfaces, but it must not know
@@ -219,8 +232,8 @@ Compact subdomain discovery should return:
 5. A `--shape full` next move when richer interface detail is available.
 
 Full subdomain discovery may include richer mode metadata, examples, samples,
-schema notes, or adapter-owned guidance. It still must obey the discover/observe
-data boundary.
+schema notes, adapter-owned guidance, or bounded full-index rows. It still must
+obey the discover/observe data boundary.
 
 ## CLI option contract
 

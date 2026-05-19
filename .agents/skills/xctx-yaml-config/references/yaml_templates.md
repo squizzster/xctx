@@ -2,6 +2,18 @@
 
 These are copy-start templates. Replace ids and descriptions with the user's domain language. Do not ship placeholder semantics.
 
+Core discovery rule:
+
+```text
+You discover what you can observe.
+```
+
+Discovery should find lawful next affordances and observable object identities,
+such as `<object>:<id>`. Observation should materialize that object's full
+state or raw/final data. Explicit `--shape full` discovery indexes are
+acceptable for now when they are bounded, intentionally requested, and still
+serve as discovery/index records rather than raw observed payloads.
+
 ## New domain
 
 ```yaml
@@ -59,9 +71,27 @@ actions:
   discover:
     priority: 10
     entrypoint_command: discover
-    desc: Explain the subdomain surface and constraints.
-    run_cmd: ./xctx discover <domain_id>::<subdomain_id>
+    desc: Discover modes, observable object shapes, and next discovery commands.
+    discovery_shapes:
+      default_shape: compact
+      shapes:
+        - compact
+        - full
+    argument_shapes:
+      - "[--shape compact|full]"
+    examples:
+      - query: compact subdomain discovery
+        run_cmd: ./xctx discover <domain_id>::<subdomain_id>
+      - query: full subdomain discovery
+        run_cmd: ./xctx discover <domain_id>::<subdomain_id> --shape full
+    run_cmd: ./xctx discover <domain_id>::<subdomain_id> [--shape compact|full]
 ```
+
+Compact subdomain discovery should show the next things an agent can discover:
+discoverable modes, query shapes, observable object id shapes, observe target
+shapes, bounded stats, and a full-shape next move. Full subdomain discovery may
+include richer mode metadata, examples, samples, schema notes, or bounded
+full-index rows, but it still must not return raw observed data.
 
 When there is a real adapter:
 
@@ -87,7 +117,7 @@ actions:
     aliases:
       - <safe_alias>
     query_required: true
-    desc: <one sentence explaining the search/observation affordance.>
+    desc: Discover <object> records by <query shape>; use observe for materialized <object> data.
     run_cmd: ./xctx discover <domain_id>::<subdomain_id> <action_id> <query-shape>
 ```
 
@@ -134,17 +164,38 @@ actions:
       - list-<objects>
     query_required: false
     mode_kind: list
-    desc: List bounded <objects> records.
+    desc: List a bounded <objects> discovery index.
+    collection:
+      result_path: <objects>
+      default_limit: 25
+      max_limit: 100
+      cursor: optional
+      cursor_type: opaque
+      default_shape: compact
+      item_shapes:
+        - compact
+        - full
     argument_shapes:
       - "[--limit N]"
+      - "[--cursor CURSOR]"
+      - "[--shape compact|full]"
     examples:
-      - query: list bounded records
+      - query: list compact discovery records
         run_cmd: ./xctx discover <domain_id>::<subdomain_id> list_<objects>
+      - query: list full discovery records explicitly
+        run_cmd: ./xctx discover <domain_id>::<subdomain_id> list_<objects> --shape full
     related_commands:
       - ./xctx discover <domain_id>::<subdomain_id>::<search_action>
+      - ./xctx observe <domain_id>::<subdomain_id> <object>:<id>
     returns: <adapter_list_object_type>
-    run_cmd: ./xctx discover <domain_id>::<subdomain_id> list_<objects> [--limit N]
+    run_cmd: ./xctx discover <domain_id>::<subdomain_id> list_<objects> [--limit N] [--cursor CURSOR] [--shape compact|full]
 ```
+
+For full list shapes, keep the payload bounded and index-like. Full rows may
+include richer discovery metadata, descriptions, examples, and observe commands
+when that is useful for black-box exploration. Put raw documents, raw price
+series, bodies, line items, CSV exports, or final materialized object state
+behind `observe`.
 
 ## New scoped domain affordance
 
