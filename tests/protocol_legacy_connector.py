@@ -208,7 +208,8 @@ def test_legacy_filesystem_discovery_and_observation() -> None:
     assert file_live["files"][0]["id"] == "file:README.txt"
     assert file_live["files"][0]["observe_cmd"] == "./xctx observe file_manager::home_directory file:README.txt"
     assert "pagination" not in file_live
-    assert "argv" not in file_live["command_status"]
+    assert "legacy_command" not in file_live
+    assert "command_status" not in file_live
     assert "This is a bundled file-manager demo fixture" not in json.dumps(file_live)
 
     files_full = run_engine(["discover", "file_manager::home_directory", "list_files", "--limit", "1", "--shape", "full"])
@@ -225,16 +226,19 @@ def test_legacy_filesystem_discovery_and_observation() -> None:
     assert discovered_file_live["id"] == "file:README.txt"
     assert discovered_file_live["type"] == "ASCII text"
     assert discovered_file_live["size_bytes"] == 237
-    assert discovered_file_live["modified_display"].startswith("May 20")
     assert discovered_file_live["observe_cmd"] == "./xctx observe file_manager::home_directory file:README.txt"
-    assert "argv" not in discovered_file_live["command_status"]["stat_line"]
-    assert "argv" not in discovered_file_live["command_status"]["type"]
+    assert "file_id" not in discovered_file_live
+    assert "file_type" not in discovered_file_live
+    assert "legacy_commands" not in discovered_file_live
+    assert "command_status" not in discovered_file_live
     assert "content" not in discovered_file_live
     assert "This is a bundled file-manager demo fixture" not in json.dumps(discovered_file_live)
+    assert "configured_action_index" not in discovered_file["results"]
 
     discovered_file_full = run_engine(["discover", "file_manager::home_directory", "file:README.txt", "--shape", "full"])
     discovered_file_full_live = discovered_file_full["results"]["live_data"]
     assert discovered_file_full_live["shape"] == "full"
+    assert discovered_file_full_live["modified_display"].startswith("May 20")
     assert discovered_file_full_live["command_status"]["stat_line"]["argv"][0] == "ls"
     assert discovered_file_full_live["command_status"]["type"]["argv"][0] == "file"
 

@@ -537,6 +537,16 @@ def subdomain_discovery_payload(
     subdomain_id: str,
     query_parts: list[str],
 ) -> dict[str, Any]:
+    def has_concrete_discovery_query(parts: list[str]) -> bool:
+        index = 0
+        while index < len(parts):
+            token = parts[index]
+            if token == "--shape":
+                index += 2
+                continue
+            return True
+        return False
+
     subdomain = resolve_subdomain(store, domain_id, subdomain_id)
     if subdomain.get("status") != "online":
         return offline_subdomain_payload(store, domain_id, subdomain)
@@ -559,9 +569,10 @@ def subdomain_discovery_payload(
     }
     if shape:
         payload["shape"] = shape
-    if shape == "compact":
+    concrete_query = has_concrete_discovery_query(query_parts)
+    if shape == "compact" and not concrete_query:
         payload["configured_action_index"] = compact_action_index(actions)
-    else:
+    elif shape != "compact" and not concrete_query:
         payload["configured_actions"] = actions
     if detail_enabled(store) and subdomain.get("data_description"):
         payload["data_description"] = subdomain["data_description"]

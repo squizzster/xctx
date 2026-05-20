@@ -141,31 +141,37 @@ def _discover_filesystem_object(
         "shape": shape,
         "found": True,
         "id": _entry_id(target, kind=kind),
-        f"{kind}_id": _entry_id(target, kind=kind),
         "name": target.path.name,
         "relative_path": target.relative,
         "modified_at": datetime.fromtimestamp(stat.st_mtime, timezone.utc).isoformat(),
-        "modified_display": _display_mtime(target.path),
         "observe_cmd": f"./xctx observe {domain_ref} {_entry_id(target, kind=kind)}",
-        "legacy_commands": {
-            "stat_line": " ".join(shlex.quote(item) for item in ls_legacy["argv"]),
-        },
-        "command_status": {
-            "stat_line": runtime.command_status_from_legacy(ls_legacy, include_argv=shape == "full"),
-        },
         "data_boundary": f"Discovery returns {kind} identity and metadata. Use observe for materialized {kind} data.",
     }
+    if shape == "full":
+        payload.update(
+            {
+                f"{kind}_id": _entry_id(target, kind=kind),
+                "modified_display": _display_mtime(target.path),
+                "legacy_commands": {
+                    "stat_line": " ".join(shlex.quote(item) for item in ls_legacy["argv"]),
+                },
+                "command_status": {
+                    "stat_line": runtime.command_status_from_legacy(ls_legacy, include_argv=True),
+                },
+            }
+        )
     if kind == "file":
         file_type, file_legacy = _file_type_payload(target.path, timeout=timeout, max_output_bytes=max_output_bytes, runtime=runtime)
         payload.update(
             {
                 "type": file_type,
-                "file_type": file_type,
                 "size_bytes": stat.st_size,
             }
         )
-        payload["legacy_commands"]["type"] = " ".join(shlex.quote(item) for item in file_legacy["argv"])
-        payload["command_status"]["type"] = runtime.command_status_from_legacy(file_legacy, include_argv=shape == "full")
+        if shape == "full":
+            payload["file_type"] = file_type
+            payload["legacy_commands"]["type"] = " ".join(shlex.quote(item) for item in file_legacy["argv"])
+            payload["command_status"]["type"] = runtime.command_status_from_legacy(file_legacy, include_argv=True)
     else:
         children = list(target.path.iterdir())
         payload.update(
@@ -264,11 +270,12 @@ def _list_filesystem(
         "found": True,
         "directory_id": _entry_id(target, kind="directory"),
         "directory_relative_path": target.relative,
-        "legacy_command": " ".join(shlex.quote(item) for item in legacy["argv"]),
-        "command_status": runtime.command_status_from_legacy(legacy, include_argv=shape == "full"),
         result_key: [_entry_projection(item, safe_root, kind=kind, domain_ref=domain_ref, shape=shape) for item in page],
         "data_boundary": f"Discovery index of {result_key}. Use observe on an emitted id for materialized object details.",
     }
+    if shape == "full":
+        payload["legacy_command"] = " ".join(shlex.quote(item) for item in legacy["argv"])
+        payload["command_status"] = runtime.command_status_from_legacy(legacy, include_argv=True)
     if shape == "full" or not (
         pagination["total_count"] == 1
         and pagination["returned_count"] == 1

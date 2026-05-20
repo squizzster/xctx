@@ -247,7 +247,8 @@ def main() -> int:
     assert file_list["results"]["live_data"]["connector"]["shape_guarantee"]["xctx_receives"] == "single_json_object_for_live_data"
     assert file_list["results"]["live_data"]["files"][0]["id"] == "file:README.txt"
     assert "pagination" not in file_list["results"]["live_data"]
-    assert "argv" not in file_list["results"]["live_data"]["command_status"]
+    assert "legacy_command" not in file_list["results"]["live_data"]
+    assert "command_status" not in file_list["results"]["live_data"]
     assert "This is a bundled file-manager demo fixture" not in json.dumps(file_list["results"]["live_data"])
     file_list_full = run_engine(["discover", "file_manager::home_directory", "list_files", "--limit", "1", "--shape", "full"])
     assert file_list_full["results"]["live_data"]["pagination"]["returned_count"] == 1
@@ -258,9 +259,12 @@ def main() -> int:
     assert discovered_file["results"]["live_data"]["connector"]["shape_guarantee"]["raw_legacy_output"] == "never_returned_unparsed"
     assert discovered_file["results"]["live_data"]["type"] == "ASCII text"
     assert discovered_file["results"]["live_data"]["size_bytes"] == 237
-    assert "argv" not in discovered_file["results"]["live_data"]["command_status"]["stat_line"]
-    assert "argv" not in discovered_file["results"]["live_data"]["command_status"]["type"]
+    assert "file_id" not in discovered_file["results"]["live_data"]
+    assert "file_type" not in discovered_file["results"]["live_data"]
+    assert "legacy_commands" not in discovered_file["results"]["live_data"]
+    assert "command_status" not in discovered_file["results"]["live_data"]
     assert "content" not in discovered_file["results"]["live_data"]
+    assert "configured_action_index" not in discovered_file["results"]
     assert "This is a bundled file-manager demo fixture" not in json.dumps(discovered_file["results"]["live_data"])
     directory_list = run_engine(["discover", "file_manager::home_directory", "list_directories"])
     assert "directory:docs" in {item["id"] for item in directory_list["results"]["live_data"]["directories"]}

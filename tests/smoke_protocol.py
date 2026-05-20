@@ -669,8 +669,8 @@ def assert_legacy_connector_middleware() -> None:
     assert live_files["object_type"] == "legacy_connector_filesystem_file_list"
     assert live_files["connector"]["adapter_ref"] == "file_manager::home_directory"
     assert guarantee(live_files["connector"])["contract"] == "always_json_object"
-    assert live_files["command_status"]["ok"] is True
-    assert "argv" not in live_files["command_status"]
+    assert "legacy_command" not in live_files
+    assert "command_status" not in live_files
     assert "pagination" not in live_files
     assert live_files["files"][0]["id"] == "file:README.txt"
     assert "This is a bundled file-manager demo fixture" not in json.dumps(live_files)
@@ -688,10 +688,13 @@ def assert_legacy_connector_middleware() -> None:
     assert discovered_file_live["id"] == "file:README.txt"
     assert discovered_file_live["type"] == "ASCII text"
     assert discovered_file_live["size_bytes"] == 237
-    assert "argv" not in discovered_file_live["command_status"]["stat_line"]
-    assert "argv" not in discovered_file_live["command_status"]["type"]
+    assert "file_id" not in discovered_file_live
+    assert "file_type" not in discovered_file_live
+    assert "legacy_commands" not in discovered_file_live
+    assert "command_status" not in discovered_file_live
     assert "content" not in discovered_file_live
     assert "This is a bundled file-manager demo fixture" not in json.dumps(discovered_file_live)
+    assert "configured_action_index" not in discovered_file["results"]
 
     directories = one(["discover", "file_manager::home_directory", "list_directories"])
     live_directories = directories["results"]["live_data"]
