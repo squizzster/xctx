@@ -230,12 +230,16 @@ def assert_root_domain_subdomain_discovery() -> None:
     assert universe["domain_level"] == "universe"
     assert universe["results"]["xctx"]["id"] == "xctx"
     assert "discover" in universe["results"]["command_surface"]["xctx"]
+    assert "extension_lane" not in universe["results"]["command_surface"]
+    assert "xctx_other" not in universe["results"]["command_surface"]
     assert "identify" not in universe["results"]["command_surface"]["xctx"]
     assert universe["results"]["command_surface"]["aliases"]["discover"] == ["discovery"]
     assert_no_description_variants(universe)
     assert_root_surface_clean(universe)
 
     help_payload = one(["help"])
+    assert "extension_lane" not in help_payload
+    assert "xctx_other" not in help_payload
     assert_root_surface_clean(help_payload)
 
     version = one(["--version"])
@@ -301,6 +305,7 @@ def assert_root_domain_subdomain_discovery() -> None:
     assert subdomains["market_data_gateway"]["status"] == "online"
     assert subdomains["equity_filing"]["status"] == "online"
     assert subdomains["fundamentals_gateway"]["terminal_reason"] == "down_for_maintenance"
+    assert "no bundled fundamentals adapter" in subdomains["fundamentals_gateway"]["offline_reason"]
     assert "latest_price" in domain["results"]["domain_affordances"]
     assert "search_filing_form" in domain["results"]["domain_affordances"]
 
@@ -513,6 +518,9 @@ def assert_scoped_affordance_routing() -> None:
     series_by_cik = one(["discover", "stock_intelligence_hub::search_market_series", "issuer:cik:0000320193"])
     assert series_by_cik["results"]["live_data"]["matches"][0]["market_series_id"] == "market_series:aapl:daily"
     assert "latest_bar" not in series_by_cik["results"]["live_data"]["matches"][0]
+    msft_series = one(["discover", "stock_intelligence_hub::search_market_series", "MSFT"])
+    assert msft_series["results"]["live_data"]["matches"] == []
+    assert "Known instrument MSFT was resolved" in msft_series["results"]["live_data"]["empty_result_guidance"]
     latest = one(["discover", "stock_intelligence_hub::latest_price", "AAPL"])
     latest_live = latest["results"]["live_data"]
     assert latest_live["object_type"] == "market_data_gateway_latest_price_discovery"
@@ -522,6 +530,9 @@ def assert_scoped_affordance_routing() -> None:
     latest_subdomain = one(["discover", "stock_intelligence_hub::market_data_gateway", "latest_price", "issuer:cik:0000320193"])
     assert latest_subdomain["results"]["live_data"]["ticker"] == "AAPL"
     assert "latest_available_price" not in latest_subdomain["results"]["live_data"]
+    msft_latest = one(["discover", "stock_intelligence_hub::latest_price", "MSFT"])
+    assert msft_latest["results"]["live_data"]["found"] is False
+    assert "Known instrument MSFT was resolved" in msft_latest["results"]["live_data"]["empty_result_guidance"]
     instruments_page = one(["discover", "stock_intelligence_hub::market_data_gateway", "list_instruments", "--limit", "2"])
     instruments_live = instruments_page["results"]["live_data"]
     assert instruments_live["shape"] == "compact"
@@ -610,6 +621,7 @@ def assert_observe_audit_repair() -> None:
     assert offline_domain["ok"] is False
     assert offline_domain["error"] == "offline"
     assert offline_domain["results"]["repair_cmd"] == "./xctx repair offline:macro_intelligence_hub"
+    assert offline_domain["results"]["next_moves"] == ["./xctx repair offline:macro_intelligence_hub"]
 
     maintenance_subdomain = one(["observe", "stock_intelligence_hub::fundamentals_gateway"], expected_code=1)
     assert maintenance_subdomain["ok"] is False
@@ -760,7 +772,13 @@ def assert_plan_execute_other_and_output() -> None:
 
     unknown_command = one(["something-new"], expected_code=1)
     assert unknown_command["record_type"] == "error"
-    assert "./xctx other --topic something-new" in unknown_command["error"]
+    assert "choose a known xctx command" in unknown_command["error"]
+    assert "other" not in unknown_command["error"]
+
+    old_group_as_command = one(["xctx_other", "other", "--topic", "ping"], expected_code=1)
+    assert old_group_as_command["record_type"] == "error"
+    assert "choose a known xctx command" in old_group_as_command["error"]
+    assert "other" not in old_group_as_command["error"]
 
     other = one(["other", "--topic", "something-new"])
     assert other["record_type"] == "extension"

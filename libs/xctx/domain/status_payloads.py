@@ -83,7 +83,6 @@ def build_help_payload(store: dict[str, Any]) -> dict[str, Any]:
         template.get("version_key", "version_xctx"): protocol_version(store),
         template.get("system_key", "active_agent_domain"): identity,
         template.get("main_commands_key", "xctx"): command_map_for_group(store, "xctx", "main"),
-        template.get("other_commands_key", "xctx_other"): command_map_for_group(store, "xctx_other", "other"),
     }
 
 
@@ -109,6 +108,5 @@ def build_version_payload(store: dict[str, Any]) -> dict[str, Any]:
         },
         "command_surface": {
             "xctx": command_map_for_group(store, "xctx", "main"),
-            "xctx_other": command_map_for_group(store, "xctx_other", "other"),
         },
     }

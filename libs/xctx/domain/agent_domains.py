@@ -436,7 +436,10 @@ def offline_subdomain_payload(store: dict[str, Any], domain_id: str, subdomain: 
     payload["agent_domain"] = domain_id
     payload["status"] = subdomain.get("status")
     if subdomain.get("status") == "offline" and subdomain.get("repair_path"):
-        payload["repair_cmd"] = subdomain["repair_path"].get("run_cmd")
+        repair_cmd = subdomain["repair_path"].get("run_cmd")
+        payload["repair_cmd"] = repair_cmd
+        if repair_cmd:
+            payload["next_moves"] = [repair_cmd]
     if subdomain.get("status") == "down_for_maintenance":
         payload["repair_path"] = None
         payload["terminal_reason"] = "down_for_maintenance"
@@ -471,7 +474,6 @@ def universe_discovery_payload(store: dict[str, Any]) -> dict[str, Any]:
         },
         "command_surface": {
             "xctx": command_map_for_group(store, "xctx", "main"),
-            "xctx_other": command_map_for_group(store, "xctx_other", "other"),
             "aliases": command_aliases(store),
         },
         "next_moves": [
@@ -524,7 +526,10 @@ def domain_discovery_payload(store: dict[str, Any], domain_id: str) -> dict[str,
     }
     payload["next_moves"] = [f"./xctx discover {domain_id}::{sub['id']}" for sub in domain.get("_subdomains", {}).values()]
     if domain.get("status") == "offline" and domain.get("repair_path"):
-        payload["repair_cmd"] = domain["repair_path"].get("run_cmd")
+        repair_cmd = domain["repair_path"].get("run_cmd")
+        payload["repair_cmd"] = repair_cmd
+        if repair_cmd:
+            payload["next_moves"].append(repair_cmd)
     if domain.get("status") == "down_for_maintenance":
         payload["repair_path"] = None
         payload["terminal_reason"] = "down_for_maintenance"
@@ -685,7 +690,7 @@ def discover_payload(
     if scoped_run_cmd:
         raise XctxError(f"next valid move: {scoped_run_cmd}")
 
-    raise XctxError(f"next valid move: ./xctx discover or ./xctx other --topic {target}")
+    raise XctxError("next valid move: ./xctx discover")
 
 
 def observe_payload(

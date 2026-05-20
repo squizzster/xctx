@@ -46,7 +46,6 @@ The exposed command set is deliberately small:
 ./xctx execute <plan-or-receipt> --commit
 ./xctx audit <scope>
 ./xctx repair <finding>
-./xctx other --topic <topic>
 ```
 
 `discovery` remains a compatibility alias for `discover`, but the advertised command is
@@ -303,7 +302,7 @@ This build intentionally tightens several edges that were easy to get almost rig
 - Unscoped affordance names are refused; scoped ROOT → DOMAIN → SUBDOMAIN paths are required.
 - Domain-specific command options are declared in YAML `cli_options`; the core parser does not name market-series flags.
 - `discover --name` is intentionally refused; root no longer chooses a stock action from a bare name.
-- Unknown command names are refused with a pointer to `./xctx other --topic ...`; they are not silently treated as protocol commands.
+- Unknown command names are refused; they are not silently treated as protocol commands.
 - `receipt_sha5` is compatibility sugar, not authority. It must bind to a recorded plan in `.xctx_runtime/plans/`.
 - Instrument search emits minimal identity results and next moves; latest_price discovers the latest available bundled price point, and observe returns the price data.
 - List actions emit compact index rows by default; full bulk rows require `--shape full`, and cursor support is scoped/optional.

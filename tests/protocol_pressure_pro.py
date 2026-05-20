@@ -89,7 +89,8 @@ def main() -> int:
     assert_cmd(universe, record_type="discovery", level="universe")
     surface = universe["results"]["command_surface"]
     assert set(surface["xctx"]) == {"discover", "observe", "plan", "execute", "audit", "repair"}
-    assert set(surface["xctx_other"]) == {"other"}
+    assert "extension_lane" not in surface
+    assert "xctx_other" not in surface
     assert surface["aliases"] == {"discover": ["discovery"]}
     assert "identify" not in surface["xctx"] and "write" not in surface["xctx"] and "status" not in surface["xctx"]
     assert_root_surface_clean(universe)
@@ -170,12 +171,14 @@ def main() -> int:
     assert subdomains["market_data_gateway"]["status"] == "online"
     assert subdomains["equity_filing"]["status"] == "online"
     assert subdomains["fundamentals_gateway"]["terminal_reason"] == "down_for_maintenance"
+    assert "no bundled fundamentals adapter" in subdomains["fundamentals_gateway"]["offline_reason"]
     assert "latest_price" in domain["results"]["domain_affordances"]
     assert "search_filing_form" in domain["results"]["domain_affordances"]
 
     macro = run_engine(["discover", "macro_intelligence_hub::"])
     assert macro["results"]["status"] == "offline"
     assert macro["results"]["repair_cmd"] == "./xctx repair offline:macro_intelligence_hub"
+    assert macro["results"]["next_moves"] == ["./xctx repair offline:macro_intelligence_hub"]
     crypto = run_engine(["discover", "crypto_intelligence_hub::"])
     assert crypto["results"]["status"] == "down_for_maintenance"
     assert crypto["results"]["repair_path"] is None
@@ -311,10 +314,16 @@ def main() -> int:
     series_by_cik = run_engine(["discover", "stock_intelligence_hub::search_market_series", "320193"])
     assert series_by_cik["results"]["live_data"]["matches"][0]["market_series_id"] == "market_series:aapl:daily"
     assert "latest_bar" not in series_by_cik["results"]["live_data"]["matches"][0]
+    msft_series = run_engine(["discover", "stock_intelligence_hub::search_market_series", "MSFT"])
+    assert msft_series["results"]["live_data"]["matches"] == []
+    assert "Known instrument MSFT was resolved" in msft_series["results"]["live_data"]["empty_result_guidance"]
     latest = run_engine(["discover", "stock_intelligence_hub::latest_price", "AAPL"])
     assert latest["results"]["live_data"]["object_type"] == "market_data_gateway_latest_price_discovery"
     assert latest["results"]["live_data"]["observe_cmd"] == "./xctx observe stock_intelligence_hub::market_data_gateway AAPL"
     assert "latest_available_price" not in latest["results"]["live_data"]
+    msft_latest = run_engine(["discover", "stock_intelligence_hub::latest_price", "MSFT"])
+    assert msft_latest["results"]["live_data"]["found"] is False
+    assert "Known instrument MSFT was resolved" in msft_latest["results"]["live_data"]["empty_result_guidance"]
     broad_series = run_engine(["discover", "stock_intelligence_hub::market_data_gateway", "search_market_series", "A"])
     broad_ids = [item["market_series_id"] for item in broad_series["results"]["live_data"]["matches"]]
     assert len(broad_ids) == len(set(broad_ids)), broad_ids
@@ -428,6 +437,11 @@ def main() -> int:
         payload = run_engine([legacy], code=1)
         assert_cmd(payload, ok=False, record_type="error")
         assert "choose a known xctx command" in payload["error"]
+        assert "other" not in payload["error"]
+    old_group_as_command = run_engine(["xctx_other", "other", "--topic", "ping"], code=1)
+    assert_cmd(old_group_as_command, ok=False, record_type="error")
+    assert "choose a known xctx command" in old_group_as_command["error"]
+    assert "other" not in old_group_as_command["error"]
     other = run_engine(["other", "--topic", "something-new"])
     assert_cmd(other, record_type="extension")
     assert other["results"]["topic"] == "something-new"

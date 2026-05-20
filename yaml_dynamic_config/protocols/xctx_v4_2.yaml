@@ -52,6 +52,5 @@ response_templates:
     version_key: version_xctx
     system_key: active_agent_domain
     main_commands_key: xctx
-    other_commands_key: xctx_other
 guidance:
   discover_root_run_cmd: ./xctx discover

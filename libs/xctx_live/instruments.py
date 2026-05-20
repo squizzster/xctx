@@ -792,6 +792,17 @@ def _price_range_summary(bars: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
+def _empty_market_series_guidance(record: dict[str, Any] | None) -> str:
+    if record:
+        ticker = str(record.get("ticker") or "").upper()
+        subject = ticker or str(record.get("instrument_id") or "the resolved instrument")
+        return (
+            f"Known instrument {subject} was resolved, but no bundled market_series fixture is available for it. "
+            "Try a ticker from the bundled mini fixture, for example AAPL, A, AA, ABNB, or CBOE."
+        )
+    return "Try a ticker from the bundled mini fixture, for example AAPL, A, AA, ABNB, or CBOE."
+
+
 def _csv_safe_token(value: Any) -> str:
     text = str(value or "unknown").lower().replace(":", "_")
     cleaned = "".join(char if char.isalnum() else "_" for char in text).strip("_")
@@ -1116,13 +1127,15 @@ def latest_price_observation(root: Path, identifier: str) -> dict[str, Any]:
     if not found and record:
         found = find_market_series(root, str(record.get("ticker", "")))
     if not found:
+        candidate_instruments = search_instruments(root, identifier, limit=5)
+        candidate_series = search_market_series(root, identifier, limit=5)
         return {
             "object_type": "market_data_gateway_latest_price_observation",
             "query": identifier,
             "found": False,
-            "candidate_instruments": search_instruments(root, identifier, limit=5),
-            "candidate_series": search_market_series(root, identifier, limit=5),
-            "empty_result_guidance": "Try ticker, instrument:<ticker>, issuer:cik:<CIK>, or a company name first.",
+            "candidate_instruments": candidate_instruments,
+            "candidate_series": candidate_series,
+            "empty_result_guidance": _empty_market_series_guidance(record),
             "next_move": f"./xctx discover {scoped_ref()} search_entity_instrument <company|ticker|CIK|alias>",
         }
 
@@ -1166,13 +1179,15 @@ def latest_price_discovery(root: Path, identifier: str) -> dict[str, Any]:
     if not found and record:
         found = find_market_series(root, str(record.get("ticker", "")))
     if not found:
+        candidate_instruments = search_instruments(root, identifier, limit=5)
+        candidate_series = search_market_series(root, identifier, limit=5)
         return {
             "object_type": "market_data_gateway_latest_price_discovery",
             "query": identifier,
             "found": False,
-            "candidate_instruments": search_instruments(root, identifier, limit=5),
-            "candidate_series": search_market_series(root, identifier, limit=5),
-            "empty_result_guidance": "Try ticker, instrument:<ticker>, issuer:cik:<CIK>, or a company name first.",
+            "candidate_instruments": candidate_instruments,
+            "candidate_series": candidate_series,
+            "empty_result_guidance": _empty_market_series_guidance(record),
             "next_move": f"./xctx discover {scoped_ref()} search_entity_instrument <company|ticker|CIK|alias>",
             "data_boundary": "latest_price discovers the latest available bundled price point; observe returns the price data.",
         }
@@ -1360,12 +1375,13 @@ def instrument_search_payload(root: Path, query: str) -> dict[str, Any]:
 
 def market_series_search_payload(root: Path, query: str) -> dict[str, Any]:
     matches = search_market_series(root, query)
+    record = None if matches else find_instrument(root, query)
     return {
         "object_type": "market_data_gateway::search_market_series::result",
         "query": query,
         "matches_returned": len(matches),
         "matches": matches,
-        "empty_result_guidance": None if matches else "Try a ticker from the bundled mini fixture, for example AAPL, A, AA, ABNB, or CBOE.",
+        "empty_result_guidance": None if matches else _empty_market_series_guidance(record),
     }
 
 

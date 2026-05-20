@@ -54,10 +54,9 @@ def select_output_format(store: dict, explicit_format: str | None) -> str:
 def _with_discover_shortcut(store: dict, argv: list[str]) -> list[str]:
     """Allow the protocol-safe shorthand: ./xctx <agent_domain>::<affordance> ...
 
-    The core command surface remains discover/observe/plan/execute/audit/repair/other.
     This helper does not add a new command; it only inserts the discover command when
     the first token is already a scoped xctx reference. Unknown natural-language
-    phrases still go to the `other` extension lane.
+    phrases are refused instead of guessed.
     """
     ## Boundary guard: this is structural shorthand only. Do not inspect or infer
     ## business vocabulary here; scoped packs own that through config/adapters.
@@ -130,11 +129,13 @@ def run(argv: Sequence[str] | None = None, root: Path | None = None) -> int:
 
     configured = configured_command_names(store)
     if selection.argv[0] not in configured:
-        allowed = ", ".join(sorted(configured))
-        raise XctxError(
-            f"next valid move: choose a known xctx command ({allowed}) "
-            f"or use ./xctx other --topic {selection.argv[0]}"
-        )
+        main_commands = set(store["protocol"].get("command_groups", {}).get("main", []))
+        visible = set(main_commands)
+        for canonical, aliases in store["protocol"].get("command_aliases", {}).items():
+            if canonical in main_commands:
+                visible.update(aliases)
+        allowed = ", ".join(sorted(visible))
+        raise XctxError(f"next valid move: choose a known xctx command ({allowed})")
 
     parser = build_parser(store)
     args, unknown_args = parser.parse_known_args(selection.argv)
