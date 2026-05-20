@@ -125,26 +125,34 @@ filing concepts mean.
 For enterprise or legacy integrations, keep this layered shape:
 
 ```text
-xctx generic protocol -> scoped YAML entrypoint -> generic middleware connector -> scoped domain/subdomain adapter -> application or legacy command -> JSON object -> xctx envelope
+xctx generic protocol -> scoped YAML entrypoint -> generic middleware connector -> scoped domain or subdomain adapter -> application or legacy command -> JSON object -> xctx envelope
 ```
 
 The middleware connector is adapter-side code, not xctx core, but it must remain
-generic. Domain/subdomain-specific behavior belongs under:
+generic. Domain behavior shared by multiple scopes belongs under:
+
+```text
+libs/xctx_connectors/domains/<domain_id>/legacy_adapter.py
+```
+
+Subdomain-specific behavior belongs under:
 
 ```text
 libs/xctx_connectors/domains/<domain_id>/subdomains/<subdomain_id>/legacy_adapter.py
 ```
 
 The middleware may load scoped config, normalize failures, add connector
-metadata, and dispatch to the deterministic adapter path derived from the
-already-resolved domain/subdomain scope. The scoped adapter may translate legacy
+metadata, and dispatch to a deterministic adapter path derived from the
+already-resolved domain/subdomain scope. The adapter may translate legacy
 command output, enforce a safe root or allowlist, and build the domain payload.
 It must still be declared through subdomain YAML like any other entrypoint.
 
 Do not let YAML declare arbitrary Python import paths. Do not use flat connector
-profiles. The source of truth for legacy adapter dispatch is:
+profiles. The source of truth for legacy adapter dispatch is the resolved scope
+plus optional bounded `connector.adapter_scope`:
 
 ```text
+resolved <domain_id>::<subdomain_id> with adapter_scope: domain -> xctx_connectors.domains.<domain_id>.legacy_adapter
 resolved <domain_id>::<subdomain_id> -> xctx_connectors.domains.<domain_id>.subdomains.<subdomain_id>.legacy_adapter
 ```
 
@@ -214,6 +222,7 @@ entrypoint:
   timeout_seconds: 10
 connector:
   kind: legacy_command
+  adapter_scope: domain  # optional; default is subdomain
   timeout_seconds: 5
   max_output_bytes: 20000
 ```
@@ -221,8 +230,8 @@ connector:
 Do not add connector profiles, legacy command names, file paths, stock terms,
 filing terms, or other application semantics to `libs/xctx`,
 `libs/xctx_connectors/middleware.py`, or `libs/xctx_connectors/runtime.py`. Add
-new legacy behavior under the scoped domain/subdomain adapter package and prove
-with tests/checker rules that generic code remains free of the new
+new legacy behavior under the owning domain or subdomain adapter package and
+prove with tests/checker rules that generic code remains free of the new
 domain-specific literals.
 
 Before adding or changing a discovery action:

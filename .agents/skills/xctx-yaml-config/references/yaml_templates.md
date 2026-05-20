@@ -142,7 +142,9 @@ connector:
 the repository workspace.
 
 For a legacy command adapter, declare bounded connector controls in the scoped
-subdomain YAML and implement the parser/transform under
+subdomain YAML and implement reusable domain behavior under
+`libs/xctx_connectors/domains/<domain_id>/legacy_adapter.py` or truly
+subdomain-specific behavior under
 `libs/xctx_connectors/domains/<domain_id>/subdomains/<subdomain_id>/legacy_adapter.py`,
 not in `libs/xctx` or generic connector middleware:
 
@@ -154,13 +156,14 @@ entrypoint:
   timeout_seconds: 10
 connector:
   kind: legacy_command
+  adapter_scope: domain  # optional; default is subdomain
   timeout_seconds: 5
   max_output_bytes: 20000
 ```
 
 Do not declare arbitrary Python module paths or flat connector profiles in YAML.
 The middleware derives the adapter module from the already-resolved
-`<domain_id>::<subdomain_id>` scope.
+`<domain_id>::<subdomain_id>` scope plus optional bounded `adapter_scope`.
 
 The connector should always emit one JSON object for xctx to envelope, including
 structured failures. Discovery actions still discover observable object

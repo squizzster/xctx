@@ -5,9 +5,10 @@ health: online
 basic_description: File-manager demonstration domain for xctx legacy connector middleware.
 full_description: >-
   file_manager demonstrates how xctx can present a clean protocol surface for an
-  existing legacy system. The home_directory subdomain adapts ordinary
-  filesystem commands into stable JSON objects while xctx remains a generic
-  YAML-driven router.
+  existing legacy system. The file_manager domain owns ordinary filesystem
+  command adaptation into stable JSON objects; the home_directory subdomain
+  configures one safe-root instance while xctx remains a generic YAML-driven
+  router.
 canonical_identity_policy:
   trusted_id_scope: file_manager
   file_id_format: file:<relative_path>

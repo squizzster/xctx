@@ -144,9 +144,11 @@ Pass-through `target_entrypoint` values are workspace-relative executable files;
 absolute paths and paths that resolve outside the workspace are rejected.
 
 Legacy integrations use the same xctx surface. The subdomain still declares a
-single JSON entrypoint, but the generic connector middleware derives the scoped
-adapter from the resolved domain/subdomain and normalizes success and failure
-into one object for xctx to envelope:
+single JSON entrypoint, but the generic connector middleware derives a
+deterministic adapter from the resolved scope and normalizes success and failure
+into one object for xctx to envelope. The default adapter scope is the concrete
+subdomain; domains that own reusable semantics can opt a subdomain into a
+domain-owned adapter without declaring an arbitrary Python import path:
 
 ```yaml
 entrypoint:
@@ -154,6 +156,7 @@ entrypoint:
   protocol: json_stdout
 connector:
   kind: legacy_command
+  adapter_scope: domain
   safe_root: data/file_manager_home
 ```
 
@@ -162,8 +165,8 @@ returns `file:<relative_path>` and `directory:<relative_path>` identities;
 observation inspects the selected object. The generic `libs/xctx` runtime still
 contains no file-manager, stock, or filing semantics. The file-manager legacy
 behavior lives under
-`libs/xctx_connectors/domains/file_manager/subdomains/home_directory/legacy_adapter.py`,
-not in generic connector middleware.
+`libs/xctx_connectors/domains/file_manager/legacy_adapter.py`; the
+`home_directory` subdomain only configures one bounded safe-root scope.
 
 Middleware payloads that return connector metadata also declare a
 `shape_guarantee`. This is not parsed by `libs/xctx`; it is an adapter-side

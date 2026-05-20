@@ -21,10 +21,10 @@ if str(LIBS) not in sys.path:
 
 from xctx.process.runtime import main as xctx_main  # noqa: E402
 from xctx_connectors.middleware import _resolve_workspace_entrypoint  # noqa: E402
-from xctx_connectors.domains.file_manager.subdomains.home_directory.legacy_adapter import _safe_path  # noqa: E402
+from xctx_connectors.domains.file_manager.legacy_adapter import _safe_path  # noqa: E402
 
 
-ADAPTER_MODULE = "xctx_connectors.domains.file_manager.subdomains.home_directory.legacy_adapter"
+DOMAIN_ADAPTER_MODULE = "xctx_connectors.domains.file_manager.legacy_adapter"
 
 
 def assert_shape_guarantee(connector: dict, *, contract: str, failure_shape: str) -> None:
@@ -81,8 +81,54 @@ def test_safe_path_blocks_escape() -> None:
         raise AssertionError("safe path accepted traversal")
 
 
-def test_scoped_adapter_import_path_exists() -> None:
-    __import__(ADAPTER_MODULE, fromlist=["run"])
+def test_domain_adapter_import_path_exists() -> None:
+    adapter = __import__(DOMAIN_ADAPTER_MODULE, fromlist=["run"])
+    assert callable(adapter.run)
+
+
+def test_file_manager_dispatches_to_domain_adapter_scope() -> None:
+    code = f"""
+import contextlib
+import io
+import json
+import sys
+from pathlib import Path
+
+ROOT = Path({str(ROOT)!r})
+LIBS = ROOT / "libs"
+if str(LIBS) not in sys.path:
+    sys.path.insert(0, str(LIBS))
+
+from xctx.process.runtime import main as xctx_main
+
+out = io.StringIO()
+err = io.StringIO()
+with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+    rc = xctx_main(["--json", "discover", "file_manager::home_directory"], root=ROOT)
+
+print(json.dumps({{
+    "rc": rc,
+    "stderr": err.getvalue(),
+    "stdout_lines": len([line for line in out.getvalue().splitlines() if line.strip()]),
+    "domain_adapter_loaded": {DOMAIN_ADAPTER_MODULE!r} in sys.modules,
+}}))
+"""
+    proc = subprocess.run(
+        [sys.executable, "-c", code],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        timeout=15,
+        check=False,
+    )
+    assert proc.returncode == 0, proc.stderr + proc.stdout
+    payload = json.loads(proc.stdout)
+    assert payload == {
+        "rc": 0,
+        "stderr": "",
+        "stdout_lines": 1,
+        "domain_adapter_loaded": True,
+    }
 
 
 def test_passthrough_target_entrypoint_stays_inside_workspace() -> None:
@@ -140,7 +186,7 @@ print(json.dumps({{
     "rc": rc,
     "stderr": err.getvalue(),
     "stdout_lines": len([line for line in out.getvalue().splitlines() if line.strip()]),
-    "adapter_loaded": {ADAPTER_MODULE!r} in sys.modules,
+    "domain_adapter_loaded": {DOMAIN_ADAPTER_MODULE!r} in sys.modules,
 }}))
 """
     proc = subprocess.run(
@@ -153,7 +199,12 @@ print(json.dumps({{
     )
     assert proc.returncode == 0, proc.stderr + proc.stdout
     payload = json.loads(proc.stdout)
-    assert payload == {"rc": 0, "stderr": "", "stdout_lines": 1, "adapter_loaded": False}
+    assert payload == {
+        "rc": 0,
+        "stderr": "",
+        "stdout_lines": 1,
+        "domain_adapter_loaded": False,
+    }
 
 
 def test_xctx_native_passthrough_stays_transparent() -> None:
@@ -198,6 +249,7 @@ def test_legacy_filesystem_discovery_and_observation() -> None:
     live = discovery["results"]["live_data"]
     assert live["object_type"] == "legacy_connector_filesystem_discovery"
     assert live["connector"]["kind"] == "legacy_command"
+    assert live["connector"]["adapter_scope"] == "domain"
     assert_shape_guarantee(live["connector"], contract="always_json_object", failure_shape="legacy_connector_error")
     assert live["observable_objects"]["file"]["id_shape"] == "file:<relative_path>"
 
@@ -280,7 +332,8 @@ def test_legacy_filesystem_always_shapes_failures() -> None:
 def main() -> int:
     test_middleware_returns_json_without_xctx_env()
     test_safe_path_blocks_escape()
-    test_scoped_adapter_import_path_exists()
+    test_domain_adapter_import_path_exists()
+    test_file_manager_dispatches_to_domain_adapter_scope()
     test_passthrough_target_entrypoint_stays_inside_workspace()
     test_generic_connector_runtime_has_no_file_manager_implementation()
     test_root_audit_does_not_import_scoped_legacy_adapter()

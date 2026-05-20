@@ -236,7 +236,7 @@ def main() -> int:
             finding(
                 "error",
                 "connector_layout:no_flat_profiles",
-                "domain-specific connector behavior must live under libs/xctx_connectors/domains/<domain>/subdomains/<subdomain>",
+                "domain-specific connector behavior must live under libs/xctx_connectors/domains/<domain> or a concrete subdomain package",
             )
         )
 
@@ -338,6 +338,16 @@ def main() -> int:
                                     )
                                 )
                 if kind == "legacy_command":
+                    adapter_scope = str(connector.get("adapter_scope", "subdomain"))
+                    if adapter_scope not in {"domain", "subdomain"}:
+                        findings.append(
+                            finding(
+                                "error",
+                                f"{connector_prefix}:adapter_scope",
+                                "legacy connector adapter_scope must be domain or subdomain",
+                                adapter_scope=adapter_scope,
+                            )
+                        )
                     if not IMPORT_SAFE_ID.fullmatch(str(domain_id)) or not IMPORT_SAFE_ID.fullmatch(str(subdomain_id)):
                         findings.append(
                             finding(
@@ -348,13 +358,16 @@ def main() -> int:
                                 agent_subdomain=subdomain_id,
                             )
                         )
-                    adapter_path = ROOT / "libs" / "xctx_connectors" / "domains" / str(domain_id) / "subdomains" / str(subdomain_id) / "legacy_adapter.py"
+                    if adapter_scope == "domain":
+                        adapter_path = ROOT / "libs" / "xctx_connectors" / "domains" / str(domain_id) / "legacy_adapter.py"
+                    else:
+                        adapter_path = ROOT / "libs" / "xctx_connectors" / "domains" / str(domain_id) / "subdomains" / str(subdomain_id) / "legacy_adapter.py"
                     if sub_status == "online" and not adapter_path.exists():
                         findings.append(
                             finding(
                                 "error",
                                 f"{connector_prefix}:adapter_exists",
-                                "legacy connector adapter must live under the scoped domain/subdomain package",
+                                "legacy connector adapter must live under the declared adapter scope package",
                                 adapter_path=str(adapter_path.relative_to(ROOT)),
                             )
                         )

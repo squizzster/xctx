@@ -74,6 +74,9 @@ def connector_meta(
     }
     if domain_id and subdomain_id:
         payload["adapter_ref"] = f"{domain_id}::{subdomain_id}"
+    adapter_scope = connector_config.get("adapter_scope")
+    if adapter_scope:
+        payload["adapter_scope"] = str(adapter_scope)
     return payload
 
 

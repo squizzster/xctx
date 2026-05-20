@@ -179,6 +179,11 @@ def _adapter_module_name(context: runtime.ConnectorContext) -> str:
     for label, value in (("domain", context.domain_id), ("subdomain", context.subdomain_id)):
         if not _IMPORT_SAFE_ID.fullmatch(value):
             raise ValueError(f"{label} id is not import-safe for connector adapter dispatch: {value}")
+    adapter_scope = str(context.connector_config.get("adapter_scope", "subdomain"))
+    if adapter_scope == "domain":
+        return f"xctx_connectors.domains.{context.domain_id}.legacy_adapter"
+    if adapter_scope != "subdomain":
+        raise ValueError(f"unsupported legacy adapter_scope: {adapter_scope}")
     return (
         "xctx_connectors.domains."
         f"{context.domain_id}.subdomains.{context.subdomain_id}.legacy_adapter"

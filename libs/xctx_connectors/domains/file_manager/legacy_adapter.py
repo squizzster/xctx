@@ -1,4 +1,4 @@
-"""Legacy filesystem adapter for file_manager::home_directory."""
+"""Domain-owned legacy filesystem adapter for file_manager subdomain scopes."""
 
 from __future__ import annotations
 

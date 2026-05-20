@@ -75,6 +75,9 @@ one-item pagination. `--shape full` keeps those diagnostics for inspection.
 
 Do not implement connector profiles in `libs/xctx` or generic connector
 middleware. Add legacy behavior under
-`libs/xctx_connectors/domains/<domain>/subdomains/<subdomain>/legacy_adapter.py`,
-declare only the connector kind/options in scoped YAML, and prove with tests
-that generic code contains no domain or legacy-command semantics.
+`libs/xctx_connectors/domains/<domain>/legacy_adapter.py` when the domain owns
+reusable behavior, or under
+`libs/xctx_connectors/domains/<domain>/subdomains/<subdomain>/legacy_adapter.py`
+when the behavior is truly subdomain-specific. Declare only connector
+kind/options in scoped YAML, and prove with tests that generic code contains no
+domain or legacy-command semantics.
