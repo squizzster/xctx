@@ -5,6 +5,7 @@ __pycache__/
 experiments_tmp/
 
 *.sqlite
+!data/*.sqlite
 *.sqlite3
 *.db
 *.db-journal
