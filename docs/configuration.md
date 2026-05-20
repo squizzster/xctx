@@ -140,6 +140,8 @@ The protocol runtime loads YAML declarations and calls the entrypoint only when
 an online action requires live bundled data. The xctx core therefore knows how to
 route a declared domain, subdomain, and action, but it does not need to know what
 a ticker, CIK, latest price, filing form, bar, or calendar day means.
+Pass-through `target_entrypoint` values are workspace-relative executable files;
+absolute paths and paths that resolve outside the workspace are rejected.
 
 Legacy integrations use the same xctx surface. The subdomain still declares a
 single JSON entrypoint, but the generic connector middleware derives the scoped

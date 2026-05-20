@@ -20,6 +20,7 @@ if str(LIBS) not in sys.path:
     sys.path.insert(0, str(LIBS))
 
 from xctx.process.runtime import main as xctx_main  # noqa: E402
+from xctx_connectors.middleware import _resolve_workspace_entrypoint  # noqa: E402
 from xctx_connectors.domains.file_manager.subdomains.home_directory.legacy_adapter import _safe_path  # noqa: E402
 
 
@@ -82,6 +83,19 @@ def test_safe_path_blocks_escape() -> None:
 
 def test_scoped_adapter_import_path_exists() -> None:
     __import__(ADAPTER_MODULE, fromlist=["run"])
+
+
+def test_passthrough_target_entrypoint_stays_inside_workspace() -> None:
+    assert _resolve_workspace_entrypoint(ROOT, "market_data_gateway.py", label="target_entrypoint") == (
+        ROOT / "market_data_gateway.py"
+    ).resolve()
+    for raw in ("/tmp/outside.py", "../outside.py"):
+        try:
+            _resolve_workspace_entrypoint(ROOT, raw, label="target_entrypoint")
+        except ValueError as exc:
+            assert "workspace root" in str(exc)
+        else:  # pragma: no cover - defensive standalone script check
+            raise AssertionError(f"accepted escaped target_entrypoint: {raw}")
 
 
 def test_generic_connector_runtime_has_no_file_manager_implementation() -> None:
@@ -263,6 +277,7 @@ def main() -> int:
     test_middleware_returns_json_without_xctx_env()
     test_safe_path_blocks_escape()
     test_scoped_adapter_import_path_exists()
+    test_passthrough_target_entrypoint_stays_inside_workspace()
     test_generic_connector_runtime_has_no_file_manager_implementation()
     test_root_audit_does_not_import_scoped_legacy_adapter()
     test_xctx_native_passthrough_stays_transparent()

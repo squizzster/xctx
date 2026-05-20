@@ -68,14 +68,27 @@ def _context_from_subdomain(root: Path, subdomain: dict[str, Any]) -> runtime.Co
     )
 
 
+def _resolve_workspace_entrypoint(root: Path, raw: Any, *, label: str) -> Path:
+    if raw is None or str(raw).strip() == "":
+        raise ValueError(f"{label} is required")
+    candidate = Path(str(raw))
+    if candidate.is_absolute():
+        raise ValueError(f"{label} must be relative to the workspace root")
+    workspace_root = root.resolve()
+    resolved = (workspace_root / candidate).resolve()
+    if resolved != workspace_root and workspace_root not in resolved.parents:
+        raise ValueError(f"{label} escapes workspace root")
+    if not resolved.exists():
+        raise ValueError(f"{label} does not exist: {raw}")
+    if not resolved.is_file():
+        raise ValueError(f"{label} must resolve to a regular file ({raw})")
+    return resolved
+
+
 def _passthrough(context: runtime.ConnectorContext, args: list[str], *, compact: bool) -> dict[str, Any]:
     connector = context.connector_config
     target = connector.get("target_entrypoint")
-    if not target:
-        raise ValueError("xctx_native_passthrough connector requires target_entrypoint")
-    target_path = context.workspace_root / str(target)
-    if not target_path.exists():
-        raise ValueError(f"passthrough target does not exist: {target}")
+    target_path = _resolve_workspace_entrypoint(context.workspace_root, target, label="target_entrypoint")
     timeout = float(connector.get("timeout_seconds", 30))
     argv = [sys.executable, str(target_path), *args]
     if compact and "--compact" not in argv:

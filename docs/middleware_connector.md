@@ -43,6 +43,9 @@ adapter payload. Normalized pass-through failures return connector metadata with
 }
 ```
 
+Pass-through `target_entrypoint` values are scoped YAML executable references.
+They must be workspace-relative and resolve inside the repository workspace.
+
 ## File Manager Demo
 
 The file-manager demo uses:

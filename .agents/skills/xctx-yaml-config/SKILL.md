@@ -198,6 +198,10 @@ connector:
   timeout_seconds: 30
 ```
 
+The pass-through `target_entrypoint` is a scoped YAML executable reference, not a
+Python import path. It must be workspace-relative and must resolve to a file
+inside the repository workspace.
+
 For legacy systems, the connector should declare its kind and bounded controls
 in scoped YAML. The adapter module is derived from the scoped domain/subdomain
 IDs, not configured as a YAML import string:

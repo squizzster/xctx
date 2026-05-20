@@ -138,6 +138,9 @@ connector:
   timeout_seconds: 30
 ```
 
+`target_entrypoint` must be workspace-relative and must resolve to a file inside
+the repository workspace.
+
 For a legacy command adapter, declare bounded connector controls in the scoped
 subdomain YAML and implement the parser/transform under
 `libs/xctx_connectors/domains/<domain_id>/subdomains/<subdomain_id>/legacy_adapter.py`,

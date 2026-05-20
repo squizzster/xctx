@@ -295,6 +295,48 @@ def main() -> int:
                             keys=forbidden_keys,
                         )
                     )
+                if kind == "xctx_native_passthrough":
+                    target = connector.get("target_entrypoint")
+                    if not target:
+                        findings.append(
+                            finding(
+                                "error",
+                                f"{connector_prefix}:target_entrypoint_required",
+                                "pass-through connector requires target_entrypoint",
+                            )
+                        )
+                    else:
+                        raw_target = Path(str(target))
+                        if raw_target.is_absolute():
+                            findings.append(
+                                finding(
+                                    "error",
+                                    f"{connector_prefix}:target_entrypoint_relative",
+                                    "pass-through target_entrypoint must be workspace-relative",
+                                    target_entrypoint=str(target),
+                                )
+                            )
+                        else:
+                            workspace_root = ROOT.resolve()
+                            resolved_target = (ROOT / raw_target).resolve()
+                            if resolved_target != workspace_root and workspace_root not in resolved_target.parents:
+                                findings.append(
+                                    finding(
+                                        "error",
+                                        f"{connector_prefix}:target_entrypoint_inside_workspace",
+                                        "pass-through target_entrypoint must resolve inside the workspace",
+                                        target_entrypoint=str(target),
+                                    )
+                                )
+                            elif sub_status == "online" and not resolved_target.is_file():
+                                findings.append(
+                                    finding(
+                                        "error",
+                                        f"{connector_prefix}:target_entrypoint_exists",
+                                        "online pass-through target_entrypoint must resolve to a file",
+                                        target_entrypoint=str(target),
+                                    )
+                                )
                 if kind == "legacy_command":
                     if not IMPORT_SAFE_ID.fullmatch(str(domain_id)) or not IMPORT_SAFE_ID.fullmatch(str(subdomain_id)):
                         findings.append(
