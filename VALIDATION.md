@@ -77,7 +77,7 @@ That scoped surface advertises `configured_options.observe` with `--bars` and
 ./xctx discover stock_intelligence_hub::search_entity_instrument FB
 ./xctx discover stock_intelligence_hub::search_entity_instrument issuer:cik:0000320193
 ./xctx discover stock_intelligence_hub::search_market_series AAPL
-./xctx discover stock_intelligence_hub::latest_price AAPL
+./xctx discover stock_intelligence_hub::market_data_gateway latest_price AAPL
 ./xctx observe stock_intelligence_hub::market_data_gateway instrument:aapl --bars 5
 ./xctx observe stock_intelligence_hub::market_data_gateway AAPL --calendar-days 50
 ./xctx observe stock_intelligence_hub::equity_filing form:10-K

@@ -185,7 +185,7 @@ instead of a raw argparse failure.
 
 ```bash
 ./xctx --json discover stock_intelligence_hub::search_entity_instrument FB
-./xctx --json discover stock_intelligence_hub::latest_price AAPL
+./xctx --json discover stock_intelligence_hub::market_data_gateway latest_price AAPL
 ./xctx --json observe stock_intelligence_hub::market_data_gateway instrument:aapl --bars 5
 ./xctx --json observe stock_intelligence_hub::market_data_gateway AAPL --calendar-days 50
 ./xctx --json discover stock_intelligence_hub::search_filing_form 10-K

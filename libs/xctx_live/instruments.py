@@ -71,6 +71,10 @@ def instrument_gateway_ref() -> str:
     return f"{agent_domain_id()}::market_data_gateway"
 
 
+def latest_price_discovery_cmd(query: Any) -> str:
+    return f"./xctx discover {instrument_gateway_ref()} latest_price {query}"
+
+
 def instrument_data_path(root: Path) -> Path:
     return root / INSTRUMENT_DATA
 
@@ -329,7 +333,7 @@ def public_instrument(record: dict[str, Any], *, include_aliases: bool = False) 
         next_moves.append(
             {
                 "desc": "Discover the latest-price observable for this ticker.",
-                "run_cmd": f"./xctx discover {agent_domain_id()}::latest_price {record.get('ticker')}",
+                "run_cmd": latest_price_discovery_cmd(record.get("ticker")),
             }
         )
         next_moves.append(
@@ -1219,7 +1223,7 @@ def market_series_observation(root: Path, identifier: str) -> dict[str, Any]:
             "latest_available_price": _latest_available_price_payload(found, currency),
             "sample_bars_last_5": _sample_bars(root, found.get("dataset_id")),
             "next_moves": [
-                f"./xctx discover {agent_domain_id()}::latest_price {found['ticker']}",
+                latest_price_discovery_cmd(found["ticker"]),
                 f"./xctx observe {scoped_ref()} {found['ticker']} --bars 5",
                 f"./xctx observe {scoped_ref()} {found['ticker']} --calendar-days 30",
             ],
@@ -1283,7 +1287,7 @@ def instrument_registry_discovery(root: Path, *, shape: str = "compact") -> dict
                     "id": "latest_price",
                     "mode_kind": "search",
                     "query_shape": "<ticker|instrument_id|CIK|market_series:ticker:daily>",
-                    "run_cmd": f"./xctx discover {agent_domain_id()}::latest_price <query>",
+                    "run_cmd": latest_price_discovery_cmd("<query>"),
                 },
                 {
                     "id": "list_instruments",
@@ -1295,7 +1299,7 @@ def instrument_registry_discovery(root: Path, *, shape: str = "compact") -> dict
             "next_moves": [
                 f"./xctx discover {scoped_ref()} search_entity_instrument <company|ticker|CIK|alias>",
                 f"./xctx discover {scoped_ref()} search_market_series <ticker|issuer|provider|text>",
-                f"./xctx discover {agent_domain_id()}::latest_price <ticker|instrument|CIK>",
+                latest_price_discovery_cmd("<ticker|instrument|CIK>"),
                 f"./xctx observe {scoped_ref()} <instrument_id|ticker|CIK|market_series:ticker:daily>",
             ],
         }
@@ -1321,7 +1325,7 @@ def instrument_registry_discovery(root: Path, *, shape: str = "compact") -> dict
             "latest_price": {
                 "priority": 18,
                 "desc": "latest_price discovers the latest available bundled price point; observe returns the price data.",
-                "run_cmd": f"./xctx discover {agent_domain_id()}::latest_price <ticker|instrument|CIK>",
+                "run_cmd": latest_price_discovery_cmd("<ticker|instrument|CIK>"),
             },
             "list_instruments": {
                 "priority": 20,
@@ -1403,7 +1407,7 @@ def instrument_observation(root: Path, identifier: str, range_request: dict[str,
             "next_moves": [
                 f"./xctx discover stock_intelligence_hub::equity_filing {record['instrument_id']}",
                 f"./xctx observe stock_intelligence_hub::equity_filing {record['instrument_id']}",
-                f"./xctx discover {agent_domain_id()}::latest_price {record['ticker']}",
+                latest_price_discovery_cmd(record["ticker"]),
                 f"./xctx discover {scoped_ref()} search_market_series {record['ticker']}",
             ],
         }

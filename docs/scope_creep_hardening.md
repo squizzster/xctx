@@ -168,7 +168,7 @@ Bundled OHLCV and latest available price remain scoped:
 
 ```bash
 ./xctx discover stock_intelligence_hub::search_market_series AAPL
-./xctx discover stock_intelligence_hub::latest_price AAPL
+./xctx discover stock_intelligence_hub::market_data_gateway latest_price AAPL
 ./xctx observe stock_intelligence_hub::market_data_gateway AAPL --calendar-days 50
 ./xctx observe stock_intelligence_hub::market_data_gateway instrument:aapl --bars 5
 ```
