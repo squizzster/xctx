@@ -244,6 +244,33 @@ def test_xctx_native_passthrough_failure_has_shape_guarantee() -> None:
     )
 
 
+def test_xctx_native_passthrough_failure_hides_argv_until_full_shape() -> None:
+    compact = run_engine(
+        ["discover", "stock_intelligence_hub::market_data_gateway", "list_instruments", "--cursor", "nope"]
+    )
+    compact_live = compact["results"]["live_data"]
+    assert compact_live["object_type"] == "xctx_native_passthrough_error"
+    assert compact_live["command_status"]["ok"] is False
+    assert compact_live["command_status"]["error"] == "--cursor requires an integer"
+    assert "argv" not in compact_live["command_status"]
+
+    full = run_engine(
+        [
+            "discover",
+            "stock_intelligence_hub::market_data_gateway",
+            "list_instruments",
+            "--cursor",
+            "nope",
+            "--shape",
+            "full",
+        ]
+    )
+    full_live = full["results"]["live_data"]
+    assert full_live["object_type"] == "xctx_native_passthrough_error"
+    assert full_live["command_status"]["ok"] is False
+    assert full_live["command_status"]["argv"][1].endswith("market_data_gateway.py")
+
+
 def test_legacy_filesystem_discovery_and_observation() -> None:
     discovery = run_engine(["discover", "file_manager::home_directory"])
     live = discovery["results"]["live_data"]
@@ -339,6 +366,7 @@ def main() -> int:
     test_root_audit_does_not_import_scoped_legacy_adapter()
     test_xctx_native_passthrough_stays_transparent()
     test_xctx_native_passthrough_failure_has_shape_guarantee()
+    test_xctx_native_passthrough_failure_hides_argv_until_full_shape()
     test_legacy_filesystem_discovery_and_observation()
     test_legacy_filesystem_always_shapes_failures()
 

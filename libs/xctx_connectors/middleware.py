@@ -85,12 +85,25 @@ def _resolve_workspace_entrypoint(root: Path, raw: Any, *, label: str) -> Path:
     return resolved
 
 
+def _full_shape_requested(args: list[str]) -> bool:
+    shape: str | None = None
+    index = 0
+    while index < len(args):
+        if args[index] == "--shape" and index + 1 < len(args):
+            shape = args[index + 1]
+            index += 2
+            continue
+        index += 1
+    return shape == "full"
+
+
 def _passthrough(context: runtime.ConnectorContext, args: list[str], *, compact: bool) -> dict[str, Any]:
     connector = context.connector_config
     target = connector.get("target_entrypoint")
     target_path = _resolve_workspace_entrypoint(context.workspace_root, target, label="target_entrypoint")
     timeout = float(connector.get("timeout_seconds", 30))
     argv = [sys.executable, str(target_path), *args]
+    include_argv = _full_shape_requested(args)
     if compact and "--compact" not in argv:
         argv.append("--compact")
     env = os.environ.copy()
@@ -113,7 +126,7 @@ def _passthrough(context: runtime.ConnectorContext, args: list[str], *, compact:
             "passthrough_target": str(target),
             "command_status": runtime.command_status(
                 ok=False,
-                argv=argv,
+                argv=argv if include_argv else None,
                 timed_out=True,
                 error=f"passthrough target timed out after {timeout} seconds",
                 stdout=exc.stdout if isinstance(exc.stdout, str) else "",
@@ -158,7 +171,7 @@ def _passthrough(context: runtime.ConnectorContext, args: list[str], *, compact:
         "target_payload": target_payload if isinstance(target_payload, dict) else {},
         "command_status": runtime.command_status(
             ok=False,
-            argv=argv,
+            argv=argv if include_argv else None,
             exit_code=proc.returncode,
             error=(
                 proc.stderr.strip()
