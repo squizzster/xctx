@@ -14,7 +14,7 @@ connector object:
   "connector": {
     "version": "legacy_connector.v1",
     "kind": "legacy_command",
-    "profile": "filesystem_home",
+    "adapter_ref": "file_manager::home_directory",
     "shape_guarantee": {
       "contract": "always_json_object",
       "xctx_receives": "single_json_object_for_live_data",
@@ -70,6 +70,8 @@ one-item pagination. `--shape full` keeps those diagnostics for inspection.
 
 ## Boundary
 
-Do not implement connector profiles in `libs/xctx`. Add connector behavior under
-adapter-side packages, declare the entrypoint/profile in scoped YAML, and prove
-with tests that `libs/xctx` contains no domain or legacy-command semantics.
+Do not implement connector profiles in `libs/xctx` or generic connector
+middleware. Add legacy behavior under
+`libs/xctx_connectors/domains/<domain>/subdomains/<subdomain>/legacy_adapter.py`,
+declare only the connector kind/options in scoped YAML, and prove with tests
+that generic code contains no domain or legacy-command semantics.

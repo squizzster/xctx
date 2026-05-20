@@ -17,7 +17,6 @@ entrypoint:
   timeout_seconds: 30
 connector:
   kind: xctx_native_passthrough
-  profile: equity_filing
   target_entrypoint: equity_filings.py
   timeout_seconds: 30
 data:

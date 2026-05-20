@@ -124,7 +124,7 @@ data:
 
 When the subdomain should route through middleware first, keep the middleware as
 the declared entrypoint and put the application or legacy target under
-`connector`. For xctx-native adapters this is a pass-through profile:
+`connector`. For xctx-native adapters this is pass-through:
 
 ```yaml
 entrypoint:
@@ -134,14 +134,14 @@ entrypoint:
   timeout_seconds: 30
 connector:
   kind: xctx_native_passthrough
-  profile: <subdomain_id>
   target_entrypoint: <domain_adapter.py>
   timeout_seconds: 30
 ```
 
-For a legacy command profile, declare bounded connector controls in the scoped
-subdomain YAML and implement the parser/transform in adapter-side middleware,
-not in `libs/xctx`:
+For a legacy command adapter, declare bounded connector controls in the scoped
+subdomain YAML and implement the parser/transform under
+`libs/xctx_connectors/domains/<domain_id>/subdomains/<subdomain_id>/legacy_adapter.py`,
+not in `libs/xctx` or generic connector middleware:
 
 ```yaml
 entrypoint:
@@ -151,10 +151,13 @@ entrypoint:
   timeout_seconds: 10
 connector:
   kind: legacy_command
-  profile: <legacy_profile>
   timeout_seconds: 5
   max_output_bytes: 20000
 ```
+
+Do not declare arbitrary Python module paths or flat connector profiles in YAML.
+The middleware derives the adapter module from the already-resolved
+`<domain_id>::<subdomain_id>` scope.
 
 The connector should always emit one JSON object for xctx to envelope, including
 structured failures. Discovery actions still discover observable object
@@ -169,7 +172,7 @@ Connector metadata returned by adapter-side middleware should include a
   "connector": {
     "version": "legacy_connector.v1",
     "kind": "legacy_command",
-    "profile": "<legacy_profile>",
+    "adapter_ref": "<domain_id>::<subdomain_id>",
     "shape_guarantee": {
       "contract": "always_json_object",
       "xctx_receives": "single_json_object_for_live_data",

@@ -21,7 +21,6 @@ entrypoint:
   timeout_seconds: 10
 connector:
   kind: legacy_command
-  profile: filesystem_home
   safe_root: data/file_manager_home
   default_limit: 10
   max_limit: 50

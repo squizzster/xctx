@@ -216,7 +216,7 @@ The current workspace also includes an enterprise middleware demonstration for:
 The implementation keeps middleware outside the generic xctx runtime. Scoped
 YAML routes to `legacy_connector.py`, which delegates to adapter-side connector
 code under `libs/xctx_connectors/`. Generic `libs/xctx` still does not know file
-manager semantics, legacy command profiles, path policies, or transform rules.
+manager semantics, scoped legacy adapter code, path policies, or transform rules.
 
 Connector metadata now exposes `shape_guarantee` when middleware returns a
 connector object. The key proof is:

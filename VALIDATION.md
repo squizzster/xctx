@@ -111,4 +111,4 @@ Expected behavior:
 - Domain affordances are declared under scoped subdomain actions with `domain_affordance: true`.
 - Domain-specific CLI options are declared on the owning YAML action and published only after the target subdomain/action is in scope.
 - Ticker, symbol, CIK, former-symbol, latest-price, and OHLCV semantics live in the stock adapter/configuration layer, not in the generic xctx command surface.
-- Middleware connector profiles live outside `libs/xctx`; connector metadata exposes `shape_guarantee` so agents can verify xctx receives one shaped JSON object for success and failure.
+- Scoped connector adapters live outside `libs/xctx` under `libs/xctx_connectors/domains/<domain>/subdomains/<subdomain>`; connector metadata exposes `shape_guarantee` so agents can verify xctx receives one shaped JSON object for success and failure.

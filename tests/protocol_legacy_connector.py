@@ -20,7 +20,10 @@ if str(LIBS) not in sys.path:
     sys.path.insert(0, str(LIBS))
 
 from xctx.process.runtime import main as xctx_main  # noqa: E402
-from xctx_connectors.middleware import _safe_path  # noqa: E402
+from xctx_connectors.domains.file_manager.subdomains.home_directory.legacy_adapter import _safe_path  # noqa: E402
+
+
+ADAPTER_MODULE = "xctx_connectors.domains.file_manager.subdomains.home_directory.legacy_adapter"
 
 
 def assert_shape_guarantee(connector: dict, *, contract: str, failure_shape: str) -> None:
@@ -75,6 +78,68 @@ def test_safe_path_blocks_escape() -> None:
         assert "safe root" in str(exc)
     else:  # pragma: no cover - defensive standalone script check
         raise AssertionError("safe path accepted traversal")
+
+
+def test_scoped_adapter_import_path_exists() -> None:
+    __import__(ADAPTER_MODULE, fromlist=["run"])
+
+
+def test_generic_connector_runtime_has_no_file_manager_implementation() -> None:
+    forbidden = (
+        "filesystem_home",
+        "file_manager",
+        "home_directory",
+        "file:",
+        "directory:",
+        "ls -lt",
+        "file --brief",
+        "_safe_path",
+        "safe_root",
+    )
+    for rel in ("libs/xctx_connectors/middleware.py", "libs/xctx_connectors/runtime.py"):
+        text = (ROOT / rel).read_text(encoding="utf-8")
+        for token in forbidden:
+            assert token not in text, f"{token} leaked into {rel}"
+
+
+def test_root_audit_does_not_import_scoped_legacy_adapter() -> None:
+    code = f"""
+import contextlib
+import io
+import json
+import sys
+from pathlib import Path
+
+ROOT = Path({str(ROOT)!r})
+LIBS = ROOT / "libs"
+if str(LIBS) not in sys.path:
+    sys.path.insert(0, str(LIBS))
+
+from xctx.process.runtime import main as xctx_main
+
+out = io.StringIO()
+err = io.StringIO()
+with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+    rc = xctx_main(["--json", "audit", "root"], root=ROOT)
+
+print(json.dumps({{
+    "rc": rc,
+    "stderr": err.getvalue(),
+    "stdout_lines": len([line for line in out.getvalue().splitlines() if line.strip()]),
+    "adapter_loaded": {ADAPTER_MODULE!r} in sys.modules,
+}}))
+"""
+    proc = subprocess.run(
+        [sys.executable, "-c", code],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        timeout=15,
+        check=False,
+    )
+    assert proc.returncode == 0, proc.stderr + proc.stdout
+    payload = json.loads(proc.stdout)
+    assert payload == {"rc": 0, "stderr": "", "stdout_lines": 1, "adapter_loaded": False}
 
 
 def test_xctx_native_passthrough_stays_transparent() -> None:
@@ -197,6 +262,9 @@ def test_legacy_filesystem_always_shapes_failures() -> None:
 def main() -> int:
     test_middleware_returns_json_without_xctx_env()
     test_safe_path_blocks_escape()
+    test_scoped_adapter_import_path_exists()
+    test_generic_connector_runtime_has_no_file_manager_implementation()
+    test_root_audit_does_not_import_scoped_legacy_adapter()
     test_xctx_native_passthrough_stays_transparent()
     test_xctx_native_passthrough_failure_has_shape_guarantee()
     test_legacy_filesystem_discovery_and_observation()

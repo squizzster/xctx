@@ -11,6 +11,7 @@ from __future__ import annotations
 import contextlib
 import io
 import json
+import re
 import sys
 from pathlib import Path
 from typing import Any
@@ -22,6 +23,9 @@ if str(LIBS) not in sys.path:
     sys.path.insert(0, str(LIBS))
 
 ALLOWED_STATUSES = {"online", "offline", "down_for_maintenance"}
+ALLOWED_CONNECTOR_KINDS = {"legacy_command", "xctx_native_passthrough"}
+IMPORT_SAFE_ID = re.compile(r"^[a-z][a-z0-9_]*$")
+FORBIDDEN_CONNECTOR_KEYS = {"profile", "module", "adapter_module", "python_module", "import_path"}
 ROOT_SURFACE_FORBIDDEN_TOKENS = (
     "--bars",
     "--calendar-days",
@@ -53,7 +57,19 @@ CORE_RUNTIME_FORBIDDEN_TOKENS = (
     "home_directory",
     "list_files",
     "list_directories",
+    "file:",
     "directory:",
+)
+CONNECTOR_GENERIC_FORBIDDEN_TOKENS = (
+    "filesystem_home",
+    "file_manager",
+    "home_directory",
+    "file:",
+    "directory:",
+    "ls -lt",
+    "file --brief",
+    "_safe_path",
+    "safe_root",
 )
 
 
@@ -171,6 +187,27 @@ def main() -> int:
                     )
                 )
 
+    try:
+        root_audit = _json_payload_for_xctx(["audit", "root"])
+        for token in (
+            "legacy_command:",
+            "safe_root_exists",
+            "aapl_latest_price_resolves",
+            "mini_stocks_sqlite",
+            "edgar_form_reference",
+        ):
+            if _contains_token(root_audit, token):
+                findings.append(
+                    finding(
+                        "error",
+                        f"root_audit:no_adapter_check:{token}",
+                        "root audit must not call or expose scoped adapter checks",
+                        token=token,
+                    )
+                )
+    except Exception as exc:
+        findings.append(finding("error", "root_audit:runs", "root audit command must run", error=str(exc)))
+
     for rel in (
         "xctx",
         "bin/xctx",
@@ -190,6 +227,28 @@ def main() -> int:
                         "error",
                         f"core_runtime:{rel}:no_{token}",
                         "generic xctx runtime must not contain domain-specific literals",
+                        token=token,
+                    )
+                )
+
+    if (ROOT / "libs/xctx_connectors/profiles").exists():
+        findings.append(
+            finding(
+                "error",
+                "connector_layout:no_flat_profiles",
+                "domain-specific connector behavior must live under libs/xctx_connectors/domains/<domain>/subdomains/<subdomain>",
+            )
+        )
+
+    for rel in ("libs/xctx_connectors/middleware.py", "libs/xctx_connectors/runtime.py"):
+        text = (ROOT / rel).read_text(encoding="utf-8")
+        for token in CONNECTOR_GENERIC_FORBIDDEN_TOKENS:
+            if token in text:
+                findings.append(
+                    finding(
+                        "error",
+                        f"connector_generic:{rel}:no_{token}",
+                        "generic connector middleware/runtime must not contain domain/subdomain adapter literals",
                         token=token,
                     )
                 )
@@ -220,6 +279,59 @@ def main() -> int:
             entrypoint_file = entrypoint.get("file")
             if sub_status == "online" and entrypoint_file and not (ROOT / str(entrypoint_file)).exists():
                 findings.append(finding("error", f"{sub_prefix}:entrypoint_exists", "online subdomain entrypoint file does not exist", entrypoint_file=entrypoint_file))
+            connector = subdomain.get("connector") or {}
+            if connector:
+                connector_prefix = f"connector:{domain_id}::{subdomain_id}"
+                kind = str(connector.get("kind") or "")
+                if kind not in ALLOWED_CONNECTOR_KINDS:
+                    findings.append(finding("error", f"{connector_prefix}:kind", "connector kind must be known", kind=kind))
+                forbidden_keys = sorted(key for key in FORBIDDEN_CONNECTOR_KEYS if key in connector)
+                if forbidden_keys:
+                    findings.append(
+                        finding(
+                            "error",
+                            f"{connector_prefix}:no_import_escape_hatches",
+                            "connector config must not declare profiles or Python module paths; scope determines adapter location",
+                            keys=forbidden_keys,
+                        )
+                    )
+                if kind == "legacy_command":
+                    if not IMPORT_SAFE_ID.fullmatch(str(domain_id)) or not IMPORT_SAFE_ID.fullmatch(str(subdomain_id)):
+                        findings.append(
+                            finding(
+                                "error",
+                                f"{connector_prefix}:import_safe_ids",
+                                "legacy connector domain and subdomain ids must be import-safe",
+                                agent_domain=domain_id,
+                                agent_subdomain=subdomain_id,
+                            )
+                        )
+                    adapter_path = ROOT / "libs" / "xctx_connectors" / "domains" / str(domain_id) / "subdomains" / str(subdomain_id) / "legacy_adapter.py"
+                    if sub_status == "online" and not adapter_path.exists():
+                        findings.append(
+                            finding(
+                                "error",
+                                f"{connector_prefix}:adapter_exists",
+                                "legacy connector adapter must live under the scoped domain/subdomain package",
+                                adapter_path=str(adapter_path.relative_to(ROOT)),
+                            )
+                        )
+                    if "safe_root" in connector:
+                        raw_safe_root = Path(str(connector["safe_root"]))
+                        if raw_safe_root.is_absolute():
+                            findings.append(finding("error", f"{connector_prefix}:safe_root_relative", "connector safe_root must be workspace-relative"))
+                        else:
+                            workspace_root = ROOT.resolve()
+                            resolved_safe_root = (ROOT / raw_safe_root).resolve()
+                            if resolved_safe_root != workspace_root and workspace_root not in resolved_safe_root.parents:
+                                findings.append(
+                                    finding(
+                                        "error",
+                                        f"{connector_prefix}:safe_root_inside_workspace",
+                                        "connector safe_root must resolve inside the workspace",
+                                        safe_root=str(raw_safe_root),
+                                    )
+                                )
             if sub_status == "online" and not (subdomain.get("actions") or {}):
                 findings.append(finding("error", f"{sub_prefix}:actions", "online subdomain must expose actions"))
             for action_name, action in sorted((subdomain.get("actions") or {}).items()):

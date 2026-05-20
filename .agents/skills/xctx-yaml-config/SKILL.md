@@ -125,13 +125,28 @@ filing concepts mean.
 For enterprise or legacy integrations, keep this layered shape:
 
 ```text
-xctx generic protocol -> scoped YAML entrypoint -> middleware connector -> application or legacy command -> JSON object -> xctx envelope
+xctx generic protocol -> scoped YAML entrypoint -> generic middleware connector -> scoped domain/subdomain adapter -> application or legacy command -> JSON object -> xctx envelope
 ```
 
-The middleware connector is adapter-side code, not xctx core. It may translate
-legacy command output, normalize failures, enforce a safe root or allowlist, and
-guarantee that xctx receives a JSON object. It must still be declared through
-subdomain YAML like any other entrypoint.
+The middleware connector is adapter-side code, not xctx core, but it must remain
+generic. Domain/subdomain-specific behavior belongs under:
+
+```text
+libs/xctx_connectors/domains/<domain_id>/subdomains/<subdomain_id>/legacy_adapter.py
+```
+
+The middleware may load scoped config, normalize failures, add connector
+metadata, and dispatch to the deterministic adapter path derived from the
+already-resolved domain/subdomain scope. The scoped adapter may translate legacy
+command output, enforce a safe root or allowlist, and build the domain payload.
+It must still be declared through subdomain YAML like any other entrypoint.
+
+Do not let YAML declare arbitrary Python import paths. Do not use flat connector
+profiles. The source of truth for legacy adapter dispatch is:
+
+```text
+resolved <domain_id>::<subdomain_id> -> xctx_connectors.domains.<domain_id>.subdomains.<subdomain_id>.legacy_adapter
+```
 
 Middleware connector payloads should expose a `connector.shape_guarantee`
 object when they return connector metadata. This is an adapter-side contract,
@@ -143,7 +158,7 @@ one shaped JSON object from the middleware boundary for success and failure:
   "connector": {
     "version": "legacy_connector.v1",
     "kind": "legacy_command",
-    "profile": "<legacy_profile>",
+    "adapter_ref": "<domain_id>::<subdomain_id>",
     "shape_guarantee": {
       "contract": "always_json_object",
       "xctx_receives": "single_json_object_for_live_data",
@@ -179,13 +194,13 @@ entrypoint:
   timeout_seconds: 30
 connector:
   kind: xctx_native_passthrough
-  profile: <subdomain_id>
   target_entrypoint: <domain_adapter.py>
   timeout_seconds: 30
 ```
 
-For legacy systems, the connector should declare the legacy profile and its
-bounded controls in scoped YAML:
+For legacy systems, the connector should declare its kind and bounded controls
+in scoped YAML. The adapter module is derived from the scoped domain/subdomain
+IDs, not configured as a YAML import string:
 
 ```yaml
 entrypoint:
@@ -195,15 +210,16 @@ entrypoint:
   timeout_seconds: 10
 connector:
   kind: legacy_command
-  profile: <legacy_profile>
   timeout_seconds: 5
   max_output_bytes: 20000
 ```
 
 Do not add connector profiles, legacy command names, file paths, stock terms,
-filing terms, or other application semantics to `libs/xctx`. Add new profiles
-under adapter/middleware packages and prove with tests that generic core remains
-free of the new domain-specific literals.
+filing terms, or other application semantics to `libs/xctx`,
+`libs/xctx_connectors/middleware.py`, or `libs/xctx_connectors/runtime.py`. Add
+new legacy behavior under the scoped domain/subdomain adapter package and prove
+with tests/checker rules that generic code remains free of the new
+domain-specific literals.
 
 Before adding or changing a discovery action:
 

@@ -56,7 +56,7 @@ Those examples must fail rather than route through a configured fallback.
 Root audit follows the same no-bubbling rule. `./xctx audit root` may summarize
 configuration health and availability findings, but it must not inline scoped
 adapter checks such as ticker sentinels, filing-table counts, filesystem
-legacy-command probes, or middleware profile diagnostics. Use scoped audit for
+legacy-command probes, or scoped connector diagnostics. Use scoped audit for
 those:
 
 ```bash
@@ -214,9 +214,9 @@ must not advertise it as an available root move.
 ## Middleware Boundary
 
 Enterprise middleware belongs outside `libs/xctx`. The generic runtime may route
-to a configured entrypoint and envelope one returned JSON object, but connector
-profiles, legacy command names, path policies, and transform rules remain in
-adapter-side packages such as `libs/xctx_connectors`.
+to a configured entrypoint and envelope one returned JSON object, but scoped
+connector adapters, legacy command names, path policies, and transform rules
+remain in domain/subdomain packages under `libs/xctx_connectors`.
 
 The file-manager demo is therefore configured through scoped YAML and an
 adapter-side connector. It exposes `connector.shape_guarantee` in live payloads

@@ -132,6 +132,12 @@ def assert_modular_layout() -> None:
         "legacy_connector.py",
         "libs/xctx_connectors/__init__.py",
         "libs/xctx_connectors/middleware.py",
+        "libs/xctx_connectors/runtime.py",
+        "libs/xctx_connectors/domains/__init__.py",
+        "libs/xctx_connectors/domains/file_manager/__init__.py",
+        "libs/xctx_connectors/domains/file_manager/subdomains/__init__.py",
+        "libs/xctx_connectors/domains/file_manager/subdomains/home_directory/__init__.py",
+        "libs/xctx_connectors/domains/file_manager/subdomains/home_directory/legacy_adapter.py",
         "yaml_dynamic_config/protocols/xctx_v4_2.yaml",
         "yaml_dynamic_config/shared/command_sets/core_commands.yaml",
         "yaml_dynamic_config/universe.yaml",
@@ -661,7 +667,7 @@ def assert_legacy_connector_middleware() -> None:
     files = one(["discover", "file_manager::home_directory", "list_files", "--limit", "2"])
     live_files = files["results"]["live_data"]
     assert live_files["object_type"] == "legacy_connector_filesystem_file_list"
-    assert live_files["connector"]["profile"] == "filesystem_home"
+    assert live_files["connector"]["adapter_ref"] == "file_manager::home_directory"
     assert guarantee(live_files["connector"])["contract"] == "always_json_object"
     assert live_files["command_status"]["ok"] is True
     assert "argv" not in live_files["command_status"]

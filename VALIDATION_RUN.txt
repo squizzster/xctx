@@ -10,7 +10,7 @@ Commands executed from repository root:
   ./bin/protocol_walker --list-valid-commands
   ./xctx --json audit root
   git diff --check
-  rg -n -e "file_manager|home_directory|list_files|list_directories|filesystem_home|legacy_command|shape_guarantee|single_json_object_for_live_data|directory:" libs/xctx xctx bin -S
+  rg -n -e "file_manager|home_directory|list_files|list_directories|legacy_command|shape_guarantee|single_json_object_for_live_data|directory:" libs/xctx xctx bin -S
   python3 -m compileall -q libs market_data_gateway.py equity_filings.py legacy_connector.py tests
 
 Results:

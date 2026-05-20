@@ -106,8 +106,8 @@ resolve bare subdomain/action/object tokens such as `market_data_gateway`,
 
 Root audit is generic too. `./xctx audit root` must not call subdomain adapters
 or bubble application-specific health probes. Adapter checks such as fixture
-tickers, database counts, filing tables, middleware profiles, or legacy command
-availability belong behind explicit scoped audits such as
+tickers, database counts, filing tables, scoped connector adapters, or legacy
+command availability belong behind explicit scoped audits such as
 `./xctx audit <domain_id>::<subdomain_id>`.
 
 ## Entrypoints
@@ -122,7 +122,6 @@ entrypoint:
   protocol: json_stdout
 connector:
   kind: xctx_native_passthrough
-  profile: market_data_gateway
   target_entrypoint: market_data_gateway.py
 ```
 
@@ -134,7 +133,6 @@ entrypoint:
   protocol: json_stdout
 connector:
   kind: xctx_native_passthrough
-  profile: equity_filing
   target_entrypoint: equity_filings.py
 ```
 
@@ -144,8 +142,9 @@ route a declared domain, subdomain, and action, but it does not need to know wha
 a ticker, CIK, latest price, filing form, bar, or calendar day means.
 
 Legacy integrations use the same xctx surface. The subdomain still declares a
-single JSON entrypoint, but the connector profile adapts the external system and
-normalizes success and failure into one object for xctx to envelope:
+single JSON entrypoint, but the generic connector middleware derives the scoped
+adapter from the resolved domain/subdomain and normalizes success and failure
+into one object for xctx to envelope:
 
 ```yaml
 entrypoint:
@@ -153,14 +152,16 @@ entrypoint:
   protocol: json_stdout
 connector:
   kind: legacy_command
-  profile: filesystem_home
   safe_root: data/file_manager_home
 ```
 
 The file-manager demo proves this with ordinary filesystem commands. Discovery
 returns `file:<relative_path>` and `directory:<relative_path>` identities;
 observation inspects the selected object. The generic `libs/xctx` runtime still
-contains no file-manager, stock, or filing semantics.
+contains no file-manager, stock, or filing semantics. The file-manager legacy
+behavior lives under
+`libs/xctx_connectors/domains/file_manager/subdomains/home_directory/legacy_adapter.py`,
+not in generic connector middleware.
 
 Middleware payloads that return connector metadata also declare a
 `shape_guarantee`. This is not parsed by `libs/xctx`; it is an adapter-side
@@ -171,7 +172,7 @@ contract made visible in the live data object:
   "connector": {
     "version": "legacy_connector.v1",
     "kind": "legacy_command",
-    "profile": "filesystem_home",
+    "adapter_ref": "file_manager::home_directory",
     "shape_guarantee": {
       "contract": "always_json_object",
       "xctx_receives": "single_json_object_for_live_data",

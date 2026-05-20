@@ -17,7 +17,6 @@ entrypoint:
   timeout_seconds: 30
 connector:
   kind: xctx_native_passthrough
-  profile: market_data_gateway
   target_entrypoint: market_data_gateway.py
   timeout_seconds: 30
 data:
