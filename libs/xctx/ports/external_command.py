@@ -1,18 +1,15 @@
-"""External-command live adapter port.
+"""External-command live connector port.
 
 xctx remains the agent-facing config/protocol layer. Domain tools own their own
-SQLite/YAML/API logic and return one JSON object for xctx to envelope. Python
-entrypoints are executed in-process by default for fast agent loops, while the
-same files remain runnable as standalone external commands.
+SQLite/YAML/API logic behind the connector supervisor, which returns one JSON
+object for xctx to envelope.
 """
 
 from __future__ import annotations
 
-import contextlib
-import importlib.util
-import io
 import json
 import os
+import signal
 import subprocess
 import sys
 from pathlib import Path
@@ -22,8 +19,11 @@ from xctx.errors import XctxError
 from xctx.protocol.actions import action_matches
 
 
-## Protocol boundary: this port calls scoped adapter entrypoints and envelopes
+## Protocol boundary: this port calls scoped connector entrypoints and envelopes
 ## their JSON. It must not interpret scoped-pack business semantics.
+
+
+CONNECTOR_SUPERVISOR_ENTRYPOINT = "legacy_connector.py"
 
 
 def _adapter_error_message_from_text(returncode: int, stdout: str, stderr: str, executable: str) -> str:
@@ -38,10 +38,6 @@ def _adapter_error_message_from_text(returncode: int, stdout: str, stderr: str, 
             return str(payload["error"])
         return text
     return f"live adapter returned code {returncode}: {executable}"
-
-
-def _adapter_error_message(proc: subprocess.CompletedProcess[str], executable: str) -> str:
-    return _adapter_error_message_from_text(proc.returncode, proc.stdout, proc.stderr, executable)
 
 
 def _lawful_argument_guidance(subdomain: dict[str, Any], args: list[str]) -> str:
@@ -61,47 +57,38 @@ def _adapter_env(subdomain: dict[str, Any]) -> dict[str, str | None]:
     }
 
 
-def _apply_env(env_values: dict[str, str | None]) -> dict[str, str | None]:
-    old: dict[str, str | None] = {}
-    for key, value in env_values.items():
-        old[key] = os.environ.get(key)
-        if value is None:
-            os.environ.pop(key, None)
-        else:
-            os.environ[key] = value
-    return old
-
-
-def _restore_env(old: dict[str, str | None]) -> None:
-    for key, value in old.items():
-        if value is None:
-            os.environ.pop(key, None)
-        else:
-            os.environ[key] = value
-
-
-def _call_python_entrypoint_in_process(command_path: Path, args: list[str], subdomain: dict[str, Any]) -> tuple[int, str, str]:
-    module_name = f"_xctx_adapter_{command_path.stem}_{abs(hash(str(command_path)))}"
-    spec = importlib.util.spec_from_file_location(module_name, command_path)
-    if spec is None or spec.loader is None:
-        raise XctxError(f"next valid move: inspect live adapter import path {command_path}")
-    module = importlib.util.module_from_spec(spec)
-    out = io.StringIO()
-    err = io.StringIO()
-    old_env = _apply_env(_adapter_env(subdomain))
+def _kill_process_tree(proc: subprocess.Popen[str]) -> None:
     try:
-        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
-            spec.loader.exec_module(module)
-            main = getattr(module, "main", None)
-            if not callable(main):
-                return 2, out.getvalue(), f"adapter has no callable main(argv): {command_path}"
-            try:
-                return_code = main(list(args))
-            except SystemExit as exc:
-                return_code = int(exc.code or 0) if isinstance(exc.code, int) else 1
-    finally:
-        _restore_env(old_env)
-    return int(return_code or 0), out.getvalue(), err.getvalue()
+        if os.name == "posix":
+            os.killpg(proc.pid, signal.SIGKILL)
+            return
+        proc.kill()
+    except ProcessLookupError:
+        return
+
+
+def _resolve_entrypoint(root: Path, raw: Any) -> Path:
+    if raw is None or str(raw).strip() == "":
+        raise XctxError("next valid move: add entrypoint.file to agent_subdomain")
+    candidate = Path(str(raw))
+    if candidate.is_absolute():
+        raise XctxError("next valid move: use a workspace-relative connector entrypoint")
+    workspace_root = root.resolve()
+    resolved = (workspace_root / candidate).resolve()
+    if resolved != workspace_root and workspace_root not in resolved.parents:
+        raise XctxError("next valid move: keep connector entrypoint inside the workspace")
+    if not resolved.exists():
+        raise XctxError(f"next valid move: inspect missing live connector {raw}")
+    if not resolved.is_file():
+        raise XctxError(f"next valid move: inspect live connector file {raw}")
+    return resolved
+
+
+def _enforce_connector_supervisor(subdomain: dict[str, Any], executable: Any) -> None:
+    if not isinstance(subdomain.get("connector"), dict):
+        raise XctxError(f"next valid move: add connector block to agent_subdomain {subdomain.get('id')}")
+    if Path(str(executable)).as_posix() != CONNECTOR_SUPERVISOR_ENTRYPOINT:
+        raise XctxError(f"next valid move: route live subdomain through {CONNECTOR_SUPERVISOR_ENTRYPOINT}")
 
 
 def _call_python_entrypoint_subprocess(
@@ -117,16 +104,24 @@ def _call_python_entrypoint_subprocess(
             env.pop(key, None)
         else:
             env[key] = value
-    proc = subprocess.run(
+    proc = subprocess.Popen(
         [sys.executable, str(command_path), *args],
         cwd=store["root"],
         env=env,
         text=True,
-        capture_output=True,
-        check=False,
-        timeout=timeout,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        start_new_session=(os.name == "posix"),
     )
-    return proc.returncode, proc.stdout, proc.stderr
+    try:
+        stdout, stderr = proc.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        _kill_process_tree(proc)
+        stdout, stderr = proc.communicate()
+        message = f"live connector timed out after {timeout:g} seconds"
+        stderr = f"{stderr.rstrip()}\n{message}" if stderr else message
+        return 124, stdout, stderr
+    return proc.returncode or 0, stdout, stderr
 
 
 def call_external_command(
@@ -137,13 +132,12 @@ def call_external_command(
     ## Boundary guard: adapter args are selected by YAML routing before this
     ## point. This function executes the declared port and validates JSON shape.
     entrypoint = subdomain.get("entrypoint") or {}
-    executable = entrypoint.get("file") or entrypoint.get("command")
+    executable = entrypoint.get("file")
     if not executable:
         raise XctxError(f"next valid move: add entrypoint.file to agent_subdomain {subdomain.get('id')}")
+    _enforce_connector_supervisor(subdomain, executable)
 
-    command_path = store["root"] / str(executable)
-    if not command_path.exists():
-        raise XctxError(f"next valid move: inspect missing live adapter {executable}")
+    command_path = _resolve_entrypoint(store["root"], executable)
 
     compact_flag = entrypoint.get("compact_flag", "--compact")
     timeout = float(entrypoint.get("timeout_seconds", 30))
@@ -151,11 +145,7 @@ def call_external_command(
     if compact_flag:
         command_args.append(str(compact_flag))
 
-    force_subprocess = os.environ.get("XCTX_FORCE_SUBPROCESS_ADAPTER") == "1"
-    if command_path.suffix == ".py" and not force_subprocess:
-        returncode, stdout, stderr = _call_python_entrypoint_in_process(command_path, command_args, subdomain)
-    else:
-        returncode, stdout, stderr = _call_python_entrypoint_subprocess(store, command_path, command_args, subdomain, timeout)
+    returncode, stdout, stderr = _call_python_entrypoint_subprocess(store, command_path, command_args, subdomain, timeout)
 
     if returncode != 0:
         message = _adapter_error_message_from_text(returncode, stdout, stderr, str(executable))

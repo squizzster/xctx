@@ -1,8 +1,8 @@
 # Middleware Connector Contract
 
-`xctx` stays generic: it reads YAML, routes to a scoped entrypoint, receives one
-JSON object, and envelopes that object. Middleware connectors live on the adapter
-side of that boundary.
+`xctx` stays generic: it reads YAML, subprocesses the scoped connector
+supervisor entrypoint, receives one JSON object, and envelopes that object.
+Middleware connectors live on the adapter side of that boundary.
 
 ## Shape Guarantee
 
@@ -43,8 +43,9 @@ adapter payload. Normalized pass-through failures return connector metadata with
 }
 ```
 
-Pass-through `target_entrypoint` values are scoped YAML executable references.
-They must be workspace-relative and resolve inside the repository workspace.
+Pass-through `target_entrypoint` values are scoped YAML executable references
+owned by the connector, not direct `xctx` entrypoints. They must be
+workspace-relative and resolve inside the repository workspace.
 
 ## File Manager Demo
 

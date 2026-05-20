@@ -20,6 +20,11 @@ if str(LIBS) not in sys.path:
     sys.path.insert(0, str(LIBS))
 
 from xctx.process.runtime import main as xctx_main  # noqa: E402
+from xctx.commands.registry import command_handlers  # noqa: E402
+from xctx.config.loader import load_store  # noqa: E402
+from xctx.domain.diagnostics import run_diagnostics  # noqa: E402
+from xctx.errors import XctxError  # noqa: E402
+from xctx.ports.external_command import call_external_command  # noqa: E402
 from xctx_connectors.middleware import _resolve_workspace_entrypoint  # noqa: E402
 from xctx_connectors.domains.file_manager.legacy_adapter import _safe_path  # noqa: E402
 
@@ -86,7 +91,7 @@ def test_domain_adapter_import_path_exists() -> None:
     assert callable(adapter.run)
 
 
-def test_file_manager_dispatches_to_domain_adapter_scope() -> None:
+def test_xctx_invokes_connector_supervisor_out_of_process() -> None:
     code = f"""
 import contextlib
 import io
@@ -106,10 +111,15 @@ err = io.StringIO()
 with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
     rc = xctx_main(["--json", "discover", "file_manager::home_directory"], root=ROOT)
 
+lines = [line for line in out.getvalue().splitlines() if line.strip()]
+payload = json.loads(lines[0]) if lines else {{}}
+
 print(json.dumps({{
     "rc": rc,
     "stderr": err.getvalue(),
-    "stdout_lines": len([line for line in out.getvalue().splitlines() if line.strip()]),
+    "stdout_lines": len(lines),
+    "live_object_type": payload.get("results", {{}}).get("live_data", {{}}).get("object_type"),
+    "middleware_loaded": "xctx_connectors.middleware" in sys.modules,
     "domain_adapter_loaded": {DOMAIN_ADAPTER_MODULE!r} in sys.modules,
 }}))
 """
@@ -127,8 +137,38 @@ print(json.dumps({{
         "rc": 0,
         "stderr": "",
         "stdout_lines": 1,
-        "domain_adapter_loaded": True,
+        "live_object_type": "legacy_connector_filesystem_discovery",
+        "middleware_loaded": False,
+        "domain_adapter_loaded": False,
     }
+
+
+def test_live_entrypoint_must_use_connector_supervisor() -> None:
+    store = load_store(root=ROOT)
+    subdomain = dict(store["agent_domains"]["stock_intelligence_hub"]["_subdomains"]["market_data_gateway"])
+    subdomain["entrypoint"] = {**subdomain["entrypoint"], "file": "market_data_gateway.py"}
+    try:
+        call_external_command(store, subdomain, ["discover"])
+    except XctxError as exc:
+        assert "route live subdomain through legacy_connector.py" in str(exc)
+    else:  # pragma: no cover - defensive standalone script check
+        raise AssertionError("accepted direct live adapter entrypoint")
+
+
+def test_doctor_rejects_direct_live_adapter_entrypoint() -> None:
+    store = load_store(root=ROOT)
+    subdomain = store["agent_domains"]["stock_intelligence_hub"]["_subdomains"]["market_data_gateway"]
+    subdomain["entrypoint"] = {**subdomain["entrypoint"], "file": "market_data_gateway.py"}
+    diagnostics = run_diagnostics(store, set(command_handlers()))
+    entrypoint_check = next(item for item in diagnostics if item["id"] == "doctor:external_command_entrypoints_resolve")
+    assert entrypoint_check["status"] == "fail"
+    assert entrypoint_check["adapter_errors"] == [
+        {
+            "target": "stock_intelligence_hub::market_data_gateway",
+            "reason": "entrypoint must use connector supervisor",
+            "entrypoint": "market_data_gateway.py",
+        }
+    ]
 
 
 def test_passthrough_target_entrypoint_stays_inside_workspace() -> None:
@@ -360,7 +400,9 @@ def main() -> int:
     test_middleware_returns_json_without_xctx_env()
     test_safe_path_blocks_escape()
     test_domain_adapter_import_path_exists()
-    test_file_manager_dispatches_to_domain_adapter_scope()
+    test_xctx_invokes_connector_supervisor_out_of_process()
+    test_live_entrypoint_must_use_connector_supervisor()
+    test_doctor_rejects_direct_live_adapter_entrypoint()
     test_passthrough_target_entrypoint_stays_inside_workspace()
     test_generic_connector_runtime_has_no_file_manager_implementation()
     test_root_audit_does_not_import_scoped_legacy_adapter()

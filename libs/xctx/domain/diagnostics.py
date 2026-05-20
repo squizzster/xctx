@@ -6,8 +6,26 @@ from pathlib import Path
 from typing import Any
 
 from xctx.config.paths import as_project_path
+from xctx.ports.external_command import CONNECTOR_SUPERVISOR_ENTRYPOINT
 from xctx.protocol.accessors import canonical_command, command_aliases, configured_command_names
 from xctx.store.resolver import record_lookup_id, resolve_collection, subsystem_by_id
+
+
+def _entrypoint_resolution_error(root: Path, raw: Any) -> str | None:
+    if raw is None or str(raw).strip() == "":
+        return "online without entrypoint.file"
+    candidate = Path(str(raw))
+    if candidate.is_absolute():
+        return "entrypoint must be workspace-relative"
+    workspace_root = root.resolve()
+    resolved = (workspace_root / candidate).resolve()
+    if resolved != workspace_root and workspace_root not in resolved.parents:
+        return "entrypoint escapes workspace"
+    if not resolved.exists():
+        return "entrypoint missing"
+    if not resolved.is_file():
+        return "entrypoint is not a file"
+    return None
 
 
 def _expected_layout(root: Path) -> list[Path]:
@@ -84,19 +102,31 @@ def run_diagnostics(store: dict[str, Any], handled_commands: set[str]) -> list[d
     for domain_id, domain in store.get("agent_domains", {}).items():
         for subdomain_id, subdomain in domain.get("_subdomains", {}).items():
             entrypoint = subdomain.get("entrypoint") or {}
-            executable = entrypoint.get("file") or entrypoint.get("command")
-            if subdomain.get("status") == "online" and not executable:
-                adapter_errors.append({"target": f"{domain_id}::{subdomain_id}", "reason": "online without entrypoint"})
+            executable = entrypoint.get("file")
+            if subdomain.get("status") != "online":
                 continue
-            if executable and not (root / str(executable)).exists():
+            if not isinstance(subdomain.get("connector"), dict):
+                adapter_errors.append({"target": f"{domain_id}::{subdomain_id}", "reason": "online without connector block"})
+                continue
+            resolution_error = _entrypoint_resolution_error(root, executable)
+            if resolution_error:
                 adapter_errors.append(
-                    {"target": f"{domain_id}::{subdomain_id}", "reason": "entrypoint missing", "entrypoint": executable}
+                    {"target": f"{domain_id}::{subdomain_id}", "reason": resolution_error, "entrypoint": executable}
+                )
+                continue
+            if Path(str(executable)).as_posix() != CONNECTOR_SUPERVISOR_ENTRYPOINT:
+                adapter_errors.append(
+                    {
+                        "target": f"{domain_id}::{subdomain_id}",
+                        "reason": "entrypoint must use connector supervisor",
+                        "entrypoint": executable,
+                    }
                 )
     diagnostics.append(
         {
             "id": "doctor:external_command_entrypoints_resolve",
             "status": "fail" if adapter_errors else "pass",
-            "desc": "online agent subdomains point at existing external command adapters",
+            "desc": "online agent subdomains route live execution through the connector supervisor",
             "adapter_errors": adapter_errors,
         }
     )

@@ -16,8 +16,9 @@ The protocol/configuration layer is separated from live read-only data adapters:
 - `legacy_connector.py` and `libs/xctx_connectors/` provide adapter-side
   middleware for xctx-native pass-through and legacy command transforms.
 - `market_data_gateway.py` / `equity_instruments.py` are read-only market-data
-  adapter entrypoints.
-- `equity_filings.py` is the read-only EDGAR filing taxonomy adapter.
+  adapters behind the connector supervisor.
+- `equity_filings.py` is the read-only EDGAR filing taxonomy adapter behind the
+  connector supervisor.
 
 Boundary for future agents: keep `xctx`, `bin/xctx`, and `libs/xctx` as the
 generic interface/protocol layer. Domain/subdomain/mode meaning belongs in

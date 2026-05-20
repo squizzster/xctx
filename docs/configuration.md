@@ -112,9 +112,9 @@ command availability belong behind explicit scoped audits such as
 
 ## Entrypoints
 
-Subdomains declare the entrypoint that xctx calls. In this build the online
-stock subdomains route through middleware first, then pass through to their
-xctx-native application adapters:
+Subdomains declare the connector supervisor entrypoint that xctx calls. Online
+live execution routes through this middleware first, then passes through to an
+xctx-native application adapter or legacy adapter:
 
 ```yaml
 entrypoint:
@@ -136,10 +136,11 @@ connector:
   target_entrypoint: equity_filings.py
 ```
 
-The protocol runtime loads YAML declarations and calls the entrypoint only when
-an online action requires live bundled data. The xctx core therefore knows how to
-route a declared domain, subdomain, and action, but it does not need to know what
-a ticker, CIK, latest price, filing form, bar, or calendar day means.
+The protocol runtime loads YAML declarations and subprocesses the connector
+supervisor only when an online action requires live bundled data. Direct adapter
+entrypoints are not valid scoped YAML entrypoints. The xctx core therefore knows
+how to route a declared domain, subdomain, and action, but it does not need to
+know what a ticker, CIK, latest price, filing form, bar, or calendar day means.
 Pass-through `target_entrypoint` values are workspace-relative executable files;
 absolute paths and paths that resolve outside the workspace are rejected.
 

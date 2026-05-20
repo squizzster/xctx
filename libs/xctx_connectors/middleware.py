@@ -6,7 +6,6 @@ import importlib
 import json
 import os
 import re
-import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -107,17 +106,8 @@ def _passthrough(context: runtime.ConnectorContext, args: list[str], *, compact:
     if compact and "--compact" not in argv:
         argv.append("--compact")
     env = os.environ.copy()
-    try:
-        proc = subprocess.run(
-            argv,
-            cwd=context.workspace_root,
-            env=env,
-            text=True,
-            capture_output=True,
-            check=False,
-            timeout=timeout,
-        )
-    except subprocess.TimeoutExpired as exc:
+    result = runtime.run_external(argv, cwd=context.workspace_root, env=env, timeout=timeout)
+    if result["timed_out"]:
         payload: dict[str, Any] = {
             "object_type": "xctx_native_passthrough_error",
             "found": False,
@@ -129,8 +119,8 @@ def _passthrough(context: runtime.ConnectorContext, args: list[str], *, compact:
                 argv=argv if include_argv else None,
                 timed_out=True,
                 error=f"passthrough target timed out after {timeout} seconds",
-                stdout=exc.stdout if isinstance(exc.stdout, str) else "",
-                stderr=exc.stderr if isinstance(exc.stderr, str) else "",
+                stdout=str(result.get("stdout") or ""),
+                stderr=str(result.get("stderr") or ""),
             ),
             "data_boundary": "Pass-through connector normalized a target adapter timeout into JSON.",
         }
@@ -138,8 +128,8 @@ def _passthrough(context: runtime.ConnectorContext, args: list[str], *, compact:
             payload["checks"] = [runtime.audit_failure_check(context, payload["command_status"]["error"])]
         return payload
 
-    text = (proc.stdout or "").strip()
-    if proc.returncode == 0:
+    text = str(result.get("stdout") or "").strip()
+    if result["ok"]:
         try:
             payload = json.loads(text or "{}")
         except json.JSONDecodeError as exc:
@@ -172,14 +162,14 @@ def _passthrough(context: runtime.ConnectorContext, args: list[str], *, compact:
         "command_status": runtime.command_status(
             ok=False,
             argv=argv if include_argv else None,
-            exit_code=proc.returncode,
+            exit_code=int(result.get("exit_code") or 0),
             error=(
-                proc.stderr.strip()
+                str(result.get("stderr") or "").strip()
                 or (target_payload.get("error") if isinstance(target_payload, dict) else None)
                 or "passthrough target failed"
             ),
-            stdout=proc.stdout,
-            stderr=proc.stderr,
+            stdout=str(result.get("stdout") or ""),
+            stderr=str(result.get("stderr") or ""),
         ),
         "data_boundary": "Pass-through connector normalized a target adapter failure into JSON.",
     }

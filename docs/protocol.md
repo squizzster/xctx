@@ -120,7 +120,7 @@ mode means.
 The meaning of a scoped operation belongs in two places:
 
 - YAML under the owning domain/subdomain/action.
-- The adapter entrypoint and live support library for that domain pack.
+- Adapter-side code behind the connector supervisor.
 
 If a change requires business vocabulary, exact-code ranking, list payload
 shape, provider behavior, or domain-specific examples, put that logic outside
@@ -161,15 +161,17 @@ alone is not enough. This build performs no domain mutation and returns
 ## Protocol/config split
 
 `yaml_dynamic_config/` describes protocol, domains, subdomains, actions, and
-routes. Python entrypoints own read-only live data access. This keeps `xctx` as
-the bootloader and avoids mixing business/domain logic into the protocol runtime.
+routes. Live data access sits behind the configured connector supervisor, which
+subprocesses adapter-side code and returns one JSON object for `xctx` to
+envelope. This keeps `xctx` as the bootloader and avoids mixing business/domain
+logic into the protocol runtime.
 
 ## Middleware Shape Guarantee
 
 Legacy connector middleware sits behind scoped YAML entrypoints. Its job is to
-call an application adapter or legacy command and return one JSON-compatible
-object for xctx to envelope. When a connector returns connector metadata, it
-declares a `shape_guarantee` such as:
+call an application adapter or legacy command behind the supervisor boundary and
+return one JSON-compatible object for xctx to envelope. When a connector returns
+connector metadata, it declares a `shape_guarantee` such as:
 
 ```json
 {

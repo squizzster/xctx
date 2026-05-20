@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+import signal
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -184,31 +186,71 @@ def parse_controls(args: list[str], *, default_limit: int, max_limit: int) -> tu
     return rest, controls
 
 
-def run_legacy(argv: list[str], *, timeout: float, max_output_bytes: int) -> dict[str, Any]:
+def _trim(text: str | None, max_output_bytes: int | None) -> str:
+    value = text or ""
+    if max_output_bytes is None:
+        return value
+    return value[:max_output_bytes]
+
+
+def _kill_process_tree(proc: subprocess.Popen[str]) -> None:
     try:
-        proc = subprocess.run(
-            argv,
-            text=True,
-            capture_output=True,
-            check=False,
-            timeout=timeout,
-        )
+        if os.name == "posix":
+            os.killpg(proc.pid, signal.SIGKILL)
+            return
+        proc.kill()
+    except ProcessLookupError:
+        return
+
+
+def run_external(
+    argv: list[str],
+    *,
+    timeout: float,
+    cwd: Path | None = None,
+    env: Mapping[str, str] | None = None,
+    max_output_bytes: int | None = None,
+) -> dict[str, Any]:
+    proc = subprocess.Popen(
+        argv,
+        cwd=cwd,
+        env=dict(env) if env is not None else None,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        start_new_session=(os.name == "posix"),
+    )
+    try:
+        stdout, stderr = proc.communicate(timeout=timeout)
     except subprocess.TimeoutExpired as exc:
+        _kill_process_tree(proc)
+        stdout, stderr = proc.communicate()
         return {
             "ok": False,
             "argv": argv,
             "exit_code": None,
             "timed_out": True,
-            "stdout": (exc.stdout or "")[:max_output_bytes] if isinstance(exc.stdout, str) else "",
-            "stderr": (exc.stderr or "")[:max_output_bytes] if isinstance(exc.stderr, str) else "",
-            "error": f"legacy command timed out after {timeout} seconds",
+            "stdout": _trim(stdout or (exc.stdout if isinstance(exc.stdout, str) else ""), max_output_bytes),
+            "stderr": _trim(stderr or (exc.stderr if isinstance(exc.stderr, str) else ""), max_output_bytes),
+            "error": f"external command timed out after {timeout:g} seconds",
         }
     return {
-        "ok": proc.returncode == 0,
+        "ok": (proc.returncode or 0) == 0,
         "argv": argv,
-        "exit_code": proc.returncode,
+        "exit_code": proc.returncode or 0,
         "timed_out": False,
-        "stdout": proc.stdout[:max_output_bytes],
-        "stderr": proc.stderr[:max_output_bytes],
-        "error": None if proc.returncode == 0 else (proc.stderr.strip() or proc.stdout.strip() or "legacy command failed"),
+        "stdout": _trim(stdout, max_output_bytes),
+        "stderr": _trim(stderr, max_output_bytes),
+        "error": None
+        if (proc.returncode or 0) == 0
+        else ((stderr or "").strip() or (stdout or "").strip() or "external command failed"),
     }
+
+
+def run_legacy(argv: list[str], *, timeout: float, max_output_bytes: int) -> dict[str, Any]:
+    result = run_external(argv, timeout=timeout, max_output_bytes=max_output_bytes)
+    if result["timed_out"]:
+        result["error"] = f"legacy command timed out after {timeout:g} seconds"
+    elif not result["ok"] and result["error"] == "external command failed":
+        result["error"] = "legacy command failed"
+    return result
