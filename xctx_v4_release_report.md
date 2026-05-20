@@ -118,7 +118,8 @@ The stock proof slice still includes:
 - ticker, instrument id, issuer CIK, bare CIK, company-name, legal-name, alias,
   and former-symbol resolution.
 - `FB -> META` lifecycle alias resolution.
-- latest available bundled daily close via `latest_price`.
+- `latest_price` discovers the latest available bundled price point; observe
+  returns the price data.
 - ranged OHLCV observations with `price_summary`.
 - explicit `is_live_quote: false` bundled-data boundary.
 
@@ -201,9 +202,9 @@ Representative refusals:
 
 ## Honest remaining boundary
 
-This is still a proof-of-concept. Latest price means latest available bundled
-OHLCV daily close from the fixture database, not a live quote feed. That boundary
-is explicitly present in the latest/range payloads.
+This is still a proof-of-concept. `latest_price` discovers the latest available
+bundled price point; observe returns the price data. It is not a live quote feed.
+That boundary is explicitly present in the latest/range payloads.
 
 ## Middleware Addendum
 

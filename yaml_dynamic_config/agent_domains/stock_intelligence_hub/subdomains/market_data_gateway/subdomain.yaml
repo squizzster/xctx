@@ -75,7 +75,7 @@ actions:
       - quote
       - latest_quote
     query_required: true
-    desc: Discover how to observe the latest available bundled daily close for a ticker, instrument id, CIK, issuer id, or market-series id. Not a live quote feed.
+    desc: latest_price discovers the latest available bundled price point; observe returns the price data. Not a live quote feed.
     run_cmd: ./xctx discover stock_intelligence_hub::market_data_gateway latest_price <ticker|instrument_id|CIK|market_series:ticker:daily>
   list_instruments:
     priority: 30

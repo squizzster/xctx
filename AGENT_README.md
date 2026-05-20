@@ -148,8 +148,8 @@ Bundled OHLCV market series:
 ./xctx observe stock_intelligence_hub::market_data_gateway instrument:aapl --bars 5
 ```
 
-`latest_price` returns the latest available bundled daily OHLCV close, with an explicit
-`is_live_quote: false` boundary. Range observations include a `price_summary`
+`latest_price` discovers the latest available bundled price point; observe returns
+the price data. Range observations include a `price_summary`
 (first/last close, change, percent change, highest high, and lowest low) plus a
 CSV export path for local inspection.
 
@@ -304,6 +304,6 @@ This build intentionally tightens several edges that were easy to get almost rig
 - `discover --name` is intentionally refused; root no longer chooses a stock action from a bare name.
 - Unknown command names are refused with a pointer to `./xctx other --topic ...`; they are not silently treated as protocol commands.
 - `receipt_sha5` is compatibility sugar, not authority. It must bind to a recorded plan in `.xctx_runtime/plans/`.
-- Instrument search emits minimal identity results and next moves; latest price and market-series detail require explicit discovery or observe transitions.
+- Instrument search emits minimal identity results and next moves; latest_price discovers the latest available bundled price point, and observe returns the price data.
 - List actions emit compact index rows by default; full bulk rows require `--shape full`, and cursor support is scoped/optional.
-- Latest price is a read-only bundled-data observation, not a live quote, and this boundary is stated in every latest/range payload.
+- latest_price is not a live quote; it discovers the latest available bundled price point before observe materializes the data.
