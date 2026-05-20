@@ -214,15 +214,19 @@ def main() -> int:
 
     file_list = run_engine(["discover", "file_manager::home_directory", "list_files", "--limit", "2"])
     assert file_list["results"]["live_data"]["object_type"] == "legacy_connector_filesystem_file_list"
+    assert file_list["results"]["live_data"]["connector"]["shape_guarantee"]["contract"] == "always_json_object"
+    assert file_list["results"]["live_data"]["connector"]["shape_guarantee"]["xctx_receives"] == "single_json_object_for_live_data"
     assert file_list["results"]["live_data"]["files"][0]["id"] == "file:README.txt"
     assert "pagination" not in file_list["results"]["live_data"]
     assert "argv" not in file_list["results"]["live_data"]["command_status"]
     assert "This is a bundled file-manager demo fixture" not in json.dumps(file_list["results"]["live_data"])
     file_list_full = run_engine(["discover", "file_manager::home_directory", "list_files", "--limit", "1", "--shape", "full"])
     assert file_list_full["results"]["live_data"]["pagination"]["returned_count"] == 1
+    assert file_list_full["results"]["live_data"]["connector"]["shape_guarantee"]["failure_shape"] == "legacy_connector_error"
     assert file_list_full["results"]["live_data"]["command_status"]["argv"][0] == "ls"
     discovered_file = run_engine(["discover", "file_manager::home_directory", "file:README.txt"])
     assert discovered_file["results"]["live_data"]["object_type"] == "legacy_connector_filesystem_file_discovery"
+    assert discovered_file["results"]["live_data"]["connector"]["shape_guarantee"]["raw_legacy_output"] == "never_returned_unparsed"
     assert discovered_file["results"]["live_data"]["type"] == "ASCII text"
     assert discovered_file["results"]["live_data"]["size_bytes"] == 237
     assert "argv" not in discovered_file["results"]["live_data"]["command_status"]["stat_line"]
@@ -329,6 +333,7 @@ def main() -> int:
     observed_file = run_engine(["observe", "file:README.txt"])
     assert observed_file["results"]["agent_domain"] == "file_manager"
     assert observed_file["results"]["live_data"]["object_type"] == "legacy_connector_filesystem_file_observation"
+    assert observed_file["results"]["live_data"]["connector"]["shape_guarantee"]["success_shape"] == "domain_object"
     assert observed_file["results"]["live_data"]["content"]["available"] is True
     assert "This is a bundled file-manager demo fixture" in observed_file["results"]["live_data"]["content"]["text"]
     observed_directory = run_engine(["observe", "directory:docs"])
@@ -336,6 +341,7 @@ def main() -> int:
     escaped_file = run_engine(["observe", "file:../README.md"])
     assert escaped_file["results"]["live_data"]["object_type"] == "legacy_connector_error"
     assert escaped_file["results"]["live_data"]["found"] is False
+    assert escaped_file["results"]["live_data"]["connector"]["shape_guarantee"]["failure_shape"] == "legacy_connector_error"
 
     audit = run_engine(["audit", "root"])
     assert_cmd(audit, record_type="audit", level="root")

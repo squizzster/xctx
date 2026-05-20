@@ -3,15 +3,27 @@ xctx v4.2 boundary-hardened validation run
 Commands executed from repository root:
 
   python3 .agents/skills/xctx-yaml-config/scripts/check_xctx_yaml_surface.py
+  python3 tests/protocol_legacy_connector.py
   python3 tests/smoke_protocol.py
   python3 tests/protocol_pressure_pro.py
-  python3 -m compileall -q libs market_data_gateway.py equity_filings.py equity_instruments.py tests
+  python3 tests/protocol_observe_discover_boundary.py
+  ./bin/protocol_walker --list-valid-commands
+  ./xctx --json audit root
+  git diff --check
+  rg -n -e "file_manager|home_directory|list_files|list_directories|filesystem_home|legacy_command|shape_guarantee|single_json_object_for_live_data|directory:" libs/xctx xctx bin -S
+  python3 -m compileall -q libs market_data_gateway.py equity_filings.py legacy_connector.py tests
 
 Results:
 
   check_xctx_yaml_surface.py: ok=true; error_count=0; warning_count=0
+  protocol_legacy_connector.py: legacy connector middleware checks passed
   smoke_protocol.py: hardened xctx protocol smoke checks passed
   protocol_pressure_pro.py: PRO xctx protocol pressure checks passed
+  protocol_observe_discover_boundary.py: ok
+  protocol_walker: ok
+  audit root: ok=true
+  git diff --check: ok
+  core leak grep: no matches
   compileall: ok
 
 Root/universe leak guard:
@@ -48,6 +60,19 @@ Representative positive probes:
   ./xctx --json observe stock_intelligence_hub::market_data_gateway instrument:aapl --bars 5
   ./xctx --json observe stock_intelligence_hub::market_data_gateway AAPL --calendar-days 50
   ./xctx --json discover stock_intelligence_hub::search_filing_form 10-K
+  ./xctx --json discover file_manager::home_directory list_files --limit 1
+  ./xctx --json discover file_manager::home_directory list_files --limit 1 --shape full
+  ./xctx --json discover file_manager::home_directory file:README.txt
+  ./xctx --json observe file_manager::home_directory file:README.txt
+  ./xctx --json observe file:README.txt
+  ./xctx --json audit file_manager::home_directory
+
+Middleware connector guarantee:
+
+  connector.shape_guarantee.xctx_receives = single_json_object_for_live_data
+  connector.shape_guarantee.raw_legacy_output = never_returned_unparsed
+  legacy contract = always_json_object
+  pass-through failure contract = pass_through_json_object
 
 Representative refusal probes:
 

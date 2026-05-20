@@ -152,6 +152,34 @@ returns `file:<relative_path>` and `directory:<relative_path>` identities;
 observation inspects the selected object. The generic `libs/xctx` runtime still
 contains no file-manager, stock, or filing semantics.
 
+Middleware payloads that return connector metadata also declare a
+`shape_guarantee`. This is not parsed by `libs/xctx`; it is an adapter-side
+contract made visible in the live data object:
+
+```json
+{
+  "connector": {
+    "version": "legacy_connector.v1",
+    "kind": "legacy_command",
+    "profile": "filesystem_home",
+    "shape_guarantee": {
+      "contract": "always_json_object",
+      "xctx_receives": "single_json_object_for_live_data",
+      "success_shape": "domain_object",
+      "failure_shape": "legacy_connector_error",
+      "raw_legacy_output": "never_returned_unparsed",
+      "stdout_stderr": "summarized_in_command_status_when_useful"
+    }
+  }
+}
+```
+
+The guarantee means the legacy command may fail, time out, or emit terminal
+text, but xctx still receives one JSON object to envelope. Successful
+xctx-native pass-through calls can preserve the target adapter payload
+unchanged; normalized pass-through failures use
+`failure_shape: xctx_native_passthrough_error`.
+
 ## Scoped command options
 
 Subdomain actions can expose command-specific CLI options through `cli_options`.

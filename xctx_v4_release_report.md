@@ -204,3 +204,27 @@ Representative refusals:
 This is still a proof-of-concept. Latest price means latest available bundled
 OHLCV daily close from the fixture database, not a live quote feed. That boundary
 is explicitly present in the latest/range payloads.
+
+## Middleware Addendum
+
+The current workspace also includes an enterprise middleware demonstration for:
+
+```bash
+./xctx discover file_manager::home_directory
+```
+
+The implementation keeps middleware outside the generic xctx runtime. Scoped
+YAML routes to `legacy_connector.py`, which delegates to adapter-side connector
+code under `libs/xctx_connectors/`. Generic `libs/xctx` still does not know file
+manager semantics, legacy command profiles, path policies, or transform rules.
+
+Connector metadata now exposes `shape_guarantee` when middleware returns a
+connector object. The key proof is:
+
+```text
+xctx_receives = single_json_object_for_live_data
+raw_legacy_output = never_returned_unparsed
+```
+
+This is adapter-side contract evidence. It does not change the root protocol
+surface; it makes the middleware boundary inspectable for agents and operators.

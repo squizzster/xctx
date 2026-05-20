@@ -161,6 +161,33 @@ structured failures. Discovery actions still discover observable object
 identities and lawful next moves; observation actions still materialize the
 selected object.
 
+Connector metadata returned by adapter-side middleware should include a
+`shape_guarantee` object so agents can see the contract being enforced:
+
+```json
+{
+  "connector": {
+    "version": "legacy_connector.v1",
+    "kind": "legacy_command",
+    "profile": "<legacy_profile>",
+    "shape_guarantee": {
+      "contract": "always_json_object",
+      "xctx_receives": "single_json_object_for_live_data",
+      "success_shape": "domain_object",
+      "failure_shape": "legacy_connector_error",
+      "raw_legacy_output": "never_returned_unparsed",
+      "stdout_stderr": "summarized_in_command_status_when_useful"
+    }
+  }
+}
+```
+
+For xctx-native pass-through connectors, successful calls may preserve the
+target adapter's native payload unchanged. Normalized pass-through failures
+should still include connector metadata with `contract:
+pass_through_json_object` and `failure_shape:
+xctx_native_passthrough_error`.
+
 ## New subdomain action
 
 ```yaml

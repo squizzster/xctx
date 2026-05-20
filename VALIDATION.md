@@ -6,6 +6,7 @@ Validated on the packaged workspace with:
 python3 .agents/skills/xctx-yaml-config/scripts/check_xctx_yaml_surface.py
 python3 tests/smoke_protocol.py
 python3 tests/protocol_pressure_pro.py
+python3 tests/protocol_legacy_connector.py
 python3 -m compileall -q libs market_data_gateway.py equity_filings.py equity_instruments.py tests
 ```
 
@@ -15,6 +16,7 @@ Result:
 check_xctx_yaml_surface.py: ok=true, error_count=0, warning_count=0
 smoke_protocol.py: hardened xctx protocol smoke checks passed
 protocol_pressure_pro.py: PRO xctx protocol pressure checks passed
+protocol_legacy_connector.py: legacy connector middleware checks passed
 compileall: ok
 ```
 
@@ -79,6 +81,11 @@ That scoped surface advertises `configured_options.observe` with `--bars` and
 ./xctx observe stock_intelligence_hub::market_data_gateway instrument:aapl --bars 5
 ./xctx observe stock_intelligence_hub::market_data_gateway AAPL --calendar-days 50
 ./xctx observe stock_intelligence_hub::equity_filing form:10-K
+./xctx discover file_manager::home_directory list_files --limit 2
+./xctx discover file_manager::home_directory file:README.txt
+./xctx observe file_manager::home_directory file:README.txt
+./xctx observe file:README.txt
+./xctx audit file_manager::home_directory
 ./xctx audit root
 ```
 
@@ -104,3 +111,4 @@ Expected behavior:
 - Domain affordances are declared under scoped subdomain actions with `domain_affordance: true`.
 - Domain-specific CLI options are declared on the owning YAML action and published only after the target subdomain/action is in scope.
 - Ticker, symbol, CIK, former-symbol, latest-price, and OHLCV semantics live in the stock adapter/configuration layer, not in the generic xctx command surface.
+- Middleware connector profiles live outside `libs/xctx`; connector metadata exposes `shape_guarantee` so agents can verify xctx receives one shaped JSON object for success and failure.

@@ -13,6 +13,8 @@ The protocol/configuration layer is separated from live read-only data adapters:
 - `./xctx` is the protocol bootloader.
 - `yaml_dynamic_config/` describes the universe, agent domains, subdomains,
   statuses, commands, routing, and lawful next moves.
+- `legacy_connector.py` and `libs/xctx_connectors/` provide adapter-side
+  middleware for xctx-native pass-through and legacy command transforms.
 - `market_data_gateway.py` / `equity_instruments.py` are read-only market-data
   adapter entrypoints.
 - `equity_filings.py` is the read-only EDGAR filing taxonomy adapter.
@@ -27,6 +29,7 @@ subdomains are:
 
 - `stock_intelligence_hub::market_data_gateway`
 - `stock_intelligence_hub::equity_filing`
+- `file_manager::home_directory` as a legacy middleware demonstration domain
 
 Other domains/subdomains are deliberately offline or down for maintenance so an
 agent can test audit and repair behavior without guessing.
@@ -168,6 +171,23 @@ List modes return compact index rows by default. Use `--shape full` only when
 bulk detail is needed; use `observe` for one full object. Cursor support is
 declared per scoped list action and cursor values are adapter-owned.
 
+Legacy middleware demo:
+
+```bash
+./xctx discover file_manager::
+./xctx discover file_manager::home_directory
+./xctx discover file_manager::home_directory list_files --limit 2
+./xctx discover file_manager::home_directory file:README.txt
+./xctx observe file_manager::home_directory file:README.txt
+./xctx audit file_manager::home_directory
+```
+
+The file-manager connector demonstrates the enterprise middleware contract:
+legacy command output is transformed into a stable object before xctx envelopes
+it. Connector metadata exposes a `shape_guarantee` declaring that xctx receives
+`single_json_object_for_live_data`, with legacy success as a domain object and
+legacy failure as `legacy_connector_error`.
+
 ## What is real in this PoC
 
 The filing adapter reads `data/edgar_form_reference_taxonomy.sqlite`, which
@@ -239,6 +259,7 @@ YAML is explicit or selected automatically for a TTY:
 python3 .agents/skills/xctx-yaml-config/scripts/check_xctx_yaml_surface.py
 python3 tests/smoke_protocol.py
 python3 tests/protocol_pressure_pro.py
+python3 tests/protocol_legacy_connector.py
 ```
 
 The YAML guard validates root-boundary cleanliness, scoped domain affordances,

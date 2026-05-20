@@ -599,10 +599,17 @@ def assert_observe_audit_repair() -> None:
 
 
 def assert_legacy_connector_middleware() -> None:
+    def guarantee(connector: dict) -> dict:
+        value = connector["shape_guarantee"]
+        assert value["xctx_receives"] == "single_json_object_for_live_data"
+        assert value["raw_legacy_output"] == "never_returned_unparsed"
+        return value
+
     files = one(["discover", "file_manager::home_directory", "list_files", "--limit", "2"])
     live_files = files["results"]["live_data"]
     assert live_files["object_type"] == "legacy_connector_filesystem_file_list"
     assert live_files["connector"]["profile"] == "filesystem_home"
+    assert guarantee(live_files["connector"])["contract"] == "always_json_object"
     assert live_files["command_status"]["ok"] is True
     assert "argv" not in live_files["command_status"]
     assert "pagination" not in live_files
@@ -611,12 +618,14 @@ def assert_legacy_connector_middleware() -> None:
 
     full_files = one(["discover", "file_manager::home_directory", "list_files", "--limit", "1", "--shape", "full"])
     full_files_live = full_files["results"]["live_data"]
+    assert guarantee(full_files_live["connector"])["failure_shape"] == "legacy_connector_error"
     assert full_files_live["pagination"]["returned_count"] == 1
     assert full_files_live["command_status"]["argv"][0] == "ls"
 
     discovered_file = one(["discover", "file_manager::home_directory", "file:README.txt"])
     discovered_file_live = discovered_file["results"]["live_data"]
     assert discovered_file_live["object_type"] == "legacy_connector_filesystem_file_discovery"
+    assert guarantee(discovered_file_live["connector"])["success_shape"] == "domain_object"
     assert discovered_file_live["id"] == "file:README.txt"
     assert discovered_file_live["type"] == "ASCII text"
     assert discovered_file_live["size_bytes"] == 237
@@ -633,6 +642,7 @@ def assert_legacy_connector_middleware() -> None:
     observed_file = one(["observe", "file_manager::home_directory", "file:README.txt"])
     file_live = observed_file["results"]["live_data"]
     assert file_live["object_type"] == "legacy_connector_filesystem_file_observation"
+    assert guarantee(file_live["connector"])["stdout_stderr"] == "summarized_in_command_status_when_useful"
     assert file_live["file_id"] == "file:README.txt"
     assert file_live["command_status"]["ok"] is True
     assert "ASCII text" in file_live["file_type"]
@@ -650,6 +660,7 @@ def assert_legacy_connector_middleware() -> None:
     escaped_live = escaped["results"]["live_data"]
     assert escaped_live["object_type"] == "legacy_connector_error"
     assert escaped_live["found"] is False
+    assert guarantee(escaped_live["connector"])["failure_shape"] == "legacy_connector_error"
     assert escaped_live["command_status"]["ok"] is False
     assert "safe root" in escaped_live["command_status"]["error"]
 

@@ -107,6 +107,42 @@ legacy command output, normalize failures, enforce a safe root or allowlist, and
 guarantee that xctx receives a JSON object. It must still be declared through
 subdomain YAML like any other entrypoint.
 
+Middleware connector payloads should expose a `connector.shape_guarantee`
+object when they return connector metadata. This is an adapter-side contract,
+not a core xctx rule parser. It tells agents and operators that xctx receives
+one shaped JSON object from the middleware boundary for success and failure:
+
+```json
+{
+  "connector": {
+    "version": "legacy_connector.v1",
+    "kind": "legacy_command",
+    "profile": "<legacy_profile>",
+    "shape_guarantee": {
+      "contract": "always_json_object",
+      "xctx_receives": "single_json_object_for_live_data",
+      "success_shape": "domain_object",
+      "failure_shape": "legacy_connector_error",
+      "raw_legacy_output": "never_returned_unparsed",
+      "stdout_stderr": "summarized_in_command_status_when_useful"
+    }
+  }
+}
+```
+
+For xctx-native pass-through failure normalization, use a pass-through contract:
+
+```json
+{
+  "shape_guarantee": {
+    "contract": "pass_through_json_object",
+    "xctx_receives": "single_json_object_for_live_data",
+    "success_shape": "target_adapter_object",
+    "failure_shape": "xctx_native_passthrough_error"
+  }
+}
+```
+
 For applications designed for xctx, the connector can be pass-through:
 
 ```yaml

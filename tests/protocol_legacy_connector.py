@@ -23,6 +23,15 @@ from xctx.process.runtime import main as xctx_main  # noqa: E402
 from xctx_connectors.middleware import _safe_path  # noqa: E402
 
 
+def assert_shape_guarantee(connector: dict, *, contract: str, failure_shape: str) -> None:
+    guarantee = connector["shape_guarantee"]
+    assert guarantee["contract"] == contract
+    assert guarantee["xctx_receives"] == "single_json_object_for_live_data"
+    assert guarantee["failure_shape"] == failure_shape
+    assert guarantee["raw_legacy_output"] == "never_returned_unparsed"
+    assert guarantee["stdout_stderr"] == "summarized_in_command_status_when_useful"
+
+
 def run_engine(args: Iterable[str], code: int = 0) -> dict:
     out = io.StringIO()
     err = io.StringIO()
@@ -53,6 +62,7 @@ def test_middleware_returns_json_without_xctx_env() -> None:
     payload = json.loads(proc.stdout)
     assert payload["object_type"] == "legacy_connector_error"
     assert payload["found"] is False
+    assert_shape_guarantee(payload["connector"], contract="always_json_object", failure_shape="legacy_connector_error")
     assert "XCTX_AGENT_DOMAIN" in payload["command_status"]["error"]
 
 
@@ -79,16 +89,43 @@ def test_xctx_native_passthrough_stays_transparent() -> None:
     assert filing_live["id"] == "form:10-K"
 
 
+def test_xctx_native_passthrough_failure_has_shape_guarantee() -> None:
+    env = os.environ.copy()
+    env["XCTX_AGENT_DOMAIN"] = "stock_intelligence_hub"
+    env["XCTX_AGENT_SUBDOMAIN"] = "market_data_gateway"
+    proc = subprocess.run(
+        [sys.executable, str(ROOT / "legacy_connector.py"), "not-a-real-command", "--compact"],
+        cwd=ROOT,
+        env=env,
+        text=True,
+        capture_output=True,
+        timeout=10,
+        check=False,
+    )
+    assert proc.returncode == 0, proc.stderr + proc.stdout
+    assert proc.stderr == "", proc.stderr
+    payload = json.loads(proc.stdout)
+    assert payload["object_type"] == "xctx_native_passthrough_error"
+    assert payload["found"] is False
+    assert_shape_guarantee(
+        payload["connector"],
+        contract="pass_through_json_object",
+        failure_shape="xctx_native_passthrough_error",
+    )
+
+
 def test_legacy_filesystem_discovery_and_observation() -> None:
     discovery = run_engine(["discover", "file_manager::home_directory"])
     live = discovery["results"]["live_data"]
     assert live["object_type"] == "legacy_connector_filesystem_discovery"
     assert live["connector"]["kind"] == "legacy_command"
+    assert_shape_guarantee(live["connector"], contract="always_json_object", failure_shape="legacy_connector_error")
     assert live["observable_objects"]["file"]["id_shape"] == "file:<relative_path>"
 
     files = run_engine(["discover", "file_manager::home_directory", "list_files", "--limit", "5"])
     file_live = files["results"]["live_data"]
     assert file_live["object_type"] == "legacy_connector_filesystem_file_list"
+    assert_shape_guarantee(file_live["connector"], contract="always_json_object", failure_shape="legacy_connector_error")
     assert file_live["files"][0]["id"] == "file:README.txt"
     assert file_live["files"][0]["observe_cmd"] == "./xctx observe file_manager::home_directory file:README.txt"
     assert "pagination" not in file_live
@@ -105,6 +142,7 @@ def test_legacy_filesystem_discovery_and_observation() -> None:
     discovered_file = run_engine(["discover", "file_manager::home_directory", "file:README.txt"])
     discovered_file_live = discovered_file["results"]["live_data"]
     assert discovered_file_live["object_type"] == "legacy_connector_filesystem_file_discovery"
+    assert_shape_guarantee(discovered_file_live["connector"], contract="always_json_object", failure_shape="legacy_connector_error")
     assert discovered_file_live["id"] == "file:README.txt"
     assert discovered_file_live["type"] == "ASCII text"
     assert discovered_file_live["size_bytes"] == 237
@@ -131,6 +169,7 @@ def test_legacy_filesystem_discovery_and_observation() -> None:
     observed_live = observed["results"]["live_data"]
     assert observed["results"]["agent_domain"] == "file_manager"
     assert observed_live["object_type"] == "legacy_connector_filesystem_file_observation"
+    assert_shape_guarantee(observed_live["connector"], contract="always_json_object", failure_shape="legacy_connector_error")
     assert observed_live["command_status"]["ok"] is True
     assert observed_live["file_type"]
     assert observed_live["content"]["available"] is True
@@ -143,12 +182,14 @@ def test_legacy_filesystem_always_shapes_failures() -> None:
     live = escaped["results"]["live_data"]
     assert live["object_type"] == "legacy_connector_error"
     assert live["found"] is False
+    assert_shape_guarantee(live["connector"], contract="always_json_object", failure_shape="legacy_connector_error")
     assert live["command_status"]["ok"] is False
     assert "safe root" in live["command_status"]["error"]
 
     unknown = run_engine(["observe", "file:missing.txt"])
     unknown_live = unknown["results"]["live_data"]
     assert unknown_live["object_type"] == "legacy_connector_filesystem_observation"
+    assert_shape_guarantee(unknown_live["connector"], contract="always_json_object", failure_shape="legacy_connector_error")
     assert unknown_live["found"] is False
     assert unknown_live["command_status"]["ok"] is False
 
@@ -157,6 +198,7 @@ def main() -> int:
     test_middleware_returns_json_without_xctx_env()
     test_safe_path_blocks_escape()
     test_xctx_native_passthrough_stays_transparent()
+    test_xctx_native_passthrough_failure_has_shape_guarantee()
     test_legacy_filesystem_discovery_and_observation()
     test_legacy_filesystem_always_shapes_failures()
 

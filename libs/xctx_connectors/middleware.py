@@ -19,6 +19,34 @@ CONNECTOR_VERSION = "legacy_connector.v1"
 DEFAULT_MAX_CONTENT_BYTES = 65536
 
 
+def _shape_guarantee(kind: str) -> dict[str, str]:
+    base = {
+        "xctx_receives": "single_json_object_for_live_data",
+        "raw_legacy_output": "never_returned_unparsed",
+        "stdout_stderr": "summarized_in_command_status_when_useful",
+    }
+    if kind == "legacy_command":
+        return {
+            **base,
+            "contract": "always_json_object",
+            "success_shape": "domain_object",
+            "failure_shape": "legacy_connector_error",
+        }
+    if kind == "xctx_native_passthrough":
+        return {
+            **base,
+            "contract": "pass_through_json_object",
+            "success_shape": "target_adapter_object",
+            "failure_shape": "xctx_native_passthrough_error",
+        }
+    return {
+        **base,
+        "contract": "always_json_object",
+        "success_shape": "connector_object",
+        "failure_shape": "legacy_connector_error",
+    }
+
+
 def _emit_json(payload: dict[str, Any], *, compact: bool) -> None:
     if compact:
         print(json.dumps(payload, ensure_ascii=False, separators=(",", ":")))
@@ -55,12 +83,14 @@ def _subdomain_from_env(root: Path) -> dict[str, Any]:
 
 
 def _connector_meta(subdomain: dict[str, Any], connector: dict[str, Any]) -> dict[str, Any]:
+    kind = str(connector.get("kind", "unknown"))
     return {
         "version": CONNECTOR_VERSION,
-        "kind": connector.get("kind", "unknown"),
+        "kind": kind,
         "profile": connector.get("profile", subdomain.get("id")),
         "agent_domain": subdomain.get("_domain_id"),
         "agent_subdomain": subdomain.get("id"),
+        "shape_guarantee": _shape_guarantee(kind),
     }
 
 

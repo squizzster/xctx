@@ -146,6 +146,28 @@ alone is not enough. This build performs no domain mutation and returns
 routes. Python entrypoints own read-only live data access. This keeps `xctx` as
 the bootloader and avoids mixing business/domain logic into the protocol runtime.
 
+## Middleware Shape Guarantee
+
+Legacy connector middleware sits behind scoped YAML entrypoints. Its job is to
+call an application adapter or legacy command and return one JSON-compatible
+object for xctx to envelope. When a connector returns connector metadata, it
+declares a `shape_guarantee` such as:
+
+```json
+{
+  "contract": "always_json_object",
+  "xctx_receives": "single_json_object_for_live_data",
+  "success_shape": "domain_object",
+  "failure_shape": "legacy_connector_error",
+  "raw_legacy_output": "never_returned_unparsed"
+}
+```
+
+This is visible protocol evidence, not extra domain logic in `libs/xctx`. The
+generic runtime still only routes to the configured entrypoint and envelopes the
+returned object. The connector owns the guarantee that raw stdout/stderr and
+legacy failures are transformed or summarized before xctx sees them.
+
 ## Action Discovery
 
 Subdomain actions are discoverable without executing a query:

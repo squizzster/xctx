@@ -187,3 +187,22 @@ Those stock-domain tokens live in stock YAML, stock adapters, docs, and tests on
 `--name` is separately guarded as a root-surface publication leak: the parser can
 accept it to return an explicit protocol refusal, but root/help/version/discover
 must not advertise it as an available root move.
+
+## Middleware Boundary
+
+Enterprise middleware belongs outside `libs/xctx`. The generic runtime may route
+to a configured entrypoint and envelope one returned JSON object, but connector
+profiles, legacy command names, path policies, and transform rules remain in
+adapter-side packages such as `libs/xctx_connectors`.
+
+The file-manager demo is therefore configured through scoped YAML and an
+adapter-side connector. It exposes `connector.shape_guarantee` in live payloads
+so agents can see that the middleware promises:
+
+```text
+xctx_receives = single_json_object_for_live_data
+raw_legacy_output = never_returned_unparsed
+```
+
+These guarantee names must not become generic runtime semantics. They are
+contract evidence emitted by the adapter boundary.

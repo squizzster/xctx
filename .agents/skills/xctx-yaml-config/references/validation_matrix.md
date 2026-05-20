@@ -125,6 +125,9 @@ Expected proof:
 - xctx-native pass-through targets retain their existing payload shapes.
 - legacy failures return a JSON object with `found: false` or equivalent status instead of raw stderr/stdout.
 - discovery returns object identities and observe commands, not raw observed data.
+- connector metadata includes `shape_guarantee` when middleware returns connector metadata.
+- `shape_guarantee.xctx_receives` is `single_json_object_for_live_data`.
+- legacy connectors declare `contract: always_json_object`; normalized pass-through failures declare `contract: pass_through_json_object`.
 - core leak checks find no connector profile terms or legacy command semantics in `libs/xctx`.
 
 ## Removal changes
