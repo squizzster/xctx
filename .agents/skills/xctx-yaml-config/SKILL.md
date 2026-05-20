@@ -31,6 +31,13 @@ those operations mean, and belong in scoped YAML plus adapter code.
 1. Do not add domain/action flags to the root command surface.
 2. Do not add universe-level shortcuts that make root infer a domain from a bare
    business noun such as a company name.
+   Do not use `agent_routing.discovery_fallback`; a bare target such as
+   `./xctx discover GOOG` is not a domain/subdomain reference and must fail with
+   a next valid move instead of guessing a scoped adapter.
+   Bare subdomain or action names such as `market_data_gateway`,
+   `latest_price`, or `list_files` must also fail at root. Use an explicit
+   scoped reference such as `<domain>::<subdomain>` or
+   `<domain>::<subdomain>::<mode>`.
 3. Do not add ticker, symbol, CIK, receipt, filing, price, or other domain nouns
    to `libs/xctx` generic code.
 4. Generic `libs/xctx` code may parse reference shape, such as

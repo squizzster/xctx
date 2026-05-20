@@ -41,6 +41,18 @@ Root discovery now returns only configured agent domains and generic next moves:
 ./xctx audit root
 ```
 
+Bare root discovery targets are valid only for configured agent domains, such as
+`./xctx discover stock_intelligence_hub` or `./xctx discover file_manager`.
+Subdomains, actions, tickers, form codes, and file ids must be scoped first:
+
+```bash
+./xctx discover GOOG
+./xctx discover market_data_gateway
+./xctx discover file:README.txt
+```
+
+Those examples must fail rather than route through a configured fallback.
+
 ## What moved out of root
 
 ### 1. Domain affordances

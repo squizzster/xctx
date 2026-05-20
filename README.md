@@ -68,9 +68,24 @@ agent-domain surface.
 
 ## Scoped affordances
 
-Unscoped domain actions are intentionally refused. This is invalid:
+Root discovery is domain-only. These are valid bare discovery targets because
+they are configured agent domains:
 
 ```bash
+./xctx discover file_manager
+./xctx discover stock_intelligence_hub
+./xctx discover macro_intelligence_hub
+./xctx discover crypto_intelligence_hub
+./xctx discover options_intelligence_hub
+```
+
+Bare subdomains, action names, instruments, filing codes, and file ids are
+intentionally refused. These are invalid:
+
+```bash
+./xctx discover GOOG
+./xctx discover market_data_gateway
+./xctx discover file:README.txt
 ./xctx discover search_filing_family annual
 ```
 

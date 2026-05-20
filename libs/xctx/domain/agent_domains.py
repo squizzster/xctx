@@ -114,8 +114,6 @@ def parse_scoped_subdomain_mode_ref(
     if len(parts) != 3:
         return None, None, None, None
     domain_id, subdomain_token, action_token = parts
-    if not domain_id:
-        domain_id = str(store.get("active_agent_domain") or "")
     if not domain_id or not subdomain_token or not action_token:
         return None, None, None, None
     domains = store.get("agent_domains", {})
@@ -345,8 +343,6 @@ def parse_ref(store: dict[str, Any], token: str | None) -> tuple[str | None, str
     domains = store.get("agent_domains", {})
     if "::" in token:
         domain_id, subdomain_id = token.split("::", 1)
-        if not domain_id:
-            domain_id = str(store.get("active_agent_domain") or "")
         if domain_id not in domains:
             return None, None
         if not subdomain_id:
@@ -355,10 +351,6 @@ def parse_ref(store: dict[str, Any], token: str | None) -> tuple[str | None, str
         return domain_id, aliases.get(subdomain_id, subdomain_id)
     if token in domains:
         return token, None
-    domain = active_domain(store)
-    aliases = domain.get("_subdomain_aliases", {})
-    if token in aliases:
-        return domain["id"], aliases[token]
     return None, None
 
 
@@ -405,13 +397,6 @@ def route_for_identifier(store: dict[str, Any], identifier: str) -> tuple[str, s
     if default_route.get("agent_domain") and default_route.get("agent_subdomain"):
         return str(default_route["agent_domain"]), str(default_route["agent_subdomain"])
     return None, None
-
-
-def fallback_discovery_route(store: dict[str, Any]) -> dict[str, Any] | None:
-    route = agent_routing(store).get("discovery_fallback") or {}
-    if route.get("agent_domain") and route.get("agent_subdomain"):
-        return route
-    return None
 
 
 def observe_adapter_option_args(store: dict[str, Any], subdomain: dict[str, Any], options: dict[str, Any]) -> list[str]:
@@ -689,22 +674,6 @@ def discover_payload(
     if scoped_run_cmd:
         raise XctxError(f"next valid move: {scoped_run_cmd}")
 
-    route = fallback_discovery_route(store)
-    if route:
-        domain_id = str(route["agent_domain"])
-        subdomain_id = str(route["agent_subdomain"])
-        subdomain = resolve_subdomain(store, domain_id, subdomain_id)
-        live_command = str(route.get("entrypoint_command", "discover"))
-        live = call_external_command(store, subdomain, [live_command, target, *query_parts])
-        return (
-            "agent_subdomain",
-            {
-                "interpretation": route.get("interpretation", "free_text_discovery_routed_to_configured_fallback"),
-                "agent_domain": domain_id,
-                "agent_subdomain": subdomain_id,
-                "live_data": live,
-            },
-        )
     raise XctxError(f"next valid move: ./xctx discover or ./xctx other --topic {target}")
 
 

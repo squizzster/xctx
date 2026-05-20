@@ -63,7 +63,7 @@ def finding(level: str, check_id: str, message: str, **extra: Any) -> dict[str, 
     return payload
 
 
-def _json_payload_for_xctx(args: list[str]) -> dict[str, Any]:
+def _run_xctx_json(args: list[str]) -> tuple[int, dict[str, Any]]:
     from xctx.process.runtime import main as xctx_main
 
     out = io.StringIO()
@@ -71,11 +71,18 @@ def _json_payload_for_xctx(args: list[str]) -> dict[str, Any]:
     with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
         code = xctx_main(["--json", *args], root=ROOT)
     lines = [line for line in out.getvalue().splitlines() if line.strip()]
-    if code != 0 or len(lines) != 1 or err.getvalue():
+    if len(lines) != 1 or err.getvalue():
         raise RuntimeError(
             f"xctx {' '.join(args) or '<default>'} failed: rc={code}; stdout={out.getvalue()!r}; stderr={err.getvalue()!r}"
         )
-    return json.loads(lines[0])
+    return code, json.loads(lines[0])
+
+
+def _json_payload_for_xctx(args: list[str]) -> dict[str, Any]:
+    code, payload = _run_xctx_json(args)
+    if code != 0:
+        raise RuntimeError(f"xctx {' '.join(args) or '<default>'} failed: rc={code}; payload={payload!r}")
+    return payload
 
 
 def _contains_token(value: Any, token: str) -> bool:
@@ -132,6 +139,15 @@ def main() -> int:
                 "root command shortcuts must not encode domain-specific action routing",
             )
         )
+    routing = universe.get("agent_routing") or {}
+    if routing.get("discovery_fallback"):
+        findings.append(
+            finding(
+                "error",
+                "agent_routing:discovery_fallback_removed",
+                "bare discover targets must not be routed through a configured fallback; discovery must enter an explicit domain/subdomain scope",
+            )
+        )
 
     for payload_name, args in {
         "universe_default": [],
@@ -178,6 +194,7 @@ def main() -> int:
                     )
                 )
 
+    bare_root_targets_that_must_fail: set[str] = set()
     for domain_id, domain in sorted(domains.items()):
         check_prefix = f"domain:{domain_id}"
         if domain.get("id") != domain_id:
@@ -192,6 +209,9 @@ def main() -> int:
 
         domain_affordance_names: dict[str, str] = {}
         for subdomain_id, subdomain in sorted((domain.get("_subdomains") or {}).items()):
+            bare_root_targets_that_must_fail.add(str(subdomain_id))
+            for alias in subdomain.get("aliases") or []:
+                bare_root_targets_that_must_fail.add(str(alias))
             sub_prefix = f"subdomain:{domain_id}::{subdomain_id}"
             sub_status = str(subdomain.get("status") or "unknown")
             if sub_status not in ALLOWED_STATUSES:
@@ -203,6 +223,11 @@ def main() -> int:
             if sub_status == "online" and not (subdomain.get("actions") or {}):
                 findings.append(finding("error", f"{sub_prefix}:actions", "online subdomain must expose actions"))
             for action_name, action in sorted((subdomain.get("actions") or {}).items()):
+                bare_root_targets_that_must_fail.add(str(action_name))
+                if action.get("domain_action_name"):
+                    bare_root_targets_that_must_fail.add(str(action["domain_action_name"]))
+                for alias in action.get("aliases") or []:
+                    bare_root_targets_that_must_fail.add(str(alias))
                 action_prefix = f"action:{domain_id}::{subdomain_id}:{action_name}"
                 run_cmd = str(action.get("run_cmd") or "")
                 if not run_cmd.startswith("./xctx "):
@@ -229,7 +254,23 @@ def main() -> int:
                     if not action_matches(public_name, {**action, "aliases": aliases + [action_name]}, public_name):
                         findings.append(finding("error", f"{action_prefix}:domain_action_name", "domain affordance name must resolve through action matching"))
 
-    routing = universe.get("agent_routing") or {}
+    for token in sorted(item for item in bare_root_targets_that_must_fail if item and item not in domains):
+        try:
+            code, payload = _run_xctx_json(["discover", token])
+        except Exception as exc:
+            findings.append(finding("error", f"root_discover:{token}:probe_runs", "bare root discover refusal probe must run", error=str(exc)))
+            continue
+        if code == 0:
+            findings.append(
+                finding(
+                    "error",
+                    f"root_discover:{token}:must_fail",
+                    "bare root discover targets may only be configured agent domains; subdomains/actions/aliases require explicit domain scope",
+                    token=token,
+                    domain_level=payload.get("domain_level"),
+                )
+            )
+
     for route in routing.get("observe_routes", []) or []:
         route_id = str(route.get("id") or "<unnamed>")
         domain_id = str(route.get("agent_domain") or "")

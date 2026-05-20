@@ -75,11 +75,6 @@ agent_routing:
   default_observe_route:
     agent_domain: stock_intelligence_hub
     agent_subdomain: market_data_gateway
-  discovery_fallback:
-    agent_domain: stock_intelligence_hub
-    agent_subdomain: equity_filing
-    entrypoint_command: discover
-    interpretation: free_text_discovery_routed_to_configured_fallback
 systems:
   - id: stock_intelligence_hub
     name: stock_intelligence_hub

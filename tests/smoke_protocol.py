@@ -247,6 +247,13 @@ def assert_root_domain_subdomain_discovery() -> None:
     assert "configured_options" not in root_results
     assert "root_affordances" not in root_results
     domains = {item["id"]: item for item in root_results["agent_domains"]}
+    assert set(domains) == {
+        "stock_intelligence_hub",
+        "file_manager",
+        "macro_intelligence_hub",
+        "crypto_intelligence_hub",
+        "options_intelligence_hub",
+    }
     assert domains["stock_intelligence_hub"]["status"] == "online"
     assert domains["file_manager"]["status"] == "online"
     assert domains["macro_intelligence_hub"]["status"] == "offline"
@@ -256,6 +263,31 @@ def assert_root_domain_subdomain_discovery() -> None:
 
     alias_root = one(["discovery"])
     assert alias_root["domain_level"] == "root"
+
+    for domain_id in domains:
+        bare_domain = one(["discover", domain_id])
+        assert bare_domain["domain_level"] == "agent_domain"
+
+    for bare_target in (
+        "GOOG",
+        "AAPL",
+        "10-K",
+        "README.txt",
+        "file:README.txt",
+        "market_data_gateway",
+        "equity_filing",
+        "home_directory",
+        "latest_price",
+        "search_entity_instrument",
+        "list_files",
+        "::market_data_gateway",
+        "::market_data_gateway::search_entity_instrument",
+    ):
+        bare = one(["discover", bare_target], expected_code=1)
+        assert bare["record_type"] == "error"
+        assert bare["ok"] is False
+        assert "next valid move:" in bare["error"]
+        assert "free_text_discovery_routed_to_configured_fallback" not in json.dumps(bare, sort_keys=True)
 
     domain = one(["discover", "stock_intelligence_hub::"])
     assert domain["domain_level"] == "agent_domain"

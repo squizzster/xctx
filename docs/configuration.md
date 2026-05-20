@@ -99,6 +99,10 @@ But the root remains clean:
 
 returns agent domains and generic next moves only. It does not advertise
 `latest_price`, `search_entity_instrument`, `--bars`, or `--calendar-days`.
+Bare root targets are legal only for configured agent domains. Do not configure
+`agent_routing.discovery_fallback`, and do not rely on the active domain to
+resolve bare subdomain/action/object tokens such as `market_data_gateway`,
+`GOOG`, `10-K`, or `file:README.txt`.
 
 ## Entrypoints
 

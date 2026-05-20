@@ -30,6 +30,7 @@ Examples:
 
 ```bash
 ./xctx discover
+./xctx discover stock_intelligence_hub
 ./xctx discover stock_intelligence_hub::
 ./xctx discover stock_intelligence_hub::equity_filing
 ./xctx discover stock_intelligence_hub::equity_filing::search_forms
@@ -38,13 +39,19 @@ Examples:
 ./xctx discover stock_intelligence_hub::equity_filing list_forms
 ```
 
-Unscoped affordances are refused:
+Bare root discovery targets are valid only when the target is a configured
+agent domain. Bare subdomains, action names, instruments, filing codes, and file
+ids are refused:
 
 ```bash
+./xctx discover GOOG
+./xctx discover market_data_gateway
+./xctx discover file:README.txt
 ./xctx discover search_filing_family annual
 ```
 
-The returned error points to the scoped command.
+The returned error points to the next valid move when a scoped equivalent is
+known.
 
 ## Record envelope
 

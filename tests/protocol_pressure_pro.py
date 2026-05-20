@@ -105,6 +105,35 @@ def main() -> int:
     assert "configured_options" not in root["results"]
     assert "root_affordances" not in root["results"]
     assert root["results"]["next_moves"] == ["./xctx discover stock_intelligence_hub::", "./xctx audit root"]
+    root_domains = {item["id"] for item in root["results"]["agent_domains"]}
+    assert root_domains == {
+        "stock_intelligence_hub",
+        "file_manager",
+        "macro_intelligence_hub",
+        "crypto_intelligence_hub",
+        "options_intelligence_hub",
+    }
+    for domain_id in root_domains:
+        assert_cmd(run_engine(["discover", domain_id]), record_type="discovery", level="agent_domain")
+    for bare_target in (
+        "GOOG",
+        "AAPL",
+        "10-K",
+        "README.txt",
+        "file:README.txt",
+        "market_data_gateway",
+        "equity_filing",
+        "home_directory",
+        "latest_price",
+        "search_entity_instrument",
+        "list_files",
+        "::market_data_gateway",
+        "::market_data_gateway::search_entity_instrument",
+    ):
+        bare = run_engine(["discover", bare_target], code=1)
+        assert_cmd(bare, ok=False, record_type="error")
+        assert "next valid move:" in bare["error"]
+        assert "free_text_discovery_routed_to_configured_fallback" not in json.dumps(bare, sort_keys=True)
     for core_rel in (
         "libs/xctx/process/parser.py",
         "libs/xctx/commands/observe.py",
