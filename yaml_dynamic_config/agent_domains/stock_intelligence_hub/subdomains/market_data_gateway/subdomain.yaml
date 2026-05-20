@@ -11,9 +11,14 @@ full_description: >-
 data_description: >-
   Bundled read-only YAML reference data for canonical instrument IDs plus bundled read-only SQLite mini_stocks market-series fixture. Instrument IDs are stable stock_intelligence_hub identifiers; market_series IDs identify local OHLCV fixtures.
 entrypoint:
-  file: market_data_gateway.py
+  file: legacy_connector.py
   protocol: json_stdout
   compact_flag: --compact
+  timeout_seconds: 30
+connector:
+  kind: xctx_native_passthrough
+  profile: market_data_gateway
+  target_entrypoint: market_data_gateway.py
   timeout_seconds: 30
 data:
   storage_engine: mixed_yaml_sqlite

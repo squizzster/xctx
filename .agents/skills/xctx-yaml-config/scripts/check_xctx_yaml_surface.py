@@ -49,6 +49,11 @@ CORE_RUNTIME_FORBIDDEN_TOKENS = (
     "--calendar-days",
     "ticker",
     "symbol",
+    "file_manager",
+    "home_directory",
+    "list_files",
+    "list_directories",
+    "directory:",
 )
 
 

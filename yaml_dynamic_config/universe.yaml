@@ -27,6 +27,8 @@ xctx_interface:
   discover_domains_run_cmd: ./xctx discover
   help_run_cmd: ./xctx help
 agent_domains:
+  - id: file_manager
+    path: agent_domains/file_manager/domain.yaml
   - id: stock_intelligence_hub
     path: agent_domains/stock_intelligence_hub/domain.yaml
   - id: macro_intelligence_hub
@@ -37,6 +39,12 @@ agent_domains:
     path: agent_domains/options_intelligence_hub/domain.yaml
 agent_routing:
   observe_routes:
+    - id: file_manager_objects
+      agent_domain: file_manager
+      agent_subdomain: home_directory
+      prefixes:
+        - "file:"
+        - "directory:"
     - id: canonical_equity_instrument_ids
       agent_domain: stock_intelligence_hub
       agent_subdomain: market_data_gateway

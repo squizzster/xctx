@@ -129,12 +129,19 @@ def assert_modular_layout() -> None:
         "equity_filings.py",
         "equity_instruments.py",
         "market_data_gateway.py",
+        "legacy_connector.py",
+        "libs/xctx_connectors/__init__.py",
+        "libs/xctx_connectors/middleware.py",
         "yaml_dynamic_config/protocols/xctx_v4_2.yaml",
         "yaml_dynamic_config/shared/command_sets/core_commands.yaml",
         "yaml_dynamic_config/universe.yaml",
+        "yaml_dynamic_config/agent_domains/file_manager/domain.yaml",
+        "yaml_dynamic_config/agent_domains/file_manager/subdomains/home_directory/subdomain.yaml",
         "yaml_dynamic_config/agent_domains/stock_intelligence_hub/domain.yaml",
         "yaml_dynamic_config/agent_domains/stock_intelligence_hub/subdomains/equity_filing/subdomain.yaml",
         "yaml_dynamic_config/agent_domains/stock_intelligence_hub/subdomains/market_data_gateway/subdomain.yaml",
+        "data/file_manager_home/README.txt",
+        "data/file_manager_home/docs/manual.txt",
         "data/edgar_form_reference_taxonomy.sqlite",
         "data/mini_stocks.sqlite",
     ]
@@ -153,7 +160,14 @@ def assert_protocol_is_config_driven() -> None:
     assert "command_shortcuts" not in universe
     assert "root_affordances" not in universe
     assert universe["identity_resolution"]["query_fields"] == ["name", "id", "aliases"]
+    assert any(item["id"] == "file_manager" for item in universe["agent_domains"])
+    file_routes = [route for route in universe["agent_routing"]["observe_routes"] if route["id"] == "file_manager_objects"]
+    assert file_routes[0]["agent_domain"] == "file_manager"
+    assert file_routes[0]["prefixes"] == ["file:", "directory:"]
     market_subdomain = yaml.safe_load((ROOT / "yaml_dynamic_config" / "agent_domains" / "stock_intelligence_hub" / "subdomains" / "market_data_gateway" / "subdomain.yaml").read_text())
+    assert market_subdomain["entrypoint"]["file"] == "legacy_connector.py"
+    assert market_subdomain["connector"]["kind"] == "xctx_native_passthrough"
+    assert market_subdomain["connector"]["target_entrypoint"] == "market_data_gateway.py"
     assert market_subdomain["actions"]["search_entity_instrument"]["domain_affordance"] is True
     assert market_subdomain["actions"]["latest_price"]["domain_affordance"] is True
     assert market_subdomain["actions"]["latest_price"]["entrypoint_command"] == "latest-price"
@@ -161,6 +175,9 @@ def assert_protocol_is_config_driven() -> None:
     observe_flags = [option["flags"][0] for option in market_subdomain["actions"]["observe"]["cli_options"]]
     assert observe_flags == ["--bars", "--calendar-days"]
     filing_subdomain = yaml.safe_load((ROOT / "yaml_dynamic_config" / "agent_domains" / "stock_intelligence_hub" / "subdomains" / "equity_filing" / "subdomain.yaml").read_text())
+    assert filing_subdomain["entrypoint"]["file"] == "legacy_connector.py"
+    assert filing_subdomain["connector"]["kind"] == "xctx_native_passthrough"
+    assert filing_subdomain["connector"]["target_entrypoint"] == "equity_filings.py"
     assert filing_subdomain["actions"]["search_forms"]["domain_affordance"] is True
     assert filing_subdomain["actions"]["search_forms"]["domain_action_name"] == "search_filing_form"
     assert filing_subdomain["actions"]["discover"]["discovery_shapes"]["default_shape"] == "compact"
@@ -192,6 +209,11 @@ def assert_protocol_is_config_driven() -> None:
             "latest-price",
             "ticker",
             "symbol",
+            "file_manager",
+            "home_directory",
+            "list_files",
+            "list_directories",
+            "directory:",
         ):
             assert forbidden_literal not in text, (core_rel, forbidden_literal)
 
@@ -226,6 +248,7 @@ def assert_root_domain_subdomain_discovery() -> None:
     assert "root_affordances" not in root_results
     domains = {item["id"]: item for item in root_results["agent_domains"]}
     assert domains["stock_intelligence_hub"]["status"] == "online"
+    assert domains["file_manager"]["status"] == "online"
     assert domains["macro_intelligence_hub"]["status"] == "offline"
     assert domains["crypto_intelligence_hub"]["status"] == "down_for_maintenance"
     assert domains["options_intelligence_hub"]["repair_cmd"] == "./xctx repair offline:options_intelligence_hub"
@@ -301,6 +324,17 @@ def assert_root_domain_subdomain_discovery() -> None:
     sample_series_ids = [item["market_series_id"] for item in market_full_live["sample_market_series"]]
     assert len(sample_series_ids) == len(set(sample_series_ids)), sample_series_ids
     assert all("latest_bar" not in item for item in market_full_live["sample_market_series"])
+
+    file_domain = one(["discover", "file_manager::"])
+    assert file_domain["domain_level"] == "agent_domain"
+    assert file_domain["results"]["agent_subdomains"][0]["id"] == "home_directory"
+    file_subdomain = one(["discover", "file_manager::home_directory"])
+    assert file_subdomain["domain_level"] == "agent_subdomain"
+    file_live = file_subdomain["results"]["live_data"]
+    assert file_live["object_type"] == "legacy_connector_filesystem_discovery"
+    assert file_live["connector"]["kind"] == "legacy_command"
+    assert file_live["observable_objects"]["file"]["id_shape"] == "file:<relative_path>"
+    assert {item["id"] for item in file_live["discoverable_modes"]} == {"list_files", "list_directories"}
 
 
 def assert_scoped_affordance_routing() -> None:
@@ -564,6 +598,62 @@ def assert_observe_audit_repair() -> None:
     assert "down for maintenance" in maintenance["results"]["message"]
 
 
+def assert_legacy_connector_middleware() -> None:
+    files = one(["discover", "file_manager::home_directory", "list_files", "--limit", "2"])
+    live_files = files["results"]["live_data"]
+    assert live_files["object_type"] == "legacy_connector_filesystem_file_list"
+    assert live_files["connector"]["profile"] == "filesystem_home"
+    assert live_files["command_status"]["ok"] is True
+    assert "argv" not in live_files["command_status"]
+    assert "pagination" not in live_files
+    assert live_files["files"][0]["id"] == "file:README.txt"
+    assert "This is a bundled file-manager demo fixture" not in json.dumps(live_files)
+
+    full_files = one(["discover", "file_manager::home_directory", "list_files", "--limit", "1", "--shape", "full"])
+    full_files_live = full_files["results"]["live_data"]
+    assert full_files_live["pagination"]["returned_count"] == 1
+    assert full_files_live["command_status"]["argv"][0] == "ls"
+
+    discovered_file = one(["discover", "file_manager::home_directory", "file:README.txt"])
+    discovered_file_live = discovered_file["results"]["live_data"]
+    assert discovered_file_live["object_type"] == "legacy_connector_filesystem_file_discovery"
+    assert discovered_file_live["id"] == "file:README.txt"
+    assert discovered_file_live["type"] == "ASCII text"
+    assert discovered_file_live["size_bytes"] == 237
+    assert "argv" not in discovered_file_live["command_status"]["stat_line"]
+    assert "argv" not in discovered_file_live["command_status"]["type"]
+    assert "content" not in discovered_file_live
+    assert "This is a bundled file-manager demo fixture" not in json.dumps(discovered_file_live)
+
+    directories = one(["discover", "file_manager::home_directory", "list_directories"])
+    live_directories = directories["results"]["live_data"]
+    directory_ids = {item["id"] for item in live_directories["directories"]}
+    assert {"directory:docs", "directory:reports", "directory:archive"} <= directory_ids
+
+    observed_file = one(["observe", "file_manager::home_directory", "file:README.txt"])
+    file_live = observed_file["results"]["live_data"]
+    assert file_live["object_type"] == "legacy_connector_filesystem_file_observation"
+    assert file_live["file_id"] == "file:README.txt"
+    assert file_live["command_status"]["ok"] is True
+    assert "ASCII text" in file_live["file_type"]
+    assert file_live["content"]["available"] is True
+    assert "This is a bundled file-manager demo fixture" in file_live["content"]["text"]
+
+    routed_directory = one(["observe", "directory:docs"])
+    directory_live = routed_directory["results"]["live_data"]
+    assert routed_directory["results"]["agent_domain"] == "file_manager"
+    assert routed_directory["results"]["agent_subdomain"] == "home_directory"
+    assert directory_live["directory_id"] == "directory:docs"
+    assert directory_live["sample_children"][0]["id"] == "file:docs/manual.txt"
+
+    escaped = one(["observe", "file:../README.md"])
+    escaped_live = escaped["results"]["live_data"]
+    assert escaped_live["object_type"] == "legacy_connector_error"
+    assert escaped_live["found"] is False
+    assert escaped_live["command_status"]["ok"] is False
+    assert "safe root" in escaped_live["command_status"]["error"]
+
+
 def assert_plan_execute_other_and_output() -> None:
     plan = one(["plan", "bring_online", "stock_intelligence_hub::market_data_gateway"])
     results = plan["results"]
@@ -626,6 +716,7 @@ def main() -> int:
     assert_protocol_is_config_driven()
     assert_root_domain_subdomain_discovery()
     assert_scoped_affordance_routing()
+    assert_legacy_connector_middleware()
     assert_observe_audit_repair()
     assert_plan_execute_other_and_output()
     print("hardened xctx protocol smoke checks passed")

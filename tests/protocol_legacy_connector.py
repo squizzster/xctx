@@ -1,0 +1,180 @@
+#!/usr/bin/env python3
+"""Focused tests for xctx middleware connectors and legacy filesystem demo."""
+
+from __future__ import annotations
+
+import contextlib
+import io
+import json
+import os
+import subprocess
+import sys
+from pathlib import Path
+from typing import Iterable
+
+ROOT = Path(__file__).resolve().parents[1]
+LIBS = ROOT / "libs"
+XCTX = ROOT / "xctx"
+
+if str(LIBS) not in sys.path:
+    sys.path.insert(0, str(LIBS))
+
+from xctx.process.runtime import main as xctx_main  # noqa: E402
+from xctx_connectors.middleware import _safe_path  # noqa: E402
+
+
+def run_engine(args: Iterable[str], code: int = 0) -> dict:
+    out = io.StringIO()
+    err = io.StringIO()
+    with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+        rc = xctx_main(["--json", *list(args)], root=ROOT)
+    assert rc == code, f"args={list(args)} rc={rc}\nSTDOUT={out.getvalue()}\nSTDERR={err.getvalue()}"
+    assert err.getvalue() == "", err.getvalue()
+    lines = [line for line in out.getvalue().splitlines() if line.strip()]
+    assert len(lines) == 1, out.getvalue()
+    return json.loads(lines[0])
+
+
+def test_middleware_returns_json_without_xctx_env() -> None:
+    env = os.environ.copy()
+    env.pop("XCTX_AGENT_DOMAIN", None)
+    env.pop("XCTX_AGENT_SUBDOMAIN", None)
+    proc = subprocess.run(
+        [sys.executable, str(ROOT / "legacy_connector.py"), "observe", "file:README.txt", "--compact"],
+        cwd=ROOT,
+        env=env,
+        text=True,
+        capture_output=True,
+        timeout=10,
+        check=False,
+    )
+    assert proc.returncode == 0, proc.stderr + proc.stdout
+    assert proc.stderr == "", proc.stderr
+    payload = json.loads(proc.stdout)
+    assert payload["object_type"] == "legacy_connector_error"
+    assert payload["found"] is False
+    assert "XCTX_AGENT_DOMAIN" in payload["command_status"]["error"]
+
+
+def test_safe_path_blocks_escape() -> None:
+    safe_root = ROOT / "data" / "file_manager_home"
+    assert _safe_path(safe_root, "docs/manual.txt", expected="file").relative == "docs/manual.txt"
+    try:
+        _safe_path(safe_root, "../README.md", expected="file")
+    except ValueError as exc:
+        assert "safe root" in str(exc)
+    else:  # pragma: no cover - defensive standalone script check
+        raise AssertionError("safe path accepted traversal")
+
+
+def test_xctx_native_passthrough_stays_transparent() -> None:
+    market = run_engine(["discover", "stock_intelligence_hub::market_data_gateway", "search_market_series", "AAPL"])
+    live = market["results"]["live_data"]
+    assert live["object_type"] == "market_data_gateway::search_market_series::result"
+    assert live["matches"][0]["market_series_id"] == "market_series:aapl:daily"
+
+    filing = run_engine(["observe", "form:10-K"])
+    filing_live = filing["results"]["live_data"]
+    assert filing_live["object_type"] == "filing_form_observation"
+    assert filing_live["id"] == "form:10-K"
+
+
+def test_legacy_filesystem_discovery_and_observation() -> None:
+    discovery = run_engine(["discover", "file_manager::home_directory"])
+    live = discovery["results"]["live_data"]
+    assert live["object_type"] == "legacy_connector_filesystem_discovery"
+    assert live["connector"]["kind"] == "legacy_command"
+    assert live["observable_objects"]["file"]["id_shape"] == "file:<relative_path>"
+
+    files = run_engine(["discover", "file_manager::home_directory", "list_files", "--limit", "5"])
+    file_live = files["results"]["live_data"]
+    assert file_live["object_type"] == "legacy_connector_filesystem_file_list"
+    assert file_live["files"][0]["id"] == "file:README.txt"
+    assert file_live["files"][0]["observe_cmd"] == "./xctx observe file_manager::home_directory file:README.txt"
+    assert "pagination" not in file_live
+    assert "argv" not in file_live["command_status"]
+    assert "This is a bundled file-manager demo fixture" not in json.dumps(file_live)
+
+    files_full = run_engine(["discover", "file_manager::home_directory", "list_files", "--limit", "1", "--shape", "full"])
+    files_full_live = files_full["results"]["live_data"]
+    assert files_full_live["shape"] == "full"
+    assert files_full_live["pagination"]["total_count"] == 1
+    assert files_full_live["pagination"]["returned_count"] == 1
+    assert files_full_live["command_status"]["argv"][0] == "ls"
+
+    discovered_file = run_engine(["discover", "file_manager::home_directory", "file:README.txt"])
+    discovered_file_live = discovered_file["results"]["live_data"]
+    assert discovered_file_live["object_type"] == "legacy_connector_filesystem_file_discovery"
+    assert discovered_file_live["id"] == "file:README.txt"
+    assert discovered_file_live["type"] == "ASCII text"
+    assert discovered_file_live["size_bytes"] == 237
+    assert discovered_file_live["modified_display"].startswith("May 20")
+    assert discovered_file_live["observe_cmd"] == "./xctx observe file_manager::home_directory file:README.txt"
+    assert "argv" not in discovered_file_live["command_status"]["stat_line"]
+    assert "argv" not in discovered_file_live["command_status"]["type"]
+    assert "content" not in discovered_file_live
+    assert "This is a bundled file-manager demo fixture" not in json.dumps(discovered_file_live)
+
+    discovered_file_full = run_engine(["discover", "file_manager::home_directory", "file:README.txt", "--shape", "full"])
+    discovered_file_full_live = discovered_file_full["results"]["live_data"]
+    assert discovered_file_full_live["shape"] == "full"
+    assert discovered_file_full_live["command_status"]["stat_line"]["argv"][0] == "ls"
+    assert discovered_file_full_live["command_status"]["type"]["argv"][0] == "file"
+
+    discovered_directory = run_engine(["discover", "file_manager::home_directory", "directory:docs"])
+    discovered_directory_live = discovered_directory["results"]["live_data"]
+    assert discovered_directory_live["object_type"] == "legacy_connector_filesystem_directory_discovery"
+    assert discovered_directory_live["id"] == "directory:docs"
+    assert discovered_directory_live["child_count"] == 1
+
+    observed = run_engine(["observe", "file:README.txt"])
+    observed_live = observed["results"]["live_data"]
+    assert observed["results"]["agent_domain"] == "file_manager"
+    assert observed_live["object_type"] == "legacy_connector_filesystem_file_observation"
+    assert observed_live["command_status"]["ok"] is True
+    assert observed_live["file_type"]
+    assert observed_live["content"]["available"] is True
+    assert observed_live["content"]["bytes_returned"] == 237
+    assert "This is a bundled file-manager demo fixture" in observed_live["content"]["text"]
+
+
+def test_legacy_filesystem_always_shapes_failures() -> None:
+    escaped = run_engine(["observe", "file:../README.md"])
+    live = escaped["results"]["live_data"]
+    assert live["object_type"] == "legacy_connector_error"
+    assert live["found"] is False
+    assert live["command_status"]["ok"] is False
+    assert "safe root" in live["command_status"]["error"]
+
+    unknown = run_engine(["observe", "file:missing.txt"])
+    unknown_live = unknown["results"]["live_data"]
+    assert unknown_live["object_type"] == "legacy_connector_filesystem_observation"
+    assert unknown_live["found"] is False
+    assert unknown_live["command_status"]["ok"] is False
+
+
+def main() -> int:
+    test_middleware_returns_json_without_xctx_env()
+    test_safe_path_blocks_escape()
+    test_xctx_native_passthrough_stays_transparent()
+    test_legacy_filesystem_discovery_and_observation()
+    test_legacy_filesystem_always_shapes_failures()
+
+    cli = subprocess.run(
+        [str(XCTX), "--json", "discover", "file_manager::home_directory", "list_directories"],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        timeout=15,
+        check=False,
+    )
+    assert cli.returncode == 0, cli.stderr + cli.stdout
+    assert cli.stderr == "", cli.stderr
+    assert json.loads(cli.stdout)["results"]["live_data"]["object_type"] == "legacy_connector_filesystem_directory_list"
+
+    print("legacy connector middleware checks passed")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

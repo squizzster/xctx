@@ -1,0 +1,19 @@
+id: file_manager
+kind: agent_domain
+status: online
+health: online
+basic_description: File-manager demonstration domain for xctx legacy connector middleware.
+full_description: >-
+  file_manager demonstrates how xctx can present a clean protocol surface for an
+  existing legacy system. The home_directory subdomain adapts ordinary
+  filesystem commands into stable JSON objects while xctx remains a generic
+  YAML-driven router.
+canonical_identity_policy:
+  trusted_id_scope: file_manager
+  file_id_format: file:<relative_path>
+  directory_id_format: directory:<relative_path>
+  cross_subdomain_rule: File and directory identifiers are scoped to configured file_manager subdomains.
+agent_subdomains:
+  home_directory:
+    path: subdomains/home_directory/subdomain.yaml
+    priority: 10

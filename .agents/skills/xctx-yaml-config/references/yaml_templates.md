@@ -14,6 +14,13 @@ state or raw/final data. Explicit `--shape full` discovery indexes are
 acceptable for now when they are bounded, intentionally requested, and still
 serve as discovery/index records rather than raw observed payloads.
 
+Discovery of a concrete observable id may return classification and selection
+metadata for that object, such as type, size, modified time, coverage, counts,
+schema, or an observe command. It must not return raw contents or final
+materialized state. For example, a filesystem domain may discover
+`file:README.txt` as `type: ASCII text`, `size: 237`, and an observe command;
+the text of the file belongs in `observe`.
+
 ## New domain
 
 ```yaml
@@ -71,20 +78,21 @@ actions:
   discover:
     priority: 10
     entrypoint_command: discover
-    desc: Discover modes, observable object shapes, and next discovery commands.
+    desc: Discover modes, observable object shapes, concrete object metadata, and next discovery commands.
     discovery_shapes:
       default_shape: compact
       shapes:
         - compact
         - full
     argument_shapes:
+      - "[<object>:<id>]"
       - "[--shape compact|full]"
     examples:
       - query: compact subdomain discovery
         run_cmd: ./xctx discover <domain_id>::<subdomain_id>
       - query: full subdomain discovery
         run_cmd: ./xctx discover <domain_id>::<subdomain_id> --shape full
-    run_cmd: ./xctx discover <domain_id>::<subdomain_id> [--shape compact|full]
+    run_cmd: ./xctx discover <domain_id>::<subdomain_id> [<object>:<id>] [--shape compact|full]
 ```
 
 Compact subdomain discovery should show the next things an agent can discover:
@@ -92,6 +100,13 @@ discoverable modes, query shapes, observable object id shapes, observe target
 shapes, bounded stats, and a full-shape next move. Full subdomain discovery may
 include richer mode metadata, examples, samples, schema notes, or bounded
 full-index rows, but it still must not return raw observed data.
+
+Compact list/discovery payloads should hide mechanical adapter diagnostics that
+do not help choose the next move. For example, omit legacy command argv arrays
+in compact and omit pagination when the complete result is one item
+(`total_count == returned_count == 1` with no cursor/next cursor). `--shape full`
+should include diagnostic command details and pagination metadata even when
+redundant.
 
 When there is a real adapter:
 
@@ -106,6 +121,45 @@ data:
   path: <relative/path/if/applicable>
   read_only: true
 ```
+
+When the subdomain should route through middleware first, keep the middleware as
+the declared entrypoint and put the application or legacy target under
+`connector`. For xctx-native adapters this is a pass-through profile:
+
+```yaml
+entrypoint:
+  file: legacy_connector.py
+  protocol: json_stdout
+  compact_flag: --compact
+  timeout_seconds: 30
+connector:
+  kind: xctx_native_passthrough
+  profile: <subdomain_id>
+  target_entrypoint: <domain_adapter.py>
+  timeout_seconds: 30
+```
+
+For a legacy command profile, declare bounded connector controls in the scoped
+subdomain YAML and implement the parser/transform in adapter-side middleware,
+not in `libs/xctx`:
+
+```yaml
+entrypoint:
+  file: legacy_connector.py
+  protocol: json_stdout
+  compact_flag: --compact
+  timeout_seconds: 10
+connector:
+  kind: legacy_command
+  profile: <legacy_profile>
+  timeout_seconds: 5
+  max_output_bytes: 20000
+```
+
+The connector should always emit one JSON object for xctx to envelope, including
+structured failures. Discovery actions still discover observable object
+identities and lawful next moves; observation actions still materialize the
+selected object.
 
 ## New subdomain action
 
@@ -196,6 +250,11 @@ include richer discovery metadata, descriptions, examples, and observe commands
 when that is useful for black-box exploration. Put raw documents, raw price
 series, bodies, line items, CSV exports, or final materialized object state
 behind `observe`.
+
+Compact list shape may omit a `pagination` object only when it is genuinely
+trivial: one total item, one returned item, no cursor, no next cursor, and no
+additional page. Full list shape should always return pagination when the action
+is declared as a collection.
 
 ## New scoped domain affordance
 

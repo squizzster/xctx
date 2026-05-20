@@ -66,6 +66,15 @@ pointers. Discovery must not return final/raw observed data such as latest
 prices, OHLCV bars, filing bodies, full observed records, raw documents, CSV
 payloads, or bulk observation datasets.
 
+When discovery is given a concrete observable id, it may return discovery-grade
+classification and selection metadata for that object. Examples: a file's
+resolved id, type/classification, size, modification time, content availability,
+coverage, ownership scope, or a direct observe command. It still must not return
+the object's materialized contents. In a file-manager-like domain, discovering
+`file:README.txt` may say `type: ASCII text`, `size: 237`, and
+`observe_cmd: ... file:README.txt`; observing `file:README.txt` is where the
+file text belongs.
+
 Explicit `--shape full` discovery indexes are acceptable for now when they are
 bounded, intentionally requested, and still serve as discovery/index records
 rather than raw observed payloads. Full discovery rows may include richer
@@ -73,10 +82,66 @@ metadata, descriptions, examples, and observe commands when useful for black-box
 exploration. Raw documents, raw price series, bodies, line items, CSV exports,
 or final materialized object state still belong behind `observe`.
 
+Compact discovery should optimize for agent readability. It may omit mechanical
+diagnostics such as legacy command argv arrays, raw stdout/stderr previews, and
+pagination blocks when the complete result is a single returned item
+(`total_count == returned_count == 1` with no cursor/next cursor). Full shape
+should keep diagnostic command details and pagination metadata even when they
+look redundant, so operators can inspect the exact adapter/legacy boundary.
+
 Domain-specific meaning belongs in scoped YAML and adapter code. Generic
 `libs/xctx` code may present and route configured surfaces, but it must not know
 what application tokens such as tickers, form codes, order ids, prices, or
 filing concepts mean.
+
+## Middleware connector boundary
+
+For enterprise or legacy integrations, keep this layered shape:
+
+```text
+xctx generic protocol -> scoped YAML entrypoint -> middleware connector -> application or legacy command -> JSON object -> xctx envelope
+```
+
+The middleware connector is adapter-side code, not xctx core. It may translate
+legacy command output, normalize failures, enforce a safe root or allowlist, and
+guarantee that xctx receives a JSON object. It must still be declared through
+subdomain YAML like any other entrypoint.
+
+For applications designed for xctx, the connector can be pass-through:
+
+```yaml
+entrypoint:
+  file: legacy_connector.py
+  protocol: json_stdout
+  compact_flag: --compact
+  timeout_seconds: 30
+connector:
+  kind: xctx_native_passthrough
+  profile: <subdomain_id>
+  target_entrypoint: <domain_adapter.py>
+  timeout_seconds: 30
+```
+
+For legacy systems, the connector should declare the legacy profile and its
+bounded controls in scoped YAML:
+
+```yaml
+entrypoint:
+  file: legacy_connector.py
+  protocol: json_stdout
+  compact_flag: --compact
+  timeout_seconds: 10
+connector:
+  kind: legacy_command
+  profile: <legacy_profile>
+  timeout_seconds: 5
+  max_output_bytes: 20000
+```
+
+Do not add connector profiles, legacy command names, file paths, stock terms,
+filing terms, or other application semantics to `libs/xctx`. Add new profiles
+under adapter/middleware packages and prove with tests that generic core remains
+free of the new domain-specific literals.
 
 Before adding or changing a discovery action:
 
@@ -97,6 +162,7 @@ Before adding or changing a discovery action:
 | Add domain affordance | subdomain `actions.<id>.domain_affordance: true` | `./xctx discover <domain>::<affordance>` works; unscoped equivalent is refused |
 | Add mode discovery | subdomain `actions.<id>` metadata such as `argument_shapes`, `examples`, `related_commands`, `returns` | `./xctx discover <domain>::<subdomain>::<action>` and no-query action discovery explain the mode |
 | Add subdomain discovery shapes | subdomain `actions.discover.discovery_shapes` and adapter discover handling | Default subdomain discovery is compact; `--shape full` returns richer surface |
+| Add middleware connector | subdomain `entrypoint.file`, `connector` block, adapter/middleware code | xctx routes through YAML only; connector returns JSON for success and failure; no profile terms leak into `libs/xctx` |
 | Add list mode | subdomain `actions.<id>.query_required: false`; adapter `entrypoint_command`; optional `collection` contract | list command returns a compact bounded payload instead of being treated as free-text search |
 | Add command option | owning action `cli_options` | Option appears only on scoped target surface; wrong target/refusal paths work |
 | Change routing | `universe.yaml` `agent_routing` | trusted IDs route correctly; ambiguous IDs do not guess |
@@ -234,6 +300,16 @@ Compact subdomain discovery should return:
 Full subdomain discovery may include richer mode metadata, examples, samples,
 schema notes, adapter-owned guidance, or bounded full-index rows. It still must
 obey the discover/observe data boundary.
+
+Compact/full presentation rules:
+
+1. Default compact output should be terse enough for black-box exploration.
+2. Hide low-value mechanical fields in compact when they do not affect the next
+   lawful move, such as adapter argv arrays or trivial one-item pagination.
+3. Keep IDs, object type, type/classification, size/count summaries, coverage,
+   observe commands, and data-boundary statements in compact.
+4. Full output should preserve diagnostics, full pagination metadata, richer
+   row metadata, examples, and command details.
 
 ## CLI option contract
 

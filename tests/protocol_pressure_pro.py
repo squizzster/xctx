@@ -124,10 +124,17 @@ def main() -> int:
             "latest-price",
             "ticker",
             "symbol",
+            "file_manager",
+            "home_directory",
+            "list_files",
+            "list_directories",
+            "directory:",
         ):
             assert forbidden_literal not in text, (core_rel, forbidden_literal)
 
     print("[pressure] domain/subdomain discovery", flush=True)
+    root_domains = {item["id"]: item for item in root["results"]["agent_domains"]}
+    assert root_domains["file_manager"]["status"] == "online"
     domain = run_engine(["discover", "stock_intelligence_hub::"])
     assert_cmd(domain, record_type="discovery", level="agent_domain")
     subdomains = {item["id"]: item for item in domain["results"]["agent_subdomains"]}
@@ -167,6 +174,16 @@ def main() -> int:
     assert len(sample_series_ids) == len(set(sample_series_ids)), sample_series_ids
     assert all("latest_bar" not in item for item in market_full["results"]["live_data"]["sample_market_series"])
 
+    file_domain = run_engine(["discover", "file_manager::"])
+    assert_cmd(file_domain, record_type="discovery", level="agent_domain")
+    assert file_domain["results"]["agent_subdomains"][0]["id"] == "home_directory"
+    file_subdomain = run_engine(["discover", "file_manager::home_directory"])
+    assert file_subdomain["results"]["shape"] == "compact"
+    assert file_subdomain["results"]["live_data"]["connector"]["kind"] == "legacy_command"
+    file_full = run_engine(["discover", "file_manager::home_directory", "--shape", "full"])
+    assert file_full["results"]["shape"] == "full"
+    assert file_full["results"]["live_data"]["legacy_commands"]["list"] == "ls -lt"
+
     print("[pressure] scoped affordance routing", flush=True)
     invalid_unscoped = run_engine(["discover", "search_filing_family", "annual"], code=1)
     assert_cmd(invalid_unscoped, ok=False, record_type="error")
@@ -194,6 +211,26 @@ def main() -> int:
     instruments = run_engine(["discover", "stock_intelligence_hub::market_data_gateway", "list_instruments", "--limit", "2"])
     assert instruments["results"]["live_data"]["shape"] == "compact"
     assert instruments["results"]["live_data"]["pagination"]["next_cursor"] == "2"
+
+    file_list = run_engine(["discover", "file_manager::home_directory", "list_files", "--limit", "2"])
+    assert file_list["results"]["live_data"]["object_type"] == "legacy_connector_filesystem_file_list"
+    assert file_list["results"]["live_data"]["files"][0]["id"] == "file:README.txt"
+    assert "pagination" not in file_list["results"]["live_data"]
+    assert "argv" not in file_list["results"]["live_data"]["command_status"]
+    assert "This is a bundled file-manager demo fixture" not in json.dumps(file_list["results"]["live_data"])
+    file_list_full = run_engine(["discover", "file_manager::home_directory", "list_files", "--limit", "1", "--shape", "full"])
+    assert file_list_full["results"]["live_data"]["pagination"]["returned_count"] == 1
+    assert file_list_full["results"]["live_data"]["command_status"]["argv"][0] == "ls"
+    discovered_file = run_engine(["discover", "file_manager::home_directory", "file:README.txt"])
+    assert discovered_file["results"]["live_data"]["object_type"] == "legacy_connector_filesystem_file_discovery"
+    assert discovered_file["results"]["live_data"]["type"] == "ASCII text"
+    assert discovered_file["results"]["live_data"]["size_bytes"] == 237
+    assert "argv" not in discovered_file["results"]["live_data"]["command_status"]["stat_line"]
+    assert "argv" not in discovered_file["results"]["live_data"]["command_status"]["type"]
+    assert "content" not in discovered_file["results"]["live_data"]
+    assert "This is a bundled file-manager demo fixture" not in json.dumps(discovered_file["results"]["live_data"])
+    directory_list = run_engine(["discover", "file_manager::home_directory", "list_directories"])
+    assert "directory:docs" in {item["id"] for item in directory_list["results"]["live_data"]["directories"]}
 
     exact_10k = run_engine(["discover", "stock_intelligence_hub::equity_filing", "search_forms", "10-K"])
     exact_10k_ids = [item["id"] for item in exact_10k["results"]["live_data"]["matches"]]
@@ -289,6 +326,16 @@ def main() -> int:
     filing_context = run_engine(["observe", "stock_intelligence_hub::equity_filing", "instrument:aapl"])
     assert filing_context["results"]["live_data"]["context_state"] == "with_equity"
     assert filing_context["results"]["live_data"]["issuer_submission_feed_status"] == "offline_not_bundled"
+    observed_file = run_engine(["observe", "file:README.txt"])
+    assert observed_file["results"]["agent_domain"] == "file_manager"
+    assert observed_file["results"]["live_data"]["object_type"] == "legacy_connector_filesystem_file_observation"
+    assert observed_file["results"]["live_data"]["content"]["available"] is True
+    assert "This is a bundled file-manager demo fixture" in observed_file["results"]["live_data"]["content"]["text"]
+    observed_directory = run_engine(["observe", "directory:docs"])
+    assert observed_directory["results"]["live_data"]["directory_id"] == "directory:docs"
+    escaped_file = run_engine(["observe", "file:../README.md"])
+    assert escaped_file["results"]["live_data"]["object_type"] == "legacy_connector_error"
+    assert escaped_file["results"]["live_data"]["found"] is False
 
     audit = run_engine(["audit", "root"])
     assert_cmd(audit, record_type="audit", level="root")

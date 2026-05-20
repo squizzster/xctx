@@ -44,6 +44,7 @@ Expected proof:
 ./xctx --json discover <domain_id>::<subdomain_id>::<action_id>
 ./xctx --json discover <domain_id>::<subdomain_id> <action_id>
 ./xctx --json discover <domain_id>::<subdomain_id> <action_id> <query>
+./xctx --json discover <domain_id>::<subdomain_id> <object>:<known_id>
 ```
 
 Expected proof:
@@ -51,6 +52,7 @@ Expected proof:
 - no-query action discovery returns interface metadata when `query_required: true`.
 - executable no-query actions return their declared list/discovery payload when `query_required: false`.
 - query execution calls the declared adapter command.
+- concrete object discovery returns classification/metadata and observe commands, not raw contents.
 - action metadata is visible only after domain/subdomain scope is selected.
 
 ## List mode additions
@@ -58,6 +60,7 @@ Expected proof:
 ```bash
 ./xctx --json discover <domain_id>::<subdomain_id> list_<objects>
 ./xctx --json discover <domain_id>::<subdomain_id> list_<objects> --limit 2
+./xctx --json discover <domain_id>::<subdomain_id> list_<objects> --limit 1 --shape full
 ```
 
 Expected proof:
@@ -65,6 +68,8 @@ Expected proof:
 - list mode returns a bounded list object.
 - the literal list mode name is not treated as a free-text search query.
 - bad list arguments fail with scoped guidance.
+- compact omits low-value mechanical diagnostics where allowed.
+- full preserves declared collection pagination and diagnostic command details.
 
 ## CLI option additions
 
@@ -103,6 +108,24 @@ Expected proof:
 
 - trusted prefixes route to the intended subdomain.
 - ambiguous or wrong identifiers do not silently produce unrelated facts.
+
+## Middleware connector additions
+
+```bash
+./xctx --json discover <domain_id>::<subdomain_id>
+./xctx --json discover <domain_id>::<subdomain_id> <list_mode> --limit 2
+./xctx --json observe <trusted_prefix>:<known_id>
+./xctx --json observe <trusted_prefix>:<invalid_or_blocked_id>
+python3 tests/protocol_legacy_connector.py
+```
+
+Expected proof:
+
+- xctx routes through the configured middleware entrypoint with no generic core changes.
+- xctx-native pass-through targets retain their existing payload shapes.
+- legacy failures return a JSON object with `found: false` or equivalent status instead of raw stderr/stdout.
+- discovery returns object identities and observe commands, not raw observed data.
+- core leak checks find no connector profile terms or legacy command semantics in `libs/xctx`.
 
 ## Removal changes
 

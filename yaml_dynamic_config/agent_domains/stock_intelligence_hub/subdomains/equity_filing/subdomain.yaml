@@ -11,9 +11,14 @@ full_description: >-
 data_description: >-
   Bundled read-only SQLite database: 412 EDGAR form lookup records, 41 canonical families, 12 priority buckets, 51 category labels, and 176 amendment forms.
 entrypoint:
-  file: equity_filings.py
+  file: legacy_connector.py
   protocol: json_stdout
   compact_flag: --compact
+  timeout_seconds: 30
+connector:
+  kind: xctx_native_passthrough
+  profile: equity_filing
+  target_entrypoint: equity_filings.py
   timeout_seconds: 30
 data:
   storage_engine: sqlite

@@ -102,26 +102,55 @@ returns agent domains and generic next moves only. It does not advertise
 
 ## Entrypoints
 
-The live stock subdomains have explicit external entrypoints:
+Subdomains declare the entrypoint that xctx calls. In this build the online
+stock subdomains route through middleware first, then pass through to their
+xctx-native application adapters:
 
 ```yaml
 entrypoint:
-  file: market_data_gateway.py
+  file: legacy_connector.py
   protocol: json_stdout
+connector:
+  kind: xctx_native_passthrough
+  profile: market_data_gateway
+  target_entrypoint: market_data_gateway.py
 ```
 
 and:
 
 ```yaml
 entrypoint:
-  file: equity_filings.py
+  file: legacy_connector.py
   protocol: json_stdout
+connector:
+  kind: xctx_native_passthrough
+  profile: equity_filing
+  target_entrypoint: equity_filings.py
 ```
 
 The protocol runtime loads YAML declarations and calls the entrypoint only when
 an online action requires live bundled data. The xctx core therefore knows how to
 route a declared domain, subdomain, and action, but it does not need to know what
 a ticker, CIK, latest price, filing form, bar, or calendar day means.
+
+Legacy integrations use the same xctx surface. The subdomain still declares a
+single JSON entrypoint, but the connector profile adapts the external system and
+normalizes success and failure into one object for xctx to envelope:
+
+```yaml
+entrypoint:
+  file: legacy_connector.py
+  protocol: json_stdout
+connector:
+  kind: legacy_command
+  profile: filesystem_home
+  safe_root: data/file_manager_home
+```
+
+The file-manager demo proves this with ordinary filesystem commands. Discovery
+returns `file:<relative_path>` and `directory:<relative_path>` identities;
+observation inspects the selected object. The generic `libs/xctx` runtime still
+contains no file-manager, stock, or filing semantics.
 
 ## Scoped command options
 
