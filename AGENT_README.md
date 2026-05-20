@@ -228,6 +228,16 @@ handoff records such as `META` for former-symbol alias testing.
 ./xctx repair down_for_maintenance:stock_intelligence_hub::fundamentals_gateway
 ```
 
+Root audit stays at the protocol/config/domain-availability layer. It does not
+call scoped adapters or bubble fixture checks such as ticker probes, database
+counts, filing table checks, or filesystem legacy-command probes. Use scoped
+audit for adapter health:
+
+```bash
+./xctx audit stock_intelligence_hub::market_data_gateway
+./xctx audit file_manager::home_directory
+```
+
 Offline targets expose a repair path. Down-for-maintenance targets are terminal:
 `repair_path: null`, `final: true`, and the response cites that the target is
 `down for maintenance`.

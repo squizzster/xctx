@@ -51,6 +51,25 @@ those operations mean, and belong in scoped YAML plus adapter code.
     that say the core routes configured refs only; do not include domain nouns
     in those comments.
 
+## Audit boundary
+
+`audit root` is a protocol/configuration health surface. It may report generic
+xctx checks, loaded configuration, configured command-option shape, domain and
+subdomain availability findings, and repairability summaries. It must not call
+online subdomain adapters or inline domain-specific adapter checks.
+
+Scoped adapter health belongs behind explicit audit scope:
+
+```bash
+./xctx audit <domain_id>
+./xctx audit <domain_id>::<subdomain_id>
+```
+
+For example, root audit must not bubble stock sentinel checks, filesystem
+legacy-command checks, database row counts, ticker probes, form-taxonomy table
+checks, or middleware profile details. Those are valid only after the relevant
+domain/subdomain is in scope.
+
 ## Discover/observe data boundary
 
 The compact rule:

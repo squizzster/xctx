@@ -53,6 +53,17 @@ Subdomains, actions, tickers, form codes, and file ids must be scoped first:
 
 Those examples must fail rather than route through a configured fallback.
 
+Root audit follows the same no-bubbling rule. `./xctx audit root` may summarize
+configuration health and availability findings, but it must not inline scoped
+adapter checks such as ticker sentinels, filing-table counts, filesystem
+legacy-command probes, or middleware profile diagnostics. Use scoped audit for
+those:
+
+```bash
+./xctx audit stock_intelligence_hub::market_data_gateway
+./xctx audit file_manager::home_directory
+```
+
 ## What moved out of root
 
 ### 1. Domain affordances

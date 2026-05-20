@@ -92,11 +92,22 @@ option names:
 ./xctx help
 ./xctx --version
 ./xctx discover
+./xctx audit root
 ```
 
 They may expose configured agent domains and generic commands, but not scoped
 stock affordances or range flags. Domain-specific affordances appear only after a
 specific agent domain or subdomain is selected.
+
+`audit root` is also generic. It reports xctx/config checks, configured option
+shape, and availability findings for domains/subdomains. It does not call scoped
+adapters or inline application checks such as fixture tickers, database row
+counts, filing tables, or legacy command probes. Use a scoped audit for those:
+
+```bash
+./xctx audit stock_intelligence_hub::market_data_gateway
+./xctx audit file_manager::home_directory
+```
 
 ## AI Agent Boundary
 

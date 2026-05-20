@@ -11,11 +11,20 @@ python3 .agents/skills/xctx-yaml-config/scripts/check_xctx_yaml_surface.py
 python3 tests/smoke_protocol.py
 ```
 
+Expected proof:
+
+- root discovery exposes configured agent domains only.
+- root audit exposes protocol/config/availability checks only.
+- root audit does not bubble scoped adapter health checks such as fixture
+  tickers, database counts, filing tables, legacy command probes, or middleware
+  profile details.
+
 ## Domain or subdomain additions
 
 ```bash
 ./xctx --json discover <domain_id>::
 ./xctx --json discover <domain_id>::<subdomain_id>
+./xctx --json audit <domain_id>::<subdomain_id>
 ./xctx --json repair offline:<domain_id> || true
 ./xctx --json repair down_for_maintenance:<domain_id>::<subdomain_id> || true
 ```
@@ -23,6 +32,8 @@ python3 tests/smoke_protocol.py
 Expected proof:
 
 - online targets discover successfully.
+- scoped audit returns adapter-owned checks when the subdomain declares an
+  online entrypoint.
 - offline targets advertise repair command.
 - maintenance targets are terminal and do not fake repair.
 

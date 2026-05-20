@@ -789,12 +789,7 @@ def audit_payload(store: dict[str, Any], scope: str) -> dict[str, Any]:
     ]
     checks.extend(option_config_checks(store))
     parsed_domain, parsed_subdomain = parse_ref(store, scope)
-    if scope in {"root", "all", "*"}:
-        domain_ids = list(store.get("agent_domains", {}))
-    elif parsed_domain:
-        domain_ids = [parsed_domain]
-    else:
-        domain_ids = []
+    domain_ids = [parsed_domain] if parsed_domain else []
 
     for domain_id in domain_ids:
         domain = store["agent_domains"][domain_id]

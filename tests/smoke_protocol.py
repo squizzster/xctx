@@ -612,11 +612,32 @@ def assert_observe_audit_repair() -> None:
 
     audit = one(["audit", "root"])
     assert audit["record_type"] == "audit"
-    assert audit["results"]["summary"]["checks"] >= 17
+    assert audit["results"]["summary"]["checks"] == 8
+    root_audit_text = json.dumps(audit, sort_keys=True)
+    for forbidden in (
+        "aapl",
+        "apple_punctuation",
+        "market_data_gateway:",
+        "equity_filing:",
+        "file_manager:home_directory",
+        "legacy_command",
+        "mini_stocks_sqlite",
+        "edgar_form_reference",
+    ):
+        assert forbidden not in root_audit_text, forbidden
     findings = {item["id"]: item for item in audit["results"]["findings"]}
     assert findings["down_for_maintenance:stock_intelligence_hub::fundamentals_gateway"]["repairable"] is False
     assert findings["offline:macro_intelligence_hub"]["repairable"] is True
     assert findings["down_for_maintenance:crypto_intelligence_hub"]["repair_cmd"] is None
+
+    market_audit = one(["audit", "stock_intelligence_hub::market_data_gateway"])
+    market_check_ids = {item["id"] for item in market_audit["results"]["checks"]}
+    assert "audit:market_data_gateway:aapl_latest_price_resolves" in market_check_ids
+    assert "audit:market_data_gateway:mini_stocks_sqlite_exists" in market_check_ids
+
+    file_audit = one(["audit", "file_manager::home_directory"])
+    file_check_ids = {item["id"] for item in file_audit["results"]["checks"]}
+    assert "audit:file_manager:home_directory:legacy_command:ls" in file_check_ids
 
     repairable = one(["repair", "offline:macro_intelligence_hub"])
     assert repairable["record_type"] == "repair_result"

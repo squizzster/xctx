@@ -104,6 +104,12 @@ Bare root targets are legal only for configured agent domains. Do not configure
 resolve bare subdomain/action/object tokens such as `market_data_gateway`,
 `GOOG`, `10-K`, or `file:README.txt`.
 
+Root audit is generic too. `./xctx audit root` must not call subdomain adapters
+or bubble application-specific health probes. Adapter checks such as fixture
+tickers, database counts, filing tables, middleware profiles, or legacy command
+availability belong behind explicit scoped audits such as
+`./xctx audit <domain_id>::<subdomain_id>`.
+
 ## Entrypoints
 
 Subdomains declare the entrypoint that xctx calls. In this build the online
