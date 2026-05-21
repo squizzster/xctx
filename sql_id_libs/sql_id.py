@@ -28,7 +28,6 @@ from __future__ import annotations
 import hashlib
 import os
 import re
-import sys
 
 try:
     from cryptography.hazmat.decrepit.ciphers.algorithms import ARC4
@@ -82,16 +81,11 @@ _MAX_CYCLE_WALKS = 10_000
 
 
 def _load_password_bytes() -> bytes:
-    # The password is read once at import time. Applications should set
-    # XCTX_ID_PASSWORD before importing this module. The fallback is deliberate
-    # for local/test use and warns to stderr once.
+    # The password is read once at import time. Applications must set
+    # XCTX_ID_PASSWORD before importing this module.
     password = os.environ.get("XCTX_ID_PASSWORD")
     if password is None:
-        password = "PASSWORD"
-        print(
-            "warning: XCTX_ID_PASSWORD is not set; using default test password",
-            file=sys.stderr,
-        )
+        raise RuntimeError("XCTX_ID_PASSWORD is required")
     return password.encode("utf-8")
 
 
