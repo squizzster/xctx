@@ -4,8 +4,8 @@ This module maps an internal integer ID to a fixed 16-character hex string and
 back again:
 
     integer -> password-derived Feistel permutation -> 6-char RFC1924 base85
-    -> 2-byte checksum -> 8-byte internal ID -> peppered 64-bit Feistel
-    -> peppered RC4 wrapper -> hex
+    -> 2-byte checksum -> 8-byte internal ID -> salted 64-bit Feistel
+    -> salted RC4 wrapper -> hex
 
 The result is meant for compact public IDs that can later decode back to a SQL
 integer lookup key. It is not intended to provide cryptographic security,
@@ -20,7 +20,7 @@ Public surface:
 Both functions return None for invalid input and do not print errors. The
 calling application owns user-facing error messages.
 
-This ID scheme is a compact, deterministic, reversible public-handle layer for internal SQL integer identifiers. It preserves the operational advantages of `AUTO_INCREMENT` / integer primary keys while exposing only fixed-width 8-byte / 16-hex public IDs. The mapping uses a password-derived Feistel permutation over the integer payload, compact fixed-width base85 packing, checksum bytes, an outer peppered 64-bit Feistel transform, and a final peppered RC4/ARC4 reversible wrapper before hex encoding. Decoding must reverse those layers and then pass strict validation: hex shape, RC4 unwrap, outer Feistel decrypt, checksum match, valid RFC1924 base85 payload, canonical re-encoding, inverse payload permutation, and final SQL ID range enforcement. The result is suitable for high-volume identifiers such as `job_id`, `log_id`, `event_id`, or ordinary row IDs, avoiding extra `public_id` columns, secondary unique indexes, random collision handling, and public enumeration of sequential IDs. This is a defense-in-depth identifier obfuscation mechanism, not an authentication or authorization system; decoded IDs must still be checked against normal application permissions and business rules.
+This ID scheme is a compact, deterministic, reversible public-handle layer for internal SQL integer identifiers. It preserves the operational advantages of `AUTO_INCREMENT` / integer primary keys while exposing only fixed-width 8-byte / 16-hex public IDs. The mapping uses a password-derived Feistel permutation over the integer payload, compact fixed-width base85 packing, checksum bytes, an outer salted 64-bit Feistel transform, and a final salted RC4/ARC4 reversible wrapper before hex encoding. Decoding must reverse those layers and then pass strict validation: hex shape, RC4 unwrap, outer Feistel decrypt, checksum match, valid RFC1924 base85 payload, canonical re-encoding, inverse payload permutation, and final SQL ID range enforcement. The result is suitable for high-volume identifiers such as `job_id`, `log_id`, `event_id`, or ordinary row IDs, avoiding extra `public_id` columns, secondary unique indexes, random collision handling, and public enumeration of sequential IDs. This is a defense-in-depth identifier obfuscation mechanism, not an authentication or authorization system; decoded IDs must still be checked against normal application permissions and business rules.
 """
 
 from __future__ import annotations
@@ -52,22 +52,23 @@ _MAX_ID_DIGITS = len(str(MAX_ID))
 #
 # Before returning it to the caller, we run those 8 bytes through two reversible
 # fixed-width layers:
-#   1. 64-bit Feistel using SHA256(env password + PEPPER_HEX)
-#   2. one-pass RC4 using SHA256(env password + RC4_PEPPER_HEX)
+#   1. 64-bit Feistel using SHA256(env password + FEISTEL_SALT_HEX)
+#   2. one-pass RC4 using SHA256(env password + RC4_SALT_HEX)
 # Neither layer adds bytes. The final public value is still 8 bytes rendered as
 # 16 hex characters.
 _HEX_RE = re.compile(r"^[0-9a-fA-F]{16}$")
 
-# Fixed 32-byte pepper. This is intentionally in the library so the deployed
-# code and the environment password are both needed to reproduce IDs.
-PEPPER_HEX = "798fa8088558c58f382e0dc42b43d3d0d1c705fd621797ec8ea5dff7a2c01381"
-_PEPPER = bytes.fromhex(PEPPER_HEX)
+# Fixed 32-byte salt/domain-separation constant. It is embedded in source, so
+# it is not secret; it just separates this ID scheme's Feistel keys
+# from other password-derived uses.
+FEISTEL_SALT_HEX = "798fa8088558c58f382e0dc42b43d3d0d1c705fd621797ec8ea5dff7a2c01381"
+_FEISTEL_SALT = bytes.fromhex(FEISTEL_SALT_HEX)
 
-# Second fixed 32-byte pepper for the final one-pass RC4 wrapper. The RC4 key is
-# SHA256(env password + this pepper). This final step adds no bytes and has no
-# checksum of its own; it is just another reversible transform over the 8 bytes.
-RC4_PEPPER_HEX = "7faf160c350bfda0e796e87d9b2fcaf403c9f92371488be2506b836bf0d796f9"
-_RC4_PEPPER = bytes.fromhex(RC4_PEPPER_HEX)
+# Second fixed 32-byte salt/domain-separation constant for the final one-pass
+# RC4 wrapper. The RC4 key is SHA256(env password + this salt). This final step
+# adds no bytes and has no checksum of its own.
+RC4_SALT_HEX = "7faf160c350bfda0e796e87d9b2fcaf403c9f92371488be2506b836bf0d796f9"
+_RC4_SALT = bytes.fromhex(RC4_SALT_HEX)
 
 # The Feistel block is 40 bits: two 20-bit halves. This is larger than the
 # 6-char base85 domain, so cycle-walking maps the larger permutation back into
@@ -96,7 +97,7 @@ def _derive_round_keys(label: bytes, half_bytes: int) -> tuple[bytes, ...]:
     # Each Feistel round gets an independent key derived from the password.
     # This is not a security construction here; it is deterministic scrambling
     # for compact public IDs.
-    seed = hashlib.sha256(_PASSWORD_BYTES + _PEPPER + label).digest()
+    seed = hashlib.sha256(_PASSWORD_BYTES + _FEISTEL_SALT + label).digest()
     return tuple(
         hashlib.sha256(seed + b":round:" + str(round_id).encode("ascii") + b":half:" + bytes([half_bytes])).digest()
         for round_id in range(ROUNDS)
@@ -105,7 +106,7 @@ def _derive_round_keys(label: bytes, half_bytes: int) -> tuple[bytes, ...]:
 
 _INNER_ROUND_KEYS = _derive_round_keys(b":inner-payload-permutation:", 3)
 _OUTER_ROUND_KEYS = _derive_round_keys(b":outer-64-bit-id-encryption:", 4)
-_FINAL_RC4_KEY = hashlib.sha256(_PASSWORD_BYTES + _RC4_PEPPER).digest()
+_FINAL_RC4_KEY = hashlib.sha256(_PASSWORD_BYTES + _RC4_SALT).digest()
 
 
 def _final_rc4(data: bytes) -> bytes:
