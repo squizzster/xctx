@@ -19,6 +19,8 @@ Public surface:
 
 Both functions return None for invalid input and do not print errors. The
 calling application owns user-facing error messages.
+
+This ID scheme is a compact, deterministic, reversible public-handle layer for internal SQL integer identifiers. It preserves the operational advantages of `AUTO_INCREMENT` / integer primary keys while exposing only fixed-width 8-byte / 16-hex public IDs. The mapping uses a password-derived Feistel permutation over the integer payload, compact fixed-width base85 packing, checksum bytes, an outer peppered 64-bit Feistel transform, and a final peppered RC4/ARC4 reversible wrapper before hex encoding. Decoding must reverse those layers and then pass strict validation: hex shape, RC4 unwrap, outer Feistel decrypt, checksum match, valid RFC1924 base85 payload, canonical re-encoding, inverse payload permutation, and final SQL ID range enforcement. The result is suitable for high-volume identifiers such as `job_id`, `log_id`, `event_id`, or ordinary row IDs, avoiding extra `public_id` columns, secondary unique indexes, random collision handling, and public enumeration of sequential IDs. This is a defense-in-depth identifier obfuscation mechanism, not an authentication or authorization system; decoded IDs must still be checked against normal application permissions and business rules.
 """
 
 from __future__ import annotations
