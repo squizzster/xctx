@@ -3,6 +3,7 @@ __pycache__/
 
 .xctx_runtime/
 experiments_tmp/
+tmp_experiments_go_here/
 
 *.sqlite
 !data/*.sqlite
