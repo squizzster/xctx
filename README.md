@@ -117,3 +117,91 @@ Final thesis:
 Shorter:
 
 > **`xctx` is where software stops being a dumb surface an agent calls, and becomes a domain the agent can understand, test, operate, verify, and repair.**
+>
+> ---
+> Yes — you’re right. I flattened the point too much.
+
+The real thesis is not:
+
+> `xctx` makes cheap models surprisingly useful.
+
+It is:
+
+> **`xctx` makes every model spend more of its intelligence on the actual problem.**
+
+That is much bigger.
+
+For a small model, `xctx` can be the difference between “basically unusable” and “operationally competent.” Your DeepSeek-V4-Flash example is the proof: at the cost level you quoted — **$0.28/M output versus $30/M output** in your comparison — it still discovered domains, navigated affordances, resolved entities, observed market data, found filing taxonomy, understood repair paths, and produced a coherent black-box audit. 
+
+But for a strong model, `xctx` is not redundant. It is an amplifier.
+
+Because even the expensive model has a finite reasoning budget. Without `xctx`, it burns that budget on:
+
+> Where are the files?
+> What format are they in?
+> Which table is canonical?
+> Is this stale?
+> What does “APPLE” mean?
+> Can I get prices?
+> Is this API live?
+> What if the CSV is wrong?
+> How do I prove I finished?
+
+That is not high intelligence. That is clerical archaeology.
+
+With `xctx`, the expensive model starts from:
+
+> Here are the books.
+> Here is the canonical ledger.
+> Here are the reconciliations.
+> Here are the missing receipts.
+> Here are the lawful deductions.
+> Here are the risky positions.
+> Here are the audit requirements.
+> Here are the valid filing transitions.
+> Here is the receipt proving submission.
+
+Now the model can use its expensive intelligence on judgment:
+
+> What is the optimal legal strategy?
+> What should be challenged?
+> What is aggressive but defensible?
+> What should be avoided because audit risk outweighs benefit?
+> What needs human sign-off?
+> What explanation should go in the file?
+
+That is the accountant analogy exactly.
+
+A great accountant with a shoebox of receipts spends half the engagement reconstructing reality. A great accountant with beautiful books, reconciled ledgers, categorized transactions, evidence, deadlines, legal constraints, and clean workflows can spend the engagement saving you money.
+
+Same accountant. Different operating environment. Better result.
+
+So the better killer line is probably:
+
+> **`xctx` does not merely make small models viable; it makes all models less wasteful. It moves intelligence away from finding and reconstructing the domain, and toward reasoning inside it.**
+
+Or sharper:
+
+> **`xctx` turns model intelligence from scavenging into judgment.**
+
+That is the missing point.
+
+The AAPL moving-average example shows the same thing. Without `xctx`, the model tried to go outside, find historical prices, pull a CSV, and failed when the network path broke. With `xctx`, the software exposed the stock domain, the Apple identity, the market series, and the valid observation path. The model could just compute.  
+
+That is the general law:
+
+> **The more executable the context, the less intelligence is wasted on operational reconstruction.**
+
+So for cheap models, `xctx` creates competence.
+
+For expensive models, `xctx` creates leverage.
+
+For frontier models, `xctx` may be the difference between “very clever assistant” and “serious domain operator,” because even the best model should not be spending premium cognition figuring out where the ledger lives or whether `FB` means Meta’s old ticker.
+
+The strongest formulation now is:
+
+> **`xctx` makes software a cognitive multiplier. It lifts every model by making the domain legible, executable, and verifiable, so the model can spend its intelligence on decisions rather than discovery, bookkeeping, and operational guesswork.**
+
+That is the big idea. Not “cheap model magic.”
+**Environment-amplified intelligence.**
+
