@@ -1,6 +1,6 @@
 # Executable Context / `xctx`
 
-Most agent software has a quiet mistake at its centre: it keeps trying to make the model know more while the software says almost nothing.
+xctx is not another agent framework. It is an agent-operability layer. It makes software expose its live domain semantics — identity, state, lawful transitions, effects, rehearsals, commits, receipts, audits, and repairs — so every model, cheap or frontier, can spend intelligence on judgment rather than reconstructing the operating environment.Most agent software has a quiet mistake at its centre: it keeps trying to make the model know more while the software says almost nothing.
 
 So we add prompts, schemas, tools, warnings, docs, sandboxes, and approval gates. Then we ask the agent to reconstruct operational reality from fragments: which object is canonical, which state is fresh, which move is legal, which write is dangerous, which dry run is real, which result proves completion, which failure can be repaired.
 
