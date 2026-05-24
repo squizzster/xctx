@@ -7,6 +7,7 @@ import contextlib
 import io
 import json
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -286,8 +287,11 @@ def test_xctx_native_passthrough_failure_has_shape_guarantee() -> None:
 
 def test_xctx_native_passthrough_failure_hides_argv_until_full_shape() -> None:
     compact = run_engine(
-        ["discover", "stock_intelligence_hub::market_data_gateway", "list_instruments", "--cursor", "nope"]
+        ["discover", "stock_intelligence_hub::market_data_gateway", "list_instruments", "--cursor", "nope"],
+        code=1,
     )
+    assert compact["ok"] is False
+    assert compact["error"] == "--cursor requires an integer"
     compact_live = compact["results"]["live_data"]
     assert compact_live["object_type"] == "xctx_native_passthrough_error"
     assert compact_live["command_status"]["ok"] is False
@@ -303,8 +307,10 @@ def test_xctx_native_passthrough_failure_hides_argv_until_full_shape() -> None:
             "nope",
             "--shape",
             "full",
-        ]
+        ],
+        code=1,
     )
+    assert full["ok"] is False
     full_live = full["results"]["live_data"]
     assert full_live["object_type"] == "xctx_native_passthrough_error"
     assert full_live["command_status"]["ok"] is False
@@ -357,7 +363,8 @@ def test_legacy_filesystem_discovery_and_observation() -> None:
     discovered_file_full = run_engine(["discover", "file_manager::home_directory", "file:README.txt", "--shape", "full"])
     discovered_file_full_live = discovered_file_full["results"]["live_data"]
     assert discovered_file_full_live["shape"] == "full"
-    assert discovered_file_full_live["modified_display"].startswith("May 20")
+    assert re.fullmatch(r"\d{4}-\d{2}-\d{2}T.*\+00:00", discovered_file_full_live["modified_at"])
+    assert re.fullmatch(r"[A-Z][a-z]{2} [ 0-9]\d \d{2}:\d{2}", discovered_file_full_live["modified_display"])
     assert discovered_file_full_live["command_status"]["stat_line"]["argv"][0] == "ls"
     assert discovered_file_full_live["command_status"]["type"]["argv"][0] == "file"
 
@@ -380,7 +387,9 @@ def test_legacy_filesystem_discovery_and_observation() -> None:
 
 
 def test_legacy_filesystem_always_shapes_failures() -> None:
-    escaped = run_engine(["observe", "file:../README.md"])
+    escaped = run_engine(["observe", "file:../README.md"], code=1)
+    assert escaped["ok"] is False
+    assert escaped["error"] == "path escapes configured safe root"
     live = escaped["results"]["live_data"]
     assert live["object_type"] == "legacy_connector_error"
     assert live["found"] is False
@@ -388,7 +397,8 @@ def test_legacy_filesystem_always_shapes_failures() -> None:
     assert live["command_status"]["ok"] is False
     assert "safe root" in live["command_status"]["error"]
 
-    unknown = run_engine(["observe", "file:missing.txt"])
+    unknown = run_engine(["observe", "file:missing.txt"], code=1)
+    assert unknown["ok"] is False
     unknown_live = unknown["results"]["live_data"]
     assert unknown_live["object_type"] == "legacy_connector_filesystem_observation"
     assert_shape_guarantee(unknown_live["connector"], contract="always_json_object", failure_shape="legacy_connector_error")

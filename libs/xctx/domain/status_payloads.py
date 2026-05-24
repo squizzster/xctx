@@ -41,7 +41,7 @@ def build_status_payload(store: dict[str, Any]) -> dict[str, Any]:
                 "name": item.get("name", item.get("id")),
                 "desc": item.get("desc", ""),
                 "active": item.get("id") == store.get("active_system"),
-                run_key: f"./xctx --system {item.get('id')} status",
+                run_key: f"./xctx discover {item.get('id')}::",
             }
             for item in store.get("all_systems", [])
         ],

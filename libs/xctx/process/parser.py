@@ -7,6 +7,7 @@ from typing import Any, Callable
 
 from xctx.errors import XctxError
 from xctx.protocol.accessors import canonical_command, configured_command_names
+from xctx.protocol.command_policy import hidden_commands, visible_commands
 from xctx.protocol.options import command_cli_option_specs
 
 
@@ -67,44 +68,32 @@ def build_parser(store: dict[str, Any]) -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command", parser_class=XctxParser)
 
     configured = configured_command_names(store)
+    visible = visible_commands(store)
+    hidden = hidden_commands(store)
     if "help" in configured or not configured:
         subparsers.add_parser("help", add_help=False)
-    if "status" in configured:
-        subparsers.add_parser("status", add_help=False)
-    if "identify" in configured:
-        identify = subparsers.add_parser("identify", add_help=False)
-        identify.add_argument("--category", default="all")
-        identify.add_argument("--query")
-    for command in sorted({name for name in configured if canonical_command(store, name) in {"discover", "discovery"}}):
+    for command in sorted({name for name in configured if canonical_command(store, name) == "discover"}):
         _add_discover_parser(subparsers, command)
-    if "observe" in configured:
+    if "observe" in visible:
         observe = subparsers.add_parser("observe", add_help=False)
         observe.add_argument("target", nargs="?")
         observe.add_argument("target_args", nargs="*")
         observe.add_argument("--id")
         _add_configured_cli_options(observe, store, "observe")
-    if "plan" in configured:
+    if "plan" in visible:
         plan = subparsers.add_parser("plan", add_help=False)
         plan.add_argument("plan_args", nargs="*")
-    if "execute" in configured:
+    if "execute" in visible:
         execute = subparsers.add_parser("execute", add_help=False)
         execute.add_argument("execute_args", nargs="*")
         execute.add_argument("--commit", action="store_true")
-    if "audit" in configured:
+    if "audit" in visible:
         audit = subparsers.add_parser("audit", add_help=False)
         audit.add_argument("scope", nargs="?", default="root")
-    if "repair" in configured:
+    if "repair" in visible:
         repair = subparsers.add_parser("repair", add_help=False)
         repair.add_argument("target", nargs="?")
-    if "doctor" in configured:
-        subparsers.add_parser("doctor", add_help=False)
-    if "write" in configured:
-        write = subparsers.add_parser("write", add_help=False)
-        write.add_argument("--operation", required=True)
-        write.add_argument("--collection", required=True)
-        write.add_argument("--data-json", required=True)
-        write.add_argument("--apply", action="store_true")
-    if "other" in configured:
+    if "other" in hidden:
         other = subparsers.add_parser("other", add_help=False)
         other.add_argument("--topic", default="plan")
         other.add_argument("--reason", default="task dynamic selected the extension lane")

@@ -112,7 +112,7 @@ def identity_records(store: dict[str, Any], category: str = "all") -> list[dict[
             "id": item.get("id"),
             "desc": item.get("desc", ""),
             "trusted": True,
-            run_key: f"./xctx --system {item.get('id')} status",
+            run_key: f"./xctx discover {item.get('id')}::",
         }
         for item in store.get("all_systems", [])
     )
@@ -158,14 +158,14 @@ def find_identity(store: dict[str, Any], identity_id: str | None, name: str | No
         match = find_by_id(candidates, identity_id)
         if match:
             return match
-        run_cmd = guidance_cmd(store, "identify_query_run_cmd", query=identity_id)
-        raise XctxError(f"next valid move: {run_cmd}" if run_cmd else "next valid move: identify")
+        run_cmd = guidance_cmd(store, "discover_root_run_cmd")
+        raise XctxError(f"next valid move: {run_cmd}" if run_cmd else "next valid move: discover")
     if name:
         fields = identity_query_fields(store)
         for record in candidates:
             if record_has_exact_name(record, name, fields):
                 return record
-        run_cmd = guidance_cmd(store, "identify_query_run_cmd", query=name)
-        raise XctxError(f"next valid move: {run_cmd}" if run_cmd else "next valid move: identify")
+        run_cmd = guidance_cmd(store, "discover_root_run_cmd")
+        raise XctxError(f"next valid move: {run_cmd}" if run_cmd else "next valid move: discover")
     run_cmd = guidance_cmd(store, "discover_root_run_cmd")
     raise XctxError(f"next valid move: {run_cmd}" if run_cmd else "next valid move: discover")

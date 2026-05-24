@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import argparse
 
-from xctx.commands.helpers import cmdline_arg
+from xctx.commands.helpers import command_payload_error, cmdline_arg, live_payload_failed
 from xctx.domain.agent_domains import discover_payload, has_agent_domains, universe_discovery_payload
 from xctx.domain.discovery import (
     build_root_discovery_payload,
@@ -41,9 +41,19 @@ def handle(store: dict, args: argparse.Namespace) -> int:
         if getattr(args, "name", None) and not getattr(args, "target", None):
             raise XctxError("next valid move: use a scoped discovery action, for example ./xctx discover <agent_domain>::<affordance> <name>")
         level, payload = discover_payload(store, getattr(args, "target", None), list(getattr(args, "target_args", [])))
-        emit_record(store, command, "discovery", payload, cmdline_arg=called_as, domain_level=level)
-        emit_final_stderr(store, command, True, "agent-domain discovery complete", records=1)
-        return 0
+        failed = live_payload_failed(payload.get("live_data") if isinstance(payload, dict) else None)
+        emit_record(
+            store,
+            command,
+            "discovery",
+            payload,
+            ok=not failed,
+            error=command_payload_error(payload) if failed else None,
+            cmdline_arg=called_as,
+            domain_level=level,
+        )
+        emit_final_stderr(store, command, not failed, "agent-domain discovery complete", records=1)
+        return 1 if failed else 0
 
     if getattr(args, "target", None) and not args.id and not args.name:
         action_match = find_discovery_action(store, args.target)
@@ -79,7 +89,7 @@ def handle(store: dict, args: argparse.Namespace) -> int:
             {
                 "category": "available_system_next_move",
                 "system_id": identity["id"],
-                run_cmd_key(store): f"./xctx --system {identity['id']} discover",
+                run_cmd_key(store): f"./xctx discover {identity['id']}::",
             },
             cmdline_arg=called_as,
         )

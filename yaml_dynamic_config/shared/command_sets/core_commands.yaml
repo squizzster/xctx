@@ -2,9 +2,9 @@ xctx:
   discover:
     Discover lawful next affordances from root, an agent domain, an agent subdomain, an identity, or a scoped named affordance.: '[TARGET [TEXT...] | --id ID]'
   observe:
-    Observe a discovered object, agent domain, agent subdomain, or target-specific result in detail.: '[TARGET] [ID] [--id ID] [CONFIGURED_OPTIONS...]'
+    Observe a discovered object, agent domain, agent subdomain, or target-specific result in detail. Domain data is read-only; bounded protocol-local artifacts such as exports may be written when a scoped adapter declares them.: '[TARGET] [ID] [--id ID] [CONFIGURED_OPTIONS...]'
   plan:
-    Rehearse an operation without mutating state and return the lawful next move plus deterministic sha256/sha5 receipts.: '[OPERATION] [TARGET]'
+    Rehearse an operation without mutating domain/business state and return the lawful next move plus deterministic sha256/sha5 receipts. Plans are recorded in the local protocol ledger.: '[OPERATION] [TARGET]'
   execute:
     Execute a committed plan only when the active surface exposes a lawful commit path.: '[PLAN_ID|SHA256|SHA5] [--commit]'
   audit:

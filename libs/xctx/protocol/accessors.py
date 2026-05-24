@@ -4,6 +4,15 @@ from __future__ import annotations
 
 from typing import Any
 
+from xctx.protocol.command_policy import (
+    accepted_command_names,
+    advertised_aliases,
+    canonical_command,
+    command_aliases,
+    command_groups,
+    hidden_commands,
+    visible_commands,
+)
 from xctx.protocol.formatting import format_cmd
 
 
@@ -57,14 +66,6 @@ def format_run_cmd(store: dict[str, Any], template: str, **context: Any) -> str:
     return scope_run_cmd(store, format_cmd(template, **context))
 
 
-def command_groups(store: dict[str, Any]) -> dict[str, list[str]]:
-    return store["protocol"].get("command_groups", {})
-
-
-def command_aliases(store: dict[str, Any]) -> dict[str, list[str]]:
-    return store["protocol"].get("command_aliases", {})
-
-
 def response_template(store: dict[str, Any], name: str) -> dict[str, Any]:
     return store["protocol"].get("response_templates", {}).get(name, {})
 
@@ -80,22 +81,19 @@ def help_aliases(store: dict[str, Any]) -> set[str]:
     return set(store["protocol"].get("help_aliases", []))
 
 
-def canonical_command(store: dict[str, Any], command: str) -> str:
-    for canonical, aliases in command_aliases(store).items():
-        if command == canonical or command in aliases:
-            return canonical
-    return command
-
-
 def command_map_for_group(store: dict[str, Any], map_key: str, group_name: str) -> dict[str, Any]:
     configured = store["commands"].get(map_key, {})
     group = command_groups(store).get(group_name, list(configured.keys()))
+    if group_name == "main":
+        group = [name for name in group if name in visible_commands(store)]
+    elif group_name == "other":
+        group = [name for name in group if name in hidden_commands(store)]
     return {name: configured[name] for name in group if name in configured}
 
 
 def configured_command_names(store: dict[str, Any]) -> set[str]:
-    names = set(command_groups(store).get("main", [])) | set(command_groups(store).get("other", []))
-    for canonical, aliases in command_aliases(store).items():
-        if canonical in names:
-            names.update(aliases)
-    return names
+    return accepted_command_names(store)
+
+
+def advertised_command_aliases(store: dict[str, Any]) -> dict[str, list[str]]:
+    return advertised_aliases(store)

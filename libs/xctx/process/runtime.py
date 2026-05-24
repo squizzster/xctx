@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 import json
+import shlex
 import sys
 from pathlib import Path
 from typing import Sequence
 
 import yaml
 
-from xctx.commands.other import handle as handle_other
 from xctx.commands.registry import command_handlers
 from xctx.config.loader import load_store
 from xctx.domain.status_payloads import build_version_payload
@@ -18,6 +18,7 @@ from xctx.process.argv import extract_global_options
 from xctx.process.parser import build_parser
 from xctx.process.signals import configure_sigpipe
 from xctx.protocol.accessors import canonical_command, configured_command_names, help_aliases
+from xctx.protocol.command_policy import visible_command_names_for_guidance
 from xctx.protocol.emitter import emit_final_stderr, emit_minimal_error, emit_record, emit_stderr_event
 
 
@@ -129,24 +130,21 @@ def run(argv: Sequence[str] | None = None, root: Path | None = None) -> int:
 
     configured = configured_command_names(store)
     if selection.argv[0] not in configured:
-        main_commands = set(store["protocol"].get("command_groups", {}).get("main", []))
-        visible = set(main_commands)
-        for canonical, aliases in store["protocol"].get("command_aliases", {}).items():
-            if canonical in main_commands:
-                visible.update(aliases)
-        allowed = ", ".join(sorted(visible))
+        allowed = ", ".join(sorted(visible_command_names_for_guidance(store)))
         raise XctxError(f"next valid move: choose a known xctx command ({allowed})")
 
     parser = build_parser(store)
     args, unknown_args = parser.parse_known_args(selection.argv)
-    args.cmdline_arg = selection.cmdline_arg or " ".join(selection.argv)
+    args.cmdline_arg = selection.cmdline_arg or shlex.join(selection.argv)
     canonical = canonical_command(store, args.command)
     if unknown_args:
         if canonical == "discovery" and hasattr(args, "target_args"):
             args.target_args.extend(unknown_args)
         else:
             raise XctxError(f"next valid move: adjust arguments (unrecognized arguments: {' '.join(unknown_args)})")
-    handler = handlers.get(canonical, handle_other)
+    handler = handlers.get(canonical)
+    if handler is None:
+        raise XctxError(f"next valid move: command {canonical} is configured but has no production handler")
     return handler(store, args)
 
 

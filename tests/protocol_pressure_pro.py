@@ -380,7 +380,9 @@ def main() -> int:
     assert "This is a bundled file-manager demo fixture" in observed_file["results"]["live_data"]["content"]["text"]
     observed_directory = run_engine(["observe", "directory:docs"])
     assert observed_directory["results"]["live_data"]["directory_id"] == "directory:docs"
-    escaped_file = run_engine(["observe", "file:../README.md"])
+    escaped_file = run_engine(["observe", "file:../README.md"], code=1)
+    assert_cmd(escaped_file, ok=False, record_type="observation", level="agent_subdomain")
+    assert escaped_file["error"] == "path escapes configured safe root"
     assert escaped_file["results"]["live_data"]["object_type"] == "legacy_connector_error"
     assert escaped_file["results"]["live_data"]["found"] is False
     assert escaped_file["results"]["live_data"]["connector"]["shape_guarantee"]["failure_shape"] == "legacy_connector_error"
@@ -403,9 +405,11 @@ def main() -> int:
     findings = {item["id"]: item for item in audit["results"]["findings"]}
     assert findings["down_for_maintenance:stock_intelligence_hub::fundamentals_gateway"]["repairable"] is False
     market_audit = run_engine(["audit", "stock_intelligence_hub::market_data_gateway"])
+    assert_cmd(market_audit, record_type="audit", level="agent_subdomain")
     market_check_ids = {item["id"] for item in market_audit["results"]["checks"]}
     assert "audit:market_data_gateway:aapl_latest_price_resolves" in market_check_ids
     file_audit = run_engine(["audit", "file_manager::home_directory"])
+    assert_cmd(file_audit, record_type="audit", level="agent_subdomain")
     file_check_ids = {item["id"] for item in file_audit["results"]["checks"]}
     assert "audit:file_manager:home_directory:legacy_command:ls" in file_check_ids
     repaired = run_engine(["repair", "offline:macro_intelligence_hub"])

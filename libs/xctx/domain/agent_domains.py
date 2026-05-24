@@ -10,7 +10,7 @@ from xctx.config.paths import as_project_path
 from xctx.errors import XctxError
 from xctx.ports.external_command import call_external_command
 from xctx.protocol.actions import action_matches
-from xctx.protocol.accessors import command_aliases, command_map_for_group, protocol_version
+from xctx.protocol.accessors import advertised_command_aliases, command_map_for_group, protocol_version
 from xctx.protocol.options import encode_cli_options_for_target, option_config_checks, target_option_surface
 from xctx.protocol.descriptions import detail_enabled, selected_description, with_description
 from xctx.store.plans import resolve_plan, write_plan
@@ -474,7 +474,7 @@ def universe_discovery_payload(store: dict[str, Any]) -> dict[str, Any]:
         },
         "command_surface": {
             "xctx": command_map_for_group(store, "xctx", "main"),
-            "aliases": command_aliases(store),
+            "aliases": advertised_command_aliases(store),
         },
         "next_moves": [
             {

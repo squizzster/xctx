@@ -730,7 +730,9 @@ def assert_legacy_connector_middleware() -> None:
     assert directory_live["directory_id"] == "directory:docs"
     assert directory_live["sample_children"][0]["id"] == "file:docs/manual.txt"
 
-    escaped = one(["observe", "file:../README.md"])
+    escaped = one(["observe", "file:../README.md"], expected_code=1)
+    assert escaped["ok"] is False
+    assert escaped["error"] == "path escapes configured safe root"
     escaped_live = escaped["results"]["live_data"]
     assert escaped_live["object_type"] == "legacy_connector_error"
     assert escaped_live["found"] is False

@@ -9,3 +9,7 @@ dependencies = ["PyYAML>=6.0"]
 engine = "libs/xctx"
 entrypoint = "bin/xctx"
 protocol = "yaml_dynamic_config/protocols/xctx_v4_2.yaml"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]

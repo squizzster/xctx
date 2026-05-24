@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import argparse
 
-from xctx.commands.helpers import cmdline_arg
+from xctx.commands.helpers import command_payload_error, command_payload_failed, cmdline_arg
 from xctx.domain.agent_domains import has_agent_domains, observe_payload
 from xctx.domain.discovery import find_discovery_action, observe_action_result
 from xctx.domain.observations import apply_observe_expansions
@@ -29,14 +29,14 @@ def handle(store: dict, args: argparse.Namespace) -> int:
             getattr(args, "id", None),
             collect_cli_option_values(store, command, args),
         )
-        ok = payload.get("status") not in {"offline", "down_for_maintenance"}
+        ok = not command_payload_failed(payload)
         emit_record(
             store,
             command,
             "observation",
             payload,
             ok=ok,
-            error=None if ok else payload.get("status"),
+            error=None if ok else command_payload_error(payload),
             cmdline_arg=called_as,
             domain_level=level,
         )
