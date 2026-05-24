@@ -457,14 +457,12 @@ agent_routing:
         - "<prefix>:"
       unprefixed_exact:
         - OPTIONAL_EXACT_TOKEN
-  default_observe_route:
-    agent_domain: <domain_id>
-    agent_subdomain: <subdomain_id>
 ```
 
 Use route prefixes for trusted ID families. Use `unprefixed_exact` sparingly for
-stable canonical tokens. If an identifier is ambiguous, prefer a discovery flow
-over guessing.
+stable canonical tokens. Do not define `default_observe_route`; bare identifiers
+must not be guessed into a domain. If an identifier is ambiguous, prefer a
+discovery flow over guessing.
 
 ## Identity contract
 
