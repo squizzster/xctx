@@ -51,7 +51,7 @@ GENERIC_XCTX_FILES = [
     "libs/xctx/commands/observe.py",
     "libs/xctx/domain/agent_domains.py",
     "libs/xctx/domain/identity.py",
-    "libs/xctx/commands/identify.py",
+    "libs/xctx/protocol/command_policy.py",
 ]
 
 FORBIDDEN_CORE_LITERALS = (

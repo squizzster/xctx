@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import argparse
 
-from xctx.domain.status_payloads import build_help_payload
+from xctx.domain.interface_payloads import build_help_payload
 from xctx.protocol.emitter import emit_final_stderr, emit_raw_for_store, emit_stderr_event
 
 

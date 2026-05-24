@@ -12,7 +12,7 @@ import yaml
 
 from xctx.commands.registry import command_handlers
 from xctx.config.loader import load_store
-from xctx.domain.status_payloads import build_version_payload
+from xctx.domain.interface_payloads import build_version_payload
 from xctx.errors import XctxError
 from xctx.process.argv import extract_global_options
 from xctx.process.parser import build_parser

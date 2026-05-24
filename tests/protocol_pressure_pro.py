@@ -141,7 +141,7 @@ def main() -> int:
         "libs/xctx/domain/agent_domains.py",
         "libs/xctx/commands/discover.py",
         "libs/xctx/domain/identity.py",
-        "libs/xctx/commands/identify.py",
+        "libs/xctx/protocol/command_policy.py",
     ):
         text = (ROOT / core_rel).read_text(encoding="utf-8")
         for forbidden_literal in (

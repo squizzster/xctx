@@ -217,7 +217,7 @@ def main() -> int:
         "libs/xctx/commands/observe.py",
         "libs/xctx/domain/agent_domains.py",
         "libs/xctx/domain/identity.py",
-        "libs/xctx/commands/identify.py",
+        "libs/xctx/protocol/command_policy.py",
     ):
         text = (ROOT / rel).read_text(encoding="utf-8")
         for token in CORE_RUNTIME_FORBIDDEN_TOKENS:

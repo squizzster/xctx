@@ -21,9 +21,7 @@ if str(LIBS) not in sys.path:
     sys.path.insert(0, str(LIBS))
 
 from xctx.process.runtime import main as xctx_main  # noqa: E402
-from xctx.commands.registry import command_handlers  # noqa: E402
 from xctx.config.loader import load_store  # noqa: E402
-from xctx.domain.diagnostics import run_diagnostics  # noqa: E402
 from xctx.errors import XctxError  # noqa: E402
 from xctx.ports.external_command import call_external_command  # noqa: E402
 from xctx_connectors.middleware import _resolve_workspace_entrypoint  # noqa: E402
@@ -154,22 +152,6 @@ def test_live_entrypoint_must_use_connector_supervisor() -> None:
         assert "route live subdomain through legacy_connector.py" in str(exc)
     else:  # pragma: no cover - defensive standalone script check
         raise AssertionError("accepted direct live adapter entrypoint")
-
-
-def test_doctor_rejects_direct_live_adapter_entrypoint() -> None:
-    store = load_store(root=ROOT)
-    subdomain = store["agent_domains"]["stock_intelligence_hub"]["_subdomains"]["market_data_gateway"]
-    subdomain["entrypoint"] = {**subdomain["entrypoint"], "file": "market_data_gateway.py"}
-    diagnostics = run_diagnostics(store, set(command_handlers()))
-    entrypoint_check = next(item for item in diagnostics if item["id"] == "doctor:external_command_entrypoints_resolve")
-    assert entrypoint_check["status"] == "fail"
-    assert entrypoint_check["adapter_errors"] == [
-        {
-            "target": "stock_intelligence_hub::market_data_gateway",
-            "reason": "entrypoint must use connector supervisor",
-            "entrypoint": "market_data_gateway.py",
-        }
-    ]
 
 
 def test_passthrough_target_entrypoint_stays_inside_workspace() -> None:
@@ -412,7 +394,6 @@ def main() -> int:
     test_domain_adapter_import_path_exists()
     test_xctx_invokes_connector_supervisor_out_of_process()
     test_live_entrypoint_must_use_connector_supervisor()
-    test_doctor_rejects_direct_live_adapter_entrypoint()
     test_passthrough_target_entrypoint_stays_inside_workspace()
     test_generic_connector_runtime_has_no_file_manager_implementation()
     test_root_audit_does_not_import_scoped_legacy_adapter()
