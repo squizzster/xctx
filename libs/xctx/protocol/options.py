@@ -280,6 +280,9 @@ def encode_cli_options_for_target(
             raise XctxError(f"next valid move: {spec['_primary_flag']} must be at least {spec['min']}")
         if spec.get("max") is not None and value > spec["max"]:
             raise XctxError(f"next valid move: {spec['_primary_flag']} must be at most {spec['max']}")
+        if spec.get("choices") and str(value) not in {str(choice) for choice in spec.get("choices") or []}:
+            choices = "|".join(str(choice) for choice in spec.get("choices") or [])
+            raise XctxError(f"next valid move: {spec['_primary_flag']} must be one of {choices}")
         present_specs.append((dest, spec, value))
 
     groups: dict[str, list[dict[str, Any]]] = {}
@@ -315,7 +318,7 @@ def _serialisable_option_entry(spec: dict[str, Any]) -> dict[str, Any]:
         "description": spec.get("desc") or spec.get("description"),
         "source": spec.get("_source"),
     }
-    for key in ("min", "max", "mutex_group", "adapter_arg"):
+    for key in ("min", "max", "mutex_group", "adapter_arg", "choices"):
         if spec.get(key) is not None:
             entry[key] = spec[key]
     return {key: value for key, value in entry.items() if value is not None}

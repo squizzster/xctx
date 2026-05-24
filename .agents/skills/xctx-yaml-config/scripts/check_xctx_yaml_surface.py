@@ -12,6 +12,7 @@ import contextlib
 import io
 import json
 import re
+import shlex
 import sys
 from pathlib import Path
 from typing import Any
@@ -24,11 +25,17 @@ if str(LIBS) not in sys.path:
 
 ALLOWED_STATUSES = {"online", "offline", "down_for_maintenance"}
 ALLOWED_CONNECTOR_KINDS = {"legacy_command", "xctx_native_passthrough"}
+ALLOWED_RUN_CMD_ROOTS = {"discover", "observe", "plan", "execute", "audit", "repair"}
+MIN_TIMEOUT_SECONDS = 0.05
+MAX_TIMEOUT_SECONDS = 300.0
+MIN_OUTPUT_BYTES = 1024
+MAX_OUTPUT_BYTES = 1048576
 IMPORT_SAFE_ID = re.compile(r"^[a-z][a-z0-9_]*$")
 FORBIDDEN_CONNECTOR_KEYS = {"profile", "module", "adapter_module", "python_module", "import_path"}
 ROOT_SURFACE_FORBIDDEN_TOKENS = (
     "--bars",
     "--calendar-days",
+    "--export",
     "configured_options",
     "root_affordances",
     "search_entity_instrument",
@@ -109,6 +116,65 @@ def _contains_token(value: Any, token: str) -> bool:
     return token in str(value)
 
 
+def _validate_timeout(findings: list[dict[str, Any]], check_id: str, value: Any) -> None:
+    try:
+        timeout = float(value)
+    except (TypeError, ValueError):
+        findings.append(finding("error", check_id, "timeout_seconds must be numeric", value=value))
+        return
+    if timeout != timeout or timeout < MIN_TIMEOUT_SECONDS or timeout > MAX_TIMEOUT_SECONDS:
+        findings.append(
+            finding(
+                "error",
+                check_id,
+                f"timeout_seconds must be between {MIN_TIMEOUT_SECONDS:g} and {MAX_TIMEOUT_SECONDS:g}",
+                value=value,
+            )
+        )
+
+
+def _validate_max_output(findings: list[dict[str, Any]], check_id: str, value: Any) -> None:
+    try:
+        max_bytes = int(value)
+    except (TypeError, ValueError):
+        findings.append(finding("error", check_id, "max_output_bytes must be an integer", value=value))
+        return
+    if max_bytes < MIN_OUTPUT_BYTES or max_bytes > MAX_OUTPUT_BYTES:
+        findings.append(
+            finding(
+                "error",
+                check_id,
+                f"max_output_bytes must be between {MIN_OUTPUT_BYTES} and {MAX_OUTPUT_BYTES}",
+                value=value,
+            )
+        )
+
+
+def _validate_run_cmd(findings: list[dict[str, Any]], check_id: str, run_cmd: str) -> None:
+    if not run_cmd.startswith("./xctx "):
+        findings.append(finding("error", check_id, "run_cmd must start with ./xctx", run_cmd=run_cmd))
+        return
+    try:
+        parts = shlex.split(run_cmd)
+    except ValueError as exc:
+        findings.append(finding("error", check_id, "run_cmd must be shell-parseable", run_cmd=run_cmd, error=str(exc)))
+        return
+    if len(parts) < 2 or parts[0] != "./xctx":
+        findings.append(finding("error", check_id, "run_cmd must start with ./xctx and a command", run_cmd=run_cmd))
+        return
+    command = parts[1]
+    if command not in ALLOWED_RUN_CMD_ROOTS:
+        findings.append(
+            finding(
+                "error",
+                check_id,
+                "run_cmd must use a lawful visible xctx command",
+                run_cmd=run_cmd,
+                command=command,
+            )
+        )
+
+
 def main() -> int:
     findings: list[dict[str, Any]] = []
 
@@ -162,6 +228,14 @@ def main() -> int:
                 "error",
                 "agent_routing:discovery_fallback_removed",
                 "bare discover targets must not be routed through a configured fallback; discovery must enter an explicit domain/subdomain scope",
+            )
+        )
+    if routing.get("default_observe_route"):
+        findings.append(
+            finding(
+                "error",
+                "agent_routing:default_observe_route_removed",
+                "bare observe targets must not use a default catch-all route; require typed IDs or explicit domain/subdomain scope",
             )
         )
 
@@ -279,9 +353,17 @@ def main() -> int:
             entrypoint_file = entrypoint.get("file")
             if sub_status == "online" and entrypoint_file and not (ROOT / str(entrypoint_file)).exists():
                 findings.append(finding("error", f"{sub_prefix}:entrypoint_exists", "online subdomain entrypoint file does not exist", entrypoint_file=entrypoint_file))
+            if "timeout_seconds" in entrypoint:
+                _validate_timeout(findings, f"{sub_prefix}:entrypoint_timeout", entrypoint.get("timeout_seconds"))
+            if "max_output_bytes" in entrypoint:
+                _validate_max_output(findings, f"{sub_prefix}:entrypoint_max_output", entrypoint.get("max_output_bytes"))
             connector = subdomain.get("connector") or {}
             if connector:
                 connector_prefix = f"connector:{domain_id}::{subdomain_id}"
+                if "timeout_seconds" in connector:
+                    _validate_timeout(findings, f"{connector_prefix}:timeout", connector.get("timeout_seconds"))
+                if "max_output_bytes" in connector:
+                    _validate_max_output(findings, f"{connector_prefix}:max_output", connector.get("max_output_bytes"))
                 kind = str(connector.get("kind") or "")
                 if kind not in ALLOWED_CONNECTOR_KINDS:
                     findings.append(finding("error", f"{connector_prefix}:kind", "connector kind must be known", kind=kind))
@@ -397,8 +479,7 @@ def main() -> int:
                     bare_root_targets_that_must_fail.add(str(alias))
                 action_prefix = f"action:{domain_id}::{subdomain_id}:{action_name}"
                 run_cmd = str(action.get("run_cmd") or "")
-                if not run_cmd.startswith("./xctx "):
-                    findings.append(finding("error", f"{action_prefix}:run_cmd", "action run_cmd must start with ./xctx", run_cmd=run_cmd))
+                _validate_run_cmd(findings, f"{action_prefix}:run_cmd", run_cmd)
                 if not (action.get("desc") or action.get("description")):
                     findings.append(finding("warning", f"{action_prefix}:description", "action should describe its operational meaning"))
                 aliases = [str(alias) for alias in (action.get("aliases") or [])]
@@ -450,13 +531,6 @@ def main() -> int:
             findings.append(finding("error", f"{route_prefix}:subdomain", "observe route references unknown subdomain", agent_domain=domain_id, agent_subdomain=subdomain_id))
         if not (route.get("prefixes") or route.get("unprefixed_exact")):
             findings.append(finding("error", f"{route_prefix}:matchers", "observe route needs prefixes or unprefixed_exact tokens"))
-
-    default_route = routing.get("default_observe_route") or {}
-    if default_route:
-        domain_id = str(default_route.get("agent_domain") or "")
-        subdomain_id = str(default_route.get("agent_subdomain") or "")
-        if domain_id not in domains or subdomain_id not in (domains.get(domain_id, {}).get("_subdomains") or {}):
-            findings.append(finding("error", "default_observe_route", "default observe route must reference a known subdomain", agent_domain=domain_id, agent_subdomain=subdomain_id))
 
     identity_fields = universe.get("identity_resolution", {}).get("query_fields") or []
     if not identity_fields or not all(isinstance(item, str) and item.strip() for item in identity_fields):

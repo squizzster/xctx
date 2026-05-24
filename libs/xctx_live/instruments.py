@@ -1055,6 +1055,7 @@ def market_series_range_observation(
     *,
     bars: int | None = None,
     calendar_days: int | None = None,
+    export_csv: bool = False,
 ) -> dict[str, Any]:
     if bars is not None and calendar_days is not None:
         raise ValueError("choose either --bars or --calendar-days")
@@ -1082,7 +1083,6 @@ def market_series_range_observation(
     unit = "bars" if bars is not None else "calendar_days"
     value = int(bars if bars is not None else calendar_days)
     ranged_bars = _range_bars(root, found.get("dataset_id"), bars=bars, calendar_days=calendar_days)
-    csv_path = _write_bars_csv(root, found, ranged_bars, value, unit)
     coverage = {
         "start_date": ranged_bars[0]["date"] if ranged_bars else None,
         "end_date": ranged_bars[-1]["date"] if ranged_bars else None,
@@ -1099,15 +1099,23 @@ def market_series_range_observation(
         "latest_bar_date": found.get("latest_bar", {}).get("date"),
         "price_summary": _price_range_summary(ranged_bars),
         "requested_identifier": identifier,
-        "csv": {
-            "path": str(csv_path.relative_to(root)),
-            "format": "csv",
-            "columns": BAR_CSV_COLUMNS,
-        },
         "bars_inline": len(ranged_bars) <= INLINE_BAR_LIMIT,
         "inline_bar_limit": INLINE_BAR_LIMIT,
         "data_boundary": "Bundled read-only OHLCV fixture; not a live quote feed and not investment advice.",
     }
+    if export_csv:
+        csv_path = _write_bars_csv(root, found, ranged_bars, value, unit)
+        payload["csv"] = {
+            "path": str(csv_path.relative_to(root)),
+            "format": "csv",
+            "columns": BAR_CSV_COLUMNS,
+        }
+    else:
+        payload["export"] = {
+            "csv_available": True,
+            "csv_written": False,
+            "run_cmd_suffix": "--export csv",
+        }
     if len(ranged_bars) <= INLINE_BAR_LIMIT:
         payload["bars"] = ranged_bars
     else:
@@ -1385,13 +1393,14 @@ def market_series_search_payload(root: Path, query: str) -> dict[str, Any]:
     }
 
 
-def instrument_observation(root: Path, identifier: str, range_request: dict[str, int] | None = None) -> dict[str, Any]:
+def instrument_observation(root: Path, identifier: str, range_request: dict[str, object] | None = None) -> dict[str, Any]:
     if range_request:
         return market_series_range_observation(
             root,
             identifier,
-            bars=range_request.get("bars"),
-            calendar_days=range_request.get("calendar_days"),
+            bars=range_request.get("bars") if isinstance(range_request.get("bars"), int) else None,
+            calendar_days=range_request.get("calendar_days") if isinstance(range_request.get("calendar_days"), int) else None,
+            export_csv=range_request.get("export") == "csv",
         )
     if identifier.lower().startswith(("market_series:", "ohlcv_series:")):
         return market_series_observation(root, identifier)

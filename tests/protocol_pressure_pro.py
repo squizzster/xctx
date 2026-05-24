@@ -198,7 +198,7 @@ def main() -> int:
     assert market["results"]["live_data"]["stats"]["canonical_instruments"] >= 100
     assert market["results"]["shape"] == "compact"
     configured_observe_options = market["results"]["configured_options"]["observe"]
-    assert [item["flags"][0] for item in configured_observe_options] == ["--bars", "--calendar-days"]
+    assert [item["flags"][0] for item in configured_observe_options] == ["--bars", "--calendar-days", "--export"]
     assert configured_observe_options[0]["source"]["kind"] == "agent_subdomain_action"
     market_full = run_engine(["discover", "stock_intelligence_hub::market_data_gateway", "--shape", "full"])
     assert market_full["results"]["shape"] == "full"
@@ -347,8 +347,20 @@ def main() -> int:
     assert small_live["bars_inline"] is True
     assert len(small_live["bars"]) == 5
     assert small_live["price_summary"]["last_close"] == small_live["bars"][-1]["close"]
-    assert re.fullmatch(r"\.xctx_runtime/exports/instrument_aapl_5_bars_[0-9a-f]{8}\.csv", small_live["csv"]["path"])
-    assert (ROOT / small_live["csv"]["path"]).exists()
+    assert "csv" not in small_live
+    assert small_live["export"]["csv_written"] is False
+    exported = run_engine([
+        "observe",
+        "stock_intelligence_hub::market_data_gateway",
+        "market_series:aapl:daily",
+        "--bars",
+        "5",
+        "--export",
+        "csv",
+    ])
+    exported_live = exported["results"]["live_data"]
+    assert re.fullmatch(r"\.xctx_runtime/exports/instrument_aapl_5_bars_[0-9a-f]{8}\.csv", exported_live["csv"]["path"])
+    assert (ROOT / exported_live["csv"]["path"]).exists()
     ranged_large = run_engine(["observe", "stock_intelligence_hub::market_data_gateway", "instrument:aapl", "--bars", "31"])
     assert ranged_large["results"]["live_data"]["bars_inline"] is False
     assert ranged_large["results"]["live_data"]["bars_omitted_from_json"] == 31

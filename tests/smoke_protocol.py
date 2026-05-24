@@ -179,7 +179,7 @@ def assert_protocol_is_config_driven() -> None:
     assert market_subdomain["actions"]["latest_price"]["entrypoint_command"] == "latest-price"
     assert market_subdomain["actions"]["discover"]["discovery_shapes"]["default_shape"] == "compact"
     observe_flags = [option["flags"][0] for option in market_subdomain["actions"]["observe"]["cli_options"]]
-    assert observe_flags == ["--bars", "--calendar-days"]
+    assert observe_flags == ["--bars", "--calendar-days", "--export"]
     filing_subdomain = yaml.safe_load((ROOT / "yaml_dynamic_config" / "agent_domains" / "stock_intelligence_hub" / "subdomains" / "equity_filing" / "subdomain.yaml").read_text())
     assert filing_subdomain["entrypoint"]["file"] == "legacy_connector.py"
     assert filing_subdomain["connector"]["kind"] == "xctx_native_passthrough"
@@ -351,7 +351,7 @@ def assert_root_domain_subdomain_discovery() -> None:
     assert market_live["shape"] == "compact"
     assert market_live["stats"]["canonical_instruments"] >= 100
     observe_options = market["results"]["configured_options"]["observe"]
-    assert [item["flags"][0] for item in observe_options] == ["--bars", "--calendar-days"]
+    assert [item["flags"][0] for item in observe_options] == ["--bars", "--calendar-days", "--export"]
     assert observe_options[0]["source"]["agent_subdomain"] == "market_data_gateway"
     assert {item["id"] for item in market_live["discoverable_modes"]} >= {
         "search_entity_instrument",
@@ -577,8 +577,21 @@ def assert_observe_audit_repair() -> None:
     assert len(small_live["bars"]) == 5
     assert small_live["price_summary"]["last_close"] == small_live["bars"][-1]["close"]
     assert small_live["price_summary"]["first_close"] == small_live["bars"][0]["close"]
-    assert re.fullmatch(r"\.xctx_runtime/exports/instrument_aapl_5_bars_[0-9a-f]{8}\.csv", small_live["csv"]["path"])
-    assert (ROOT / small_live["csv"]["path"]).exists()
+    assert "csv" not in small_live
+    assert small_live["export"] == {"csv_available": True, "csv_written": False, "run_cmd_suffix": "--export csv"}
+
+    exported = one([
+        "observe",
+        "stock_intelligence_hub::market_data_gateway",
+        "market_series:aapl:daily",
+        "--bars",
+        "5",
+        "--export",
+        "csv",
+    ])
+    exported_live = exported["results"]["live_data"]
+    assert re.fullmatch(r"\.xctx_runtime/exports/instrument_aapl_5_bars_[0-9a-f]{8}\.csv", exported_live["csv"]["path"])
+    assert (ROOT / exported_live["csv"]["path"]).exists()
 
     ranged_large = one(["observe", "stock_intelligence_hub::market_data_gateway", "instrument:aapl", "--bars", "31"])
     large_live = ranged_large["results"]["live_data"]
@@ -596,7 +609,10 @@ def assert_observe_audit_repair() -> None:
     assert unsupported_option["ok"] is False
     assert "remove unsupported option --bars for stock_intelligence_hub::equity_filing observe" in unsupported_option["error"]
 
-    conflict = one(["observe", "AAPL", "--bars", "1", "--calendar-days", "1"], expected_code=1)
+    bare_ticker = one(["observe", "AAPL"], expected_code=1)
+    assert "observe a discovered id with a known prefix" in bare_ticker["error"]
+
+    conflict = one(["observe", "stock_intelligence_hub::market_data_gateway", "AAPL", "--bars", "1", "--calendar-days", "1"], expected_code=1)
     assert "choose either --bars or --calendar-days" in conflict["error"]
 
     filing_context = one(["observe", "stock_intelligence_hub::equity_filing", "instrument:aapl"])

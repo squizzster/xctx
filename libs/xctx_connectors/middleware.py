@@ -100,13 +100,13 @@ def _passthrough(context: runtime.ConnectorContext, args: list[str], *, compact:
     connector = context.connector_config
     target = connector.get("target_entrypoint")
     target_path = _resolve_workspace_entrypoint(context.workspace_root, target, label="target_entrypoint")
-    timeout = float(connector.get("timeout_seconds", 30))
+    timeout = runtime.validated_timeout(connector.get("timeout_seconds", 30))
+    max_output_bytes = runtime.validated_max_output_bytes(connector.get("max_output_bytes", runtime.DEFAULT_MAX_OUTPUT_BYTES))
     argv = [sys.executable, str(target_path), *args]
     include_argv = _full_shape_requested(args)
     if compact and "--compact" not in argv:
         argv.append("--compact")
-    env = os.environ.copy()
-    result = runtime.run_external(argv, cwd=context.workspace_root, env=env, timeout=timeout)
+    result = runtime.run_external(argv, cwd=context.workspace_root, timeout=timeout, max_output_bytes=max_output_bytes)
     if result["timed_out"]:
         payload: dict[str, Any] = {
             "object_type": "xctx_native_passthrough_error",

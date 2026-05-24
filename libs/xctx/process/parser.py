@@ -60,6 +60,8 @@ def _add_configured_cli_options(parser: argparse.ArgumentParser, store: dict[str
             kwargs["action"] = action if action in {"store_true", "store_false"} else "store_true"
         else:
             kwargs["type"] = _argparse_type(option_type)
+            if spec.get("choices"):
+                kwargs["choices"] = [str(choice) for choice in spec.get("choices") or []]
         parser.add_argument(*flags, **kwargs)
 
 

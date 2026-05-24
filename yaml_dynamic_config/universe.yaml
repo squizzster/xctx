@@ -72,9 +72,6 @@ agent_routing:
         - SC 13D
         - S-3
         - 424B5
-  default_observe_route:
-    agent_domain: stock_intelligence_hub
-    agent_subdomain: market_data_gateway
 systems:
   - id: stock_intelligence_hub
     name: stock_intelligence_hub

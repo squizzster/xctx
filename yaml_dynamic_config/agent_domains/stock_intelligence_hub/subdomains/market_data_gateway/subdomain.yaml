@@ -19,6 +19,7 @@ connector:
   kind: xctx_native_passthrough
   target_entrypoint: market_data_gateway.py
   timeout_seconds: 30
+  max_output_bytes: 65536
 data:
   storage_engine: mixed_yaml_sqlite
   instrument_path: yaml_dynamic_config/agent_domains/stock_intelligence_hub/subdomains/market_data_gateway/instruments.yaml
@@ -119,8 +120,8 @@ actions:
   observe:
     priority: 40
     entrypoint_command: observe
-    desc: Observe a canonical instrument, issuer, ticker, CIK, market_series:<ticker>:daily, or ohlcv_series:<id> in detail; optional configured range flags return bundled daily price ranges.
-    run_cmd: ./xctx observe stock_intelligence_hub::market_data_gateway <instrument_id|ticker|CIK|market_series:ticker:daily> [--bars N|--calendar-days N]
+    desc: Observe a canonical instrument, issuer, ticker, CIK, market_series:<ticker>:daily, or ohlcv_series:<id> in detail; optional configured range flags return bundled daily price ranges. CSV export is explicit via --export csv.
+    run_cmd: ./xctx observe stock_intelligence_hub::market_data_gateway <instrument_id|ticker|CIK|market_series:ticker:daily> [--bars N|--calendar-days N] [--export csv]
     cli_options:
       - flags:
           - --bars
@@ -140,3 +141,11 @@ actions:
         mutex_group: market_series_range_window
         conflict_message: choose either --bars or --calendar-days
         desc: Return bars whose dates fall within the last N calendar days; 0 means all available bars.
+      - flags:
+          - --export
+        dest: export
+        type: str
+        choices:
+          - csv
+        adapter_arg: --export
+        desc: Write an explicit protocol-local CSV export for a range observation. Omit for read-only JSON observation.

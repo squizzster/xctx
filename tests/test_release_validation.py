@@ -9,6 +9,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -136,3 +138,36 @@ def test_configured_command_without_handler_fails_closed(monkeypatch) -> None:
     assert payload["ok"] is False
     assert payload["record_type"] == "error"
     assert payload["error"] == "next valid move: command repair is configured but has no production handler"
+
+
+def test_connector_runtime_sanitizes_env_and_bounds_output() -> None:
+    sys.path.insert(0, str(ROOT / "libs"))
+    from xctx_connectors import runtime  # noqa: PLC0415
+
+    code = (
+        "import os, sys; "
+        "sys.stdout.write('secret=' + str(os.environ.get('SECRET_TOKEN')) + '\\n'); "
+        "sys.stdout.write('domain=' + str(os.environ.get('XCTX_AGENT_DOMAIN')) + '\\n'); "
+        "sys.stdout.write('x' * 5000)"
+    )
+    result = runtime.run_external(
+        [sys.executable, "-c", code],
+        timeout=5,
+        max_output_bytes=1024,
+        env={"SECRET_TOKEN": "should_not_leak", "XCTX_AGENT_DOMAIN": "stock_intelligence_hub"},
+    )
+    assert result["ok"] is True
+    assert len(result["stdout"]) == 1024
+    assert "should_not_leak" not in result["stdout"]
+    assert "secret=None" in result["stdout"]
+    assert "domain=stock_intelligence_hub" in result["stdout"]
+
+
+def test_connector_runtime_rejects_unsafe_subprocess_limits() -> None:
+    sys.path.insert(0, str(ROOT / "libs"))
+    from xctx_connectors import runtime  # noqa: PLC0415
+
+    with pytest.raises(ValueError, match="timeout_seconds"):
+        runtime.run_external([sys.executable, "-c", "print('ok')"], timeout=0, max_output_bytes=1024)
+    with pytest.raises(ValueError, match="max_output_bytes"):
+        runtime.run_external([sys.executable, "-c", "print('ok')"], timeout=1, max_output_bytes=10)

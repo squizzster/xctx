@@ -53,9 +53,9 @@ def parse_discover_args(args: list[str]) -> tuple[str, str]:
     return joined_query(query_parts), shape
 
 
-def parse_observe_args(args: list[str]) -> tuple[str, dict[str, int] | None]:
+def parse_observe_args(args: list[str]) -> tuple[str, dict[str, object] | None]:
     identifier_parts: list[str] = []
-    range_request: dict[str, int] = {}
+    range_request: dict[str, object] = {}
     index = 0
     while index < len(args):
         token = args[index]
@@ -70,6 +70,15 @@ def parse_observe_args(args: list[str]) -> tuple[str, dict[str, int] | None]:
                 raise ValueError(f"{token} cannot be negative")
             key = "bars" if token == "--bars" else "calendar_days"
             range_request[key] = value
+            index += 2
+            continue
+        if token == "--export":
+            if index + 1 >= len(args):
+                raise ValueError("--export requires a value")
+            export_format = args[index + 1]
+            if export_format != "csv":
+                raise ValueError("--export must be csv")
+            range_request["export"] = export_format
             index += 2
             continue
         identifier_parts.append(token)

@@ -393,9 +393,6 @@ def route_for_identifier(store: dict[str, Any], identifier: str) -> tuple[str, s
         exact_tokens = {str(token).upper() for token in route.get("unprefixed_exact", []) or []}
         if any(lowered.startswith(prefix) for prefix in prefixes) or uppered in exact_tokens:
             return str(route.get("agent_domain")), str(route.get("agent_subdomain"))
-    default_route = routing.get("default_observe_route") or {}
-    if default_route.get("agent_domain") and default_route.get("agent_subdomain"):
-        return str(default_route["agent_domain"]), str(default_route["agent_subdomain"])
     return None, None
 
 

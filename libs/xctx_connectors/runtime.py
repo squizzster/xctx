@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import os
+import selectors
 import signal
 import subprocess
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from types import MappingProxyType
@@ -12,6 +14,21 @@ from typing import Any, Mapping
 
 
 CONNECTOR_VERSION = "legacy_connector.v1"
+DEFAULT_MAX_OUTPUT_BYTES = 65536
+MAX_CAPTURE_BYTES = 1048576
+MIN_TIMEOUT_SECONDS = 0.05
+MAX_TIMEOUT_SECONDS = 300.0
+SAFE_ENV_KEYS = {
+    "HOME",
+    "LANG",
+    "LC_ALL",
+    "LC_CTYPE",
+    "PATH",
+    "PYTHONHOME",
+    "PYTHONPATH",
+    "TMPDIR",
+    "VIRTUAL_ENV",
+}
 
 
 @dataclass(frozen=True)
@@ -108,6 +125,34 @@ def command_status(
     return {key: value for key, value in payload.items() if value is not None}
 
 
+def validated_timeout(value: Any, *, label: str = "timeout_seconds") -> float:
+    try:
+        timeout = float(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{label} must be a number") from exc
+    if timeout != timeout or timeout < MIN_TIMEOUT_SECONDS or timeout > MAX_TIMEOUT_SECONDS:
+        raise ValueError(f"{label} must be between {MIN_TIMEOUT_SECONDS:g} and {MAX_TIMEOUT_SECONDS:g}")
+    return timeout
+
+
+def validated_max_output_bytes(value: Any, *, label: str = "max_output_bytes") -> int:
+    try:
+        max_bytes = int(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{label} must be an integer") from exc
+    if max_bytes < 1024 or max_bytes > MAX_CAPTURE_BYTES:
+        raise ValueError(f"{label} must be between 1024 and {MAX_CAPTURE_BYTES}")
+    return max_bytes
+
+
+def sanitized_env(extra: Mapping[str, str] | None = None) -> dict[str, str]:
+    env = {key: value for key, value in os.environ.items() if key in SAFE_ENV_KEYS}
+    for key, value in (extra or {}).items():
+        if key in SAFE_ENV_KEYS or key.startswith("XCTX_"):
+            env[key] = str(value)
+    return env
+
+
 def command_status_from_legacy(legacy: Mapping[str, Any], *, include_argv: bool = True) -> dict[str, Any]:
     return command_status(
         ok=bool(legacy["ok"]),
@@ -186,11 +231,15 @@ def parse_controls(args: list[str], *, default_limit: int, max_limit: int) -> tu
     return rest, controls
 
 
-def _trim(text: str | None, max_output_bytes: int | None) -> str:
-    value = text or ""
-    if max_output_bytes is None:
-        return value
-    return value[:max_output_bytes]
+def _append_limited(buffer: bytearray, chunk: bytes, max_output_bytes: int) -> None:
+    if len(buffer) >= max_output_bytes:
+        return
+    remaining = max_output_bytes - len(buffer)
+    buffer.extend(chunk[:remaining])
+
+
+def _decode_output(buffer: bytearray) -> str:
+    return bytes(buffer).decode("utf-8", errors="replace")
 
 
 def _kill_process_tree(proc: subprocess.Popen[str]) -> None:
@@ -211,27 +260,64 @@ def run_external(
     env: Mapping[str, str] | None = None,
     max_output_bytes: int | None = None,
 ) -> dict[str, Any]:
+    timeout = validated_timeout(timeout)
+    max_bytes = validated_max_output_bytes(max_output_bytes or DEFAULT_MAX_OUTPUT_BYTES)
     proc = subprocess.Popen(
         argv,
         cwd=cwd,
-        env=dict(env) if env is not None else None,
-        text=True,
+        env=sanitized_env(env),
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         start_new_session=(os.name == "posix"),
     )
+    stdout_buffer = bytearray()
+    stderr_buffer = bytearray()
+    buffers = {"stdout": stdout_buffer, "stderr": stderr_buffer}
+    selector = selectors.DefaultSelector()
+    assert proc.stdout is not None
+    assert proc.stderr is not None
+    selector.register(proc.stdout, selectors.EVENT_READ, "stdout")
+    selector.register(proc.stderr, selectors.EVENT_READ, "stderr")
+    deadline = time.monotonic() + timeout
+    timed_out = False
+
+    while selector.get_map():
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            timed_out = True
+            _kill_process_tree(proc)
+            break
+        events = selector.select(timeout=remaining)
+        if not events:
+            continue
+        for key, _mask in events:
+            stream = key.fileobj
+            chunk = os.read(stream.fileno(), 8192)
+            if not chunk:
+                selector.unregister(stream)
+                continue
+            _append_limited(buffers[str(key.data)], chunk, max_bytes)
+
+    for stream in (proc.stdout, proc.stderr):
+        try:
+            selector.unregister(stream)
+        except Exception:
+            pass
     try:
-        stdout, stderr = proc.communicate(timeout=timeout)
-    except subprocess.TimeoutExpired as exc:
+        proc.wait(timeout=1)
+    except subprocess.TimeoutExpired:
         _kill_process_tree(proc)
-        stdout, stderr = proc.communicate()
+        proc.wait(timeout=1)
+    stdout = _decode_output(stdout_buffer)
+    stderr = _decode_output(stderr_buffer)
+    if timed_out:
         return {
             "ok": False,
             "argv": argv,
             "exit_code": None,
             "timed_out": True,
-            "stdout": _trim(stdout or (exc.stdout if isinstance(exc.stdout, str) else ""), max_output_bytes),
-            "stderr": _trim(stderr or (exc.stderr if isinstance(exc.stderr, str) else ""), max_output_bytes),
+            "stdout": stdout,
+            "stderr": stderr,
             "error": f"external command timed out after {timeout:g} seconds",
         }
     return {
@@ -239,8 +325,8 @@ def run_external(
         "argv": argv,
         "exit_code": proc.returncode or 0,
         "timed_out": False,
-        "stdout": _trim(stdout, max_output_bytes),
-        "stderr": _trim(stderr, max_output_bytes),
+        "stdout": stdout,
+        "stderr": stderr,
         "error": None
         if (proc.returncode or 0) == 0
         else ((stderr or "").strip() or (stdout or "").strip() or "external command failed"),
