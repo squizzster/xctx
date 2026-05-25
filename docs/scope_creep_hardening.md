@@ -176,8 +176,8 @@ returns guidance to remove the unsupported option for the resolved filing target
 
 ## Guardrails added
 
-- Negative root-surface tests in `tests/smoke_protocol.py`.
-- Negative root-surface tests in `tests/protocol_pressure_pro.py`.
+- Negative root-surface tests collected by pytest in `tests/test_smoke_protocol.py`.
+- Negative root-surface tests collected by pytest in `tests/test_protocol_pressure_pro.py`.
 - YAML checker failure if `universe.yaml` contains `root_affordances` or
   domain-specific command shortcuts.
 - YAML checker failure if universe identity fields include `ticker` or `symbol`.

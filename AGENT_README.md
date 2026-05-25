@@ -280,22 +280,16 @@ YAML is explicit or selected automatically for a TTY:
 ./xctx --json discover
 ```
 
-## Smoke test
+## Test gate
 
 ```bash
-python3 .agents/skills/xctx-yaml-config/scripts/check_xctx_yaml_surface.py
-python3 tests/smoke_protocol.py
-python3 tests/protocol_pressure_pro.py
-python3 tests/protocol_connector_supervisor.py
+make test
 ```
 
-The YAML guard validates root-boundary cleanliness, scoped domain affordances,
-domain/subdomain references, online entrypoint paths, observe routes, removed
-identity fields, and configured option parseability. The smoke and
-pressure tests then validate the modular layout, config-driven routing, ROOT /
-DOMAIN / SUBDOMAIN discovery, scoped affordance routing, refusal of unscoped
-actions, read-only filing and market lookups, observe flows, offline/maintenance
-repair flows, and plan/execute receipts.
+`make test` runs `python3 -m pytest -q`. Pytest collects the framework tests plus
+the protocol smoke, pressure, connector supervisor, and observe/discover
+boundary checks. A green pytest run is therefore the canonical local release
+gate, not a partial fast-only gate.
 
 ## PRO hardening notes
 

@@ -59,6 +59,7 @@ The scoped market-data surface still advertises the stock-only range options:
 configured_options.observe:
   --bars
   --calendar-days
+  --export
 ```
 
 ## What changed from the prior artifact
@@ -129,29 +130,25 @@ root surface.
 ## Validation performed
 
 ```bash
-python3 .agents/skills/xctx-yaml-config/scripts/check_xctx_yaml_surface.py
-python3 tests/smoke_protocol.py
-python3 tests/protocol_pressure_pro.py
-python3 -m compileall -q libs market_data_gateway.py equity_filings.py tests
+make test
 ```
 
 Result:
 
 ```text
-check_xctx_yaml_surface.py: ok=true, error_count=0, warning_count=0
-smoke_protocol.py: hardened xctx protocol smoke checks passed
-protocol_pressure_pro.py: PRO xctx protocol pressure checks passed
-compileall: ok
+python3 -m pytest -q
+41 passed
 ```
 
 The checker also reports parser option inventory separately from scoped published
 option surfaces:
 
 ```text
-parser_option_counts.observe: 2
+parser_option_counts.observe: 3
 scoped_configured_options.stock_intelligence_hub::market_data_gateway.observe:
   --bars
   --calendar-days
+  --export
 ```
 
 ## Core grep checks

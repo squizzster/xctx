@@ -831,14 +831,21 @@ def assert_plan_execute_other_and_output() -> None:
 
 
 def main() -> int:
+    print("[smoke] modular layout", flush=True)
     assert_modular_layout()
+    print("[smoke] config-driven protocol", flush=True)
     assert_protocol_is_config_driven()
+    print("[smoke] root/domain/subdomain discovery", flush=True)
     assert_root_domain_subdomain_discovery()
+    print("[smoke] scoped affordance routing", flush=True)
     assert_scoped_affordance_routing()
+    print("[smoke] connector supervisor middleware", flush=True)
     assert_connector_supervisor_middleware()
+    print("[smoke] observe/audit/repair", flush=True)
     assert_observe_audit_repair()
+    print("[smoke] plan/execute/output", flush=True)
     assert_plan_execute_other_and_output()
-    print("hardened xctx protocol smoke checks passed")
+    print("hardened xctx protocol smoke checks passed", flush=True)
     return 0
 
 

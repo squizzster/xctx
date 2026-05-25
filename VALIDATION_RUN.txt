@@ -2,29 +2,16 @@ xctx v4.2 boundary-hardened validation run
 
 Commands executed from repository root:
 
-  python3 .agents/skills/xctx-yaml-config/scripts/check_xctx_yaml_surface.py
-  python3 tests/protocol_connector_supervisor.py
-  python3 tests/smoke_protocol.py
-  python3 tests/protocol_pressure_pro.py
-  python3 tests/protocol_observe_discover_boundary.py
-  ./bin/protocol_walker --list-valid-commands
-  ./xctx --json audit root
+  make test
   git diff --check
-  rg -n -e "file_manager|home_directory|list_files|list_directories|external_command|shape_guarantee|single_json_object_for_live_data|directory:" libs/xctx xctx bin -S
-  python3 -m compileall -q libs market_data_gateway.py equity_filings.py connector_supervisor.py tests
 
 Results:
 
-  check_xctx_yaml_surface.py: ok=true; error_count=0; warning_count=0
-  protocol_connector_supervisor.py: connector supervisor middleware checks passed
-  smoke_protocol.py: hardened xctx protocol smoke checks passed
-  protocol_pressure_pro.py: PRO xctx protocol pressure checks passed
-  protocol_observe_discover_boundary.py: ok
-  protocol_walker: ok
-  audit root: ok=true
+  pytest: 41 passed
   git diff --check: ok
-  core leak grep: no matches
-  compileall: ok
+  YAML validator: collected inside pytest
+  compileall: collected inside pytest
+  protocol smoke/pressure/connector/boundary scripts: collected inside pytest
 
 Root/universe leak guard:
 
@@ -51,6 +38,7 @@ Scoped market-data surface still advertises the market-only range options:
   configured_options.observe:
     --bars
     --calendar-days
+    --export
 
 Representative positive probes:
 

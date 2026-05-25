@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import importlib.util
 import io
 import json
 import os
@@ -158,6 +159,17 @@ def ensure_libs_path() -> None:
     libs = str(ROOT / "libs")
     if libs not in sys.path:
         sys.path.insert(0, libs)
+
+
+def load_script_module(script_name: str):
+    module_name = f"_xctx_test_script_{script_name}"
+    script_path = ROOT / "tests" / f"{script_name}.py"
+    spec = importlib.util.spec_from_file_location(module_name, script_path)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"could not load test script {script_path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def run_runtime_json(args: list[str]) -> tuple[int, dict]:

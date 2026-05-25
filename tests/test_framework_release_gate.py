@@ -25,11 +25,7 @@ def test_compileall_release_paths() -> None:
             "libs/xctx",
             "libs/xctx_connectors/runtime.py",
             "libs/xctx_connectors/middleware.py",
-            "tests/framework_helpers.py",
-            "tests/test_framework_release_gate.py",
-            "tests/test_command_contract.py",
-            "tests/test_audit_and_options.py",
-            "tests/test_connector_runtime.py",
+            "tests",
         ]
     )
 

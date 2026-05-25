@@ -1,23 +1,16 @@
 # Validation Summary
 
-Validated on the packaged workspace with:
+Validated on the packaged workspace with the canonical release gate:
 
 ```bash
-python3 .agents/skills/xctx-yaml-config/scripts/check_xctx_yaml_surface.py
-python3 tests/smoke_protocol.py
-python3 tests/protocol_pressure_pro.py
-python3 tests/protocol_connector_supervisor.py
-python3 -m compileall -q libs market_data_gateway.py equity_filings.py tests
+make test
 ```
 
 Result:
 
 ```text
-check_xctx_yaml_surface.py: ok=true, error_count=0, warning_count=0
-smoke_protocol.py: hardened xctx protocol smoke checks passed
-protocol_pressure_pro.py: PRO xctx protocol pressure checks passed
-protocol_connector_supervisor.py: connector supervisor middleware checks passed
-compileall: ok
+python3 -m pytest -q
+41 passed
 ```
 
 ## Release-blocker regression guard
@@ -62,8 +55,8 @@ market-data subdomain:
 ./xctx --json discover stock_intelligence_hub::market_data_gateway
 ```
 
-That scoped surface advertises `configured_options.observe` with `--bars` and
-`--calendar-days`.
+That scoped surface advertises `configured_options.observe` with `--bars`,
+`--calendar-days`, and explicit `--export`.
 
 ## Representative command checks
 
