@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generic xctx middleware entrypoint for legacy and pass-through connectors."""
+"""Generic xctx middleware entrypoint for scoped connector adapters."""
 
 from __future__ import annotations
 

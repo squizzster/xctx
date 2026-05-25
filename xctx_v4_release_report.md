@@ -132,7 +132,7 @@ root surface.
 python3 .agents/skills/xctx-yaml-config/scripts/check_xctx_yaml_surface.py
 python3 tests/smoke_protocol.py
 python3 tests/protocol_pressure_pro.py
-python3 -m compileall -q libs market_data_gateway.py equity_filings.py equity_instruments.py tests
+python3 -m compileall -q libs market_data_gateway.py equity_filings.py tests
 ```
 
 Result:
@@ -215,16 +215,16 @@ The current workspace also includes an enterprise middleware demonstration for:
 ```
 
 The implementation keeps middleware outside the generic xctx runtime. Scoped
-YAML routes to `legacy_connector.py`, which delegates to adapter-side connector
+YAML routes to `connector_supervisor.py`, which delegates to adapter-side connector
 code under `libs/xctx_connectors/`. Generic `libs/xctx` still does not know file
-manager semantics, scoped legacy adapter code, path policies, or transform rules.
+manager semantics, scoped external command adapter code, path policies, or transform rules.
 
 Connector metadata now exposes `shape_guarantee` when middleware returns a
 connector object. The key proof is:
 
 ```text
 xctx_receives = single_json_object_for_live_data
-raw_legacy_output = never_returned_unparsed
+raw_external_output = never_returned_unparsed
 ```
 
 This is adapter-side contract evidence. It does not change the root protocol

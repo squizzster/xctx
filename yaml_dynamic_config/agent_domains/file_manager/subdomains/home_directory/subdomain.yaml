@@ -1,12 +1,9 @@
 id: home_directory
 kind: agent_subdomain
-aliases:
-  - home
-  - files
 status: online
-basic_description: Safe read-only home-directory view backed by legacy filesystem commands.
+basic_description: Safe read-only home-directory view backed by external filesystem commands.
 full_description: >-
-  This subdomain exposes a small bundled directory as a legacy-integration
+  This subdomain exposes a small bundled directory as an external-command
   demonstration. Discovery lists file and directory identifiers, and can
   classify a concrete discovered file or directory target. Observation returns
   selected object data through middleware-normalized command output without
@@ -15,12 +12,12 @@ data_description: >-
   Bundled read-only demo files under data/file_manager_home. The connector
   allows only paths resolved inside that configured safe root.
 entrypoint:
-  file: legacy_connector.py
+  file: connector_supervisor.py
   protocol: json_stdout
   compact_flag: --compact
   timeout_seconds: 10
 connector:
-  kind: legacy_command
+  kind: external_command
   adapter_scope: domain
   safe_root: data/file_manager_home
   default_limit: 10
@@ -36,7 +33,7 @@ actions:
   discover:
     priority: 10
     entrypoint_command: discover
-    desc: Discover filesystem object shapes, concrete object metadata, legacy connector status, and next discovery commands.
+    desc: Discover filesystem object shapes, concrete object metadata, connector status, and next discovery commands.
     discovery_shapes:
       default_shape: compact
       shapes:
@@ -52,14 +49,11 @@ actions:
         run_cmd: ./xctx discover file_manager::home_directory file:README.txt
       - query: full file-manager discovery
         run_cmd: ./xctx discover file_manager::home_directory --shape full
-    returns: legacy_connector_filesystem_discovery
+    returns: external_command_filesystem_discovery
     run_cmd: ./xctx discover file_manager::home_directory [file:<relative_path>|directory:<relative_path>] [--shape compact|full]
   list_files:
     priority: 20
     entrypoint_command: list-files
-    aliases:
-      - list-files
-      - files
     query_required: false
     mode_kind: list
     desc: Discover bounded file identifiers in the safe directory root or a discovered directory.
@@ -83,14 +77,11 @@ actions:
         run_cmd: ./xctx discover file_manager::home_directory list_files
       - query: list files under docs
         run_cmd: ./xctx discover file_manager::home_directory list_files directory:docs
-    returns: legacy_connector_filesystem_file_list
+    returns: external_command_filesystem_file_list
     run_cmd: ./xctx discover file_manager::home_directory list_files [directory:<relative_path>] [--limit N] [--cursor CURSOR] [--shape compact|full]
   list_directories:
     priority: 30
     entrypoint_command: list-directories
-    aliases:
-      - list-directories
-      - directories
     query_required: false
     mode_kind: list
     desc: Discover bounded directory identifiers in the safe directory root or a discovered directory.
@@ -112,13 +103,13 @@ actions:
     examples:
       - query: list root directories
         run_cmd: ./xctx discover file_manager::home_directory list_directories
-    returns: legacy_connector_filesystem_directory_list
+    returns: external_command_filesystem_directory_list
     run_cmd: ./xctx discover file_manager::home_directory list_directories [directory:<relative_path>] [--limit N] [--cursor CURSOR] [--shape compact|full]
   observe:
     priority: 40
     entrypoint_command: observe
     mode_kind: observe
-    desc: Observe a discovered file:<relative_path> or directory:<relative_path> object through the legacy connector; safe text files include bounded contents.
+    desc: Observe a discovered file:<relative_path> or directory:<relative_path> object through the connector supervisor; safe text files include bounded contents.
     argument_shapes:
       - "file:<relative_path>"
       - "directory:<relative_path>"
@@ -127,5 +118,5 @@ actions:
         run_cmd: ./xctx observe file_manager::home_directory file:README.txt
       - query: observe docs directory through routed id
         run_cmd: ./xctx observe directory:docs
-    returns: legacy_connector_filesystem_observation
+    returns: external_command_filesystem_observation
     run_cmd: ./xctx observe file_manager::home_directory <file:relative_path|directory:relative_path>

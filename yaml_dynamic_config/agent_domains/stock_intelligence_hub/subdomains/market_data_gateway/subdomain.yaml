@@ -1,9 +1,5 @@
 id: market_data_gateway
 kind: agent_subdomain
-aliases:
-  - price_series_gateway
-  - instrument_registry
-  - equity_instruments
 status: online
 basic_description: Market data gateway for canonical equity instrument identity and bundled OHLCV series lookup.
 full_description: >-
@@ -11,7 +7,7 @@ full_description: >-
 data_description: >-
   Bundled read-only YAML reference data for canonical instrument IDs plus bundled read-only SQLite mini_stocks market-series fixture. Instrument IDs are stable stock_intelligence_hub identifiers; market_series IDs identify local OHLCV fixtures.
 entrypoint:
-  file: legacy_connector.py
+  file: connector_supervisor.py
   protocol: json_stdout
   compact_flag: --compact
   timeout_seconds: 30
@@ -47,10 +43,6 @@ actions:
     domain_affordance: true
     priority: 20
     entrypoint_command: search
-    aliases:
-      - search_entity
-      - search-instruments
-      - search-instrument
     query_required: true
     desc: Search company name, ticker, CIK, issuer id, instrument id, or alias.
     run_cmd: ./xctx discover stock_intelligence_hub::market_data_gateway search_entity_instrument <company|ticker|CIK|alias>
@@ -58,10 +50,6 @@ actions:
     domain_affordance: true
     priority: 25
     entrypoint_command: search-market-series
-    aliases:
-      - search_market_series
-      - search-series
-      - search_series
     query_required: true
     desc: Discover bundled read-only OHLCV market-series objects by ticker, issuer, provider, or local series id without returning bar values.
     run_cmd: ./xctx discover stock_intelligence_hub::market_data_gateway search_market_series <ticker|issuer|provider|text>
@@ -69,21 +57,12 @@ actions:
     domain_affordance: true
     priority: 27
     entrypoint_command: latest-price
-    aliases:
-      - latest-price
-      - latest_price
-      - latest
-      - quote
-      - latest_quote
     query_required: true
     desc: latest_price discovers the latest available bundled price point; observe returns the price data. Not a live quote feed.
     run_cmd: ./xctx discover stock_intelligence_hub::market_data_gateway latest_price <ticker|instrument_id|CIK|market_series:ticker:daily>
   list_instruments:
     priority: 30
     entrypoint_command: list
-    aliases:
-      - list
-      - list-instruments
     query_required: false
     mode_kind: list
     desc: Enumerate a compact canonical instrument index with optional pagination and simple filters.

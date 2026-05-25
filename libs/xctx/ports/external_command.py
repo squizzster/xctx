@@ -25,7 +25,7 @@ from xctx.protocol.actions import action_matches
 ## their JSON. It must not interpret scoped-pack business semantics.
 
 
-CONNECTOR_SUPERVISOR_ENTRYPOINT = "legacy_connector.py"
+CONNECTOR_SUPERVISOR_ENTRYPOINT = "connector_supervisor.py"
 DEFAULT_MAX_OUTPUT_BYTES = 65536
 MAX_CAPTURE_BYTES = 1048576
 MIN_TIMEOUT_SECONDS = 0.05

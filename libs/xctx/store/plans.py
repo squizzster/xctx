@@ -1,14 +1,13 @@
 """Runtime plan ledger for binding xctx plan receipts to execute.
 
-The ledger is intentionally local to the project checkout. It is not domain state
-and it does not mutate any business data; it records the exact non-mutating plan
-material that xctx emitted so execute can distinguish a real receipt from a
-string that merely looks like one.
+The ledger is protocol-local, not domain state. Set XCTX_RUNTIME_DIR to keep
+runtime artifacts outside the checkout or isolate tests.
 """
 
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -25,7 +24,11 @@ class ResolvedPlan:
 
 def plan_store_dir(store: dict[str, Any]) -> Path:
     root = Path(store["root"])
-    return root / ".xctx_runtime" / "plans"
+    configured = os.environ.get("XCTX_RUNTIME_DIR")
+    runtime_root = Path(configured) if configured else root / ".xctx_runtime"
+    if not runtime_root.is_absolute():
+        runtime_root = root / runtime_root
+    return runtime_root / "plans"
 
 
 def _plan_path(store: dict[str, Any], receipt_sha256: str) -> Path:

@@ -5,8 +5,11 @@ from __future__ import annotations
 import contextlib
 import io
 import json
+import os
+import signal
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -15,18 +18,32 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def run_checked(args: list[str], timeout: int = 60) -> None:
-    proc = subprocess.run(
-        args,
-        cwd=ROOT,
-        text=True,
-        capture_output=True,
-        timeout=timeout,
-        check=False,
-    )
+def run_checked(args: list[str], timeout: int = 180) -> None:
+    runtime_parent = ROOT / ".xctx_runtime"
+    runtime_parent.mkdir(exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="pytest_", dir=runtime_parent) as runtime_dir:
+        env = {**os.environ, "XCTX_RUNTIME_DIR": runtime_dir}
+        proc = subprocess.Popen(
+            args,
+            cwd=ROOT,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            start_new_session=True,
+            env=env,
+        )
+        try:
+            stdout, stderr = proc.communicate(timeout=timeout)
+        except subprocess.TimeoutExpired as exc:
+            os.killpg(proc.pid, signal.SIGKILL)
+            stdout, stderr = proc.communicate()
+            raise AssertionError(
+                f"command timed out after {timeout}s: {' '.join(args)}\nSTDOUT={stdout}\nSTDERR={stderr}"
+            ) from exc
+
     assert proc.returncode == 0, (
         f"command failed: {' '.join(args)}\n"
-        f"returncode={proc.returncode}\nSTDOUT={proc.stdout}\nSTDERR={proc.stderr}"
+        f"returncode={proc.returncode}\nSTDOUT={stdout}\nSTDERR={stderr}"
     )
 
 
@@ -42,8 +59,8 @@ def test_protocol_pressure() -> None:
     run_checked([sys.executable, "tests/protocol_pressure_pro.py"])
 
 
-def test_protocol_legacy_connector() -> None:
-    run_checked([sys.executable, "tests/protocol_legacy_connector.py"])
+def test_protocol_connector_supervisor() -> None:
+    run_checked([sys.executable, "tests/protocol_connector_supervisor.py"])
 
 
 def test_observe_discover_boundary() -> None:
@@ -60,7 +77,6 @@ def test_compileall_release_paths() -> None:
             "libs",
             "market_data_gateway.py",
             "equity_filings.py",
-            "equity_instruments.py",
             "tests",
         ]
     )
@@ -81,8 +97,14 @@ def test_no_stale_status_or_identify_guidance() -> None:
         ROOT / "yaml_dynamic_config",
     ]
     stale_fragments = (
-        "--system {item.get('id')} status",
-        "--system {identity['id']} discover",
+        "--system",
+        "--agent-domain",
+        "--domain",
+        "active_system",
+        "active_agent_domain",
+        "XCTX_ACTIVE_SYSTEM",
+        "XCTX_ACTIVE_AGENT_DOMAIN",
+        "identity_resolution",
         "next valid move: identify",
         "identify_query_run_cmd",
     )
@@ -105,11 +127,11 @@ def test_command_policy_contract() -> None:
     assert hidden_commands(store) == {"other"}
     configured = configured_command_names(store)
     assert "other" in configured
-    for legacy in ("status", "identify", "doctor", "write"):
-        assert legacy not in configured
+    for rejected_command in ("status", "identify", "doctor", "write", "discovery"):
+        assert rejected_command not in configured
 
     store["protocol"]["command_groups"]["main"].append("status")
-    store["commands"]["xctx"]["status"] = {"legacy status command": "[]"}
+    store["commands"]["xctx"]["status"] = {"rejected status command": "[]"}
     assert "status" not in configured_command_names(store)
     assert "status" not in command_map_for_group(store, "xctx", "main")
 
@@ -171,3 +193,15 @@ def test_connector_runtime_rejects_unsafe_subprocess_limits() -> None:
         runtime.run_external([sys.executable, "-c", "print('ok')"], timeout=0, max_output_bytes=1024)
     with pytest.raises(ValueError, match="max_output_bytes"):
         runtime.run_external([sys.executable, "-c", "print('ok')"], timeout=1, max_output_bytes=10)
+
+
+def test_sqlite_fixtures_open_read_only() -> None:
+    sys.path.insert(0, str(ROOT / "libs"))
+    from xctx_live import filings, instruments  # noqa: PLC0415
+
+    for connection in (instruments.connect_market(ROOT), filings.connect(ROOT)):
+        try:
+            with pytest.raises(Exception):
+                connection.execute("CREATE TABLE xctx_write_probe(id INTEGER)")
+        finally:
+            connection.close()

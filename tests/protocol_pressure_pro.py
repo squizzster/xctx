@@ -11,8 +11,8 @@ from __future__ import annotations
 import contextlib
 import io
 import json
+import os
 import re
-import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -82,8 +82,6 @@ def assert_root_surface_clean(payload: object) -> None:
 
 
 def main() -> int:
-    shutil.rmtree(ROOT / ".xctx_runtime", ignore_errors=True)
-
     print("[pressure] root/universe command surface", flush=True)
     universe = run_engine([])
     assert_cmd(universe, record_type="discovery", level="universe")
@@ -91,21 +89,25 @@ def main() -> int:
     assert set(surface["xctx"]) == {"discover", "observe", "plan", "execute", "audit", "repair"}
     assert "extension_lane" not in surface
     assert "xctx_other" not in surface
-    assert surface["aliases"] == {"discover": ["discovery"]}
+    assert "aliases" not in surface
     assert "identify" not in surface["xctx"] and "write" not in surface["xctx"] and "status" not in surface["xctx"]
     assert_root_surface_clean(universe)
     assert_root_surface_clean(run_engine(["help"]))
     assert_root_surface_clean(run_engine(["--version"]))
 
     root = run_engine(["discover"])
-    alias_root = run_engine(["discovery"])
     assert_cmd(root, record_type="discovery", level="root")
-    assert_cmd(alias_root, record_type="discovery", level="root")
     assert_root_surface_clean(root)
-    assert_root_surface_clean(alias_root)
+    rejected_alias = run_engine(["discovery"], code=1)
+    assert rejected_alias["ok"] is False
+    assert "known xctx command" in rejected_alias["error"]
     assert "configured_options" not in root["results"]
     assert "root_affordances" not in root["results"]
-    assert root["results"]["next_moves"] == ["./xctx discover stock_intelligence_hub::", "./xctx audit root"]
+    assert root["results"]["next_moves"] == [
+        "./xctx discover file_manager::",
+        "./xctx discover stock_intelligence_hub::",
+        "./xctx audit root",
+    ]
     root_domains = {item["id"] for item in root["results"]["agent_domains"]}
     assert root_domains == {
         "stock_intelligence_hub",
@@ -140,7 +142,6 @@ def main() -> int:
         "libs/xctx/commands/observe.py",
         "libs/xctx/domain/agent_domains.py",
         "libs/xctx/commands/discover.py",
-        "libs/xctx/domain/identity.py",
         "libs/xctx/protocol/command_policy.py",
     ):
         text = (ROOT / core_rel).read_text(encoding="utf-8")
@@ -211,10 +212,10 @@ def main() -> int:
     assert file_domain["results"]["agent_subdomains"][0]["id"] == "home_directory"
     file_subdomain = run_engine(["discover", "file_manager::home_directory"])
     assert file_subdomain["results"]["shape"] == "compact"
-    assert file_subdomain["results"]["live_data"]["connector"]["kind"] == "legacy_command"
+    assert file_subdomain["results"]["live_data"]["connector"]["kind"] == "external_command"
     file_full = run_engine(["discover", "file_manager::home_directory", "--shape", "full"])
     assert file_full["results"]["shape"] == "full"
-    assert file_full["results"]["live_data"]["legacy_commands"]["list"] == "ls -lt"
+    assert file_full["results"]["live_data"]["external_commands"]["list"] == "ls -lt"
 
     print("[pressure] scoped affordance routing", flush=True)
     invalid_unscoped = run_engine(["discover", "search_filing_family", "annual"], code=1)
@@ -245,26 +246,26 @@ def main() -> int:
     assert instruments["results"]["live_data"]["pagination"]["next_cursor"] == "2"
 
     file_list = run_engine(["discover", "file_manager::home_directory", "list_files", "--limit", "2"])
-    assert file_list["results"]["live_data"]["object_type"] == "legacy_connector_filesystem_file_list"
+    assert file_list["results"]["live_data"]["object_type"] == "external_command_filesystem_file_list"
     assert file_list["results"]["live_data"]["connector"]["shape_guarantee"]["contract"] == "always_json_object"
     assert file_list["results"]["live_data"]["connector"]["shape_guarantee"]["xctx_receives"] == "single_json_object_for_live_data"
     assert file_list["results"]["live_data"]["files"][0]["id"] == "file:README.txt"
     assert "pagination" not in file_list["results"]["live_data"]
-    assert "legacy_command" not in file_list["results"]["live_data"]
+    assert "external_command" not in file_list["results"]["live_data"]
     assert "command_status" not in file_list["results"]["live_data"]
     assert "This is a bundled file-manager demo fixture" not in json.dumps(file_list["results"]["live_data"])
     file_list_full = run_engine(["discover", "file_manager::home_directory", "list_files", "--limit", "1", "--shape", "full"])
     assert file_list_full["results"]["live_data"]["pagination"]["returned_count"] == 1
-    assert file_list_full["results"]["live_data"]["connector"]["shape_guarantee"]["failure_shape"] == "legacy_connector_error"
+    assert file_list_full["results"]["live_data"]["connector"]["shape_guarantee"]["failure_shape"] == "xctx_connector_error"
     assert file_list_full["results"]["live_data"]["command_status"]["argv"][0] == "ls"
     discovered_file = run_engine(["discover", "file_manager::home_directory", "file:README.txt"])
-    assert discovered_file["results"]["live_data"]["object_type"] == "legacy_connector_filesystem_file_discovery"
-    assert discovered_file["results"]["live_data"]["connector"]["shape_guarantee"]["raw_legacy_output"] == "never_returned_unparsed"
+    assert discovered_file["results"]["live_data"]["object_type"] == "external_command_filesystem_file_discovery"
+    assert discovered_file["results"]["live_data"]["connector"]["shape_guarantee"]["raw_external_output"] == "never_returned_unparsed"
     assert discovered_file["results"]["live_data"]["type"] == "ASCII text"
     assert discovered_file["results"]["live_data"]["size_bytes"] == 237
     assert "file_id" not in discovered_file["results"]["live_data"]
     assert "file_type" not in discovered_file["results"]["live_data"]
-    assert "legacy_commands" not in discovered_file["results"]["live_data"]
+    assert "external_commands" not in discovered_file["results"]["live_data"]
     assert "command_status" not in discovered_file["results"]["live_data"]
     assert "content" not in discovered_file["results"]["live_data"]
     assert "configured_action_index" not in discovered_file["results"]
@@ -359,7 +360,7 @@ def main() -> int:
         "csv",
     ])
     exported_live = exported["results"]["live_data"]
-    assert re.fullmatch(r"\.xctx_runtime/exports/instrument_aapl_5_bars_[0-9a-f]{8}\.csv", exported_live["csv"]["path"])
+    assert re.fullmatch(r"instrument_aapl_5_bars_[0-9a-f]{8}\.csv", Path(exported_live["csv"]["path"]).name)
     assert (ROOT / exported_live["csv"]["path"]).exists()
     ranged_large = run_engine(["observe", "stock_intelligence_hub::market_data_gateway", "instrument:aapl", "--bars", "31"])
     assert ranged_large["results"]["live_data"]["bars_inline"] is False
@@ -386,7 +387,7 @@ def main() -> int:
     assert filing_context["results"]["live_data"]["issuer_submission_feed_status"] == "offline_not_bundled"
     observed_file = run_engine(["observe", "file:README.txt"])
     assert observed_file["results"]["agent_domain"] == "file_manager"
-    assert observed_file["results"]["live_data"]["object_type"] == "legacy_connector_filesystem_file_observation"
+    assert observed_file["results"]["live_data"]["object_type"] == "external_command_filesystem_file_observation"
     assert observed_file["results"]["live_data"]["connector"]["shape_guarantee"]["success_shape"] == "domain_object"
     assert observed_file["results"]["live_data"]["content"]["available"] is True
     assert "This is a bundled file-manager demo fixture" in observed_file["results"]["live_data"]["content"]["text"]
@@ -395,9 +396,9 @@ def main() -> int:
     escaped_file = run_engine(["observe", "file:../README.md"], code=1)
     assert_cmd(escaped_file, ok=False, record_type="observation", level="agent_subdomain")
     assert escaped_file["error"] == "path escapes configured safe root"
-    assert escaped_file["results"]["live_data"]["object_type"] == "legacy_connector_error"
+    assert escaped_file["results"]["live_data"]["object_type"] == "xctx_connector_error"
     assert escaped_file["results"]["live_data"]["found"] is False
-    assert escaped_file["results"]["live_data"]["connector"]["shape_guarantee"]["failure_shape"] == "legacy_connector_error"
+    assert escaped_file["results"]["live_data"]["connector"]["shape_guarantee"]["failure_shape"] == "xctx_connector_error"
 
     audit = run_engine(["audit", "root"])
     assert_cmd(audit, record_type="audit", level="root")
@@ -409,7 +410,7 @@ def main() -> int:
         "market_data_gateway:",
         "equity_filing:",
         "file_manager:home_directory",
-        "legacy_command",
+        "external_command",
         "mini_stocks_sqlite",
         "edgar_form_reference",
     ):
@@ -423,7 +424,7 @@ def main() -> int:
     file_audit = run_engine(["audit", "file_manager::home_directory"])
     assert_cmd(file_audit, record_type="audit", level="agent_subdomain")
     file_check_ids = {item["id"] for item in file_audit["results"]["checks"]}
-    assert "audit:file_manager:home_directory:legacy_command:ls" in file_check_ids
+    assert "audit:file_manager:home_directory:external_command:ls" in file_check_ids
     repaired = run_engine(["repair", "offline:macro_intelligence_hub"])
     assert_cmd(repaired, record_type="repair_result", level="agent_domain")
     terminal = run_engine(["repair", "down_for_maintenance:stock_intelligence_hub::fundamentals_gateway"], code=1)
@@ -440,7 +441,8 @@ def main() -> int:
     results = plan["results"]
     assert re.fullmatch(r"[0-9a-f]{64}", results["receipt_sha256"])
     assert re.fullmatch(r"[0-9a-f]{5}", results["receipt_sha5"])
-    assert (ROOT / ".xctx_runtime" / "plans" / f"{results['receipt_sha256']}.json").exists()
+    runtime_root = Path(os.environ.get("XCTX_RUNTIME_DIR", ROOT / ".xctx_runtime"))
+    assert (runtime_root / "plans" / f"{results['receipt_sha256']}.json").exists()
     no_commit = run_engine(["execute", results["plan_id"]], code=1)
     assert no_commit["error"] == "commit_required"
     execute_full = run_engine(["execute", results["plan_id"], "--commit"])
@@ -449,8 +451,8 @@ def main() -> int:
     assert execute_short["results"]["planner_binding"]["receipt_sha256"] == results["receipt_sha256"]
 
     print("[pressure] extension lane discipline", flush=True)
-    for legacy in ("d", "identify", "status", "write", "doctor"):
-        payload = run_engine([legacy], code=1)
+    for rejected_command in ("d", "identify", "status", "write", "doctor"):
+        payload = run_engine([rejected_command], code=1)
         assert_cmd(payload, ok=False, record_type="error")
         assert "choose a known xctx command" in payload["error"]
         assert "other" not in payload["error"]

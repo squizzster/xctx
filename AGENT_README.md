@@ -13,10 +13,10 @@ The protocol/configuration layer is separated from live read-only data adapters:
 - `./xctx` is the protocol bootloader.
 - `yaml_dynamic_config/` describes the universe, agent domains, subdomains,
   statuses, commands, routing, and lawful next moves.
-- `legacy_connector.py` and `libs/xctx_connectors/` provide adapter-side
-  middleware for xctx-native pass-through and legacy command transforms.
-- `market_data_gateway.py` / `equity_instruments.py` are read-only market-data
-  adapters behind the connector supervisor.
+- `connector_supervisor.py` and `libs/xctx_connectors/` provide adapter-side
+  middleware for xctx-native pass-through and external command transforms.
+- `market_data_gateway.py` is the read-only market-data adapter behind the
+  connector supervisor.
 - `equity_filings.py` is the read-only EDGAR filing taxonomy adapter behind the
   connector supervisor.
 
@@ -30,7 +30,7 @@ subdomains are:
 
 - `stock_intelligence_hub::market_data_gateway`
 - `stock_intelligence_hub::equity_filing`
-- `file_manager::home_directory` as a legacy middleware demonstration domain
+- `file_manager::home_directory` as a external-command middleware demonstration domain
 
 Other domains/subdomains are deliberately offline or down for maintenance so an
 agent can test audit and repair behavior without guessing.
@@ -48,8 +48,9 @@ The exposed command set is deliberately small:
 ./xctx repair <finding>
 ```
 
-`discovery` remains a compatibility alias for `discover`, but the advertised command is
-`discover`. The single-letter `d` alias is intentionally not accepted; this PoC keeps the protocol surface narrow.
+No command aliases are accepted. `discover` is the command; `discovery`, `d`,
+and other shorthand forms are intentionally rejected so the protocol surface
+stays exact.
 
 ## Quick start
 
@@ -150,8 +151,8 @@ Bundled OHLCV market series:
 
 `latest_price` discovers the latest available bundled price point; observe returns
 the price data. Range observations include a `price_summary`
-(first/last close, change, percent change, highest high, and lowest low) plus a
-CSV export path for local inspection.
+(first/last close, change, percent change, highest high, and lowest low) plus an
+export hint. A CSV file is written only when `--export csv` is explicitly supplied.
 
 Those range options are not hardcoded in the generic parser. They are declared on
 the market-data `observe` action in YAML under `cli_options`, advertised only
@@ -198,10 +199,10 @@ Legacy middleware demo:
 ```
 
 The file-manager connector demonstrates the enterprise middleware contract:
-legacy command output is transformed into a stable object before xctx envelopes
+external command output is transformed into a stable object before xctx envelopes
 it. Connector metadata exposes a `shape_guarantee` declaring that xctx receives
-`single_json_object_for_live_data`, with legacy success as a domain object and
-legacy failure as `legacy_connector_error`.
+`single_json_object_for_live_data`, with connector success as a domain object and
+connector failure as `xctx_connector_error`.
 
 ## What is real in this PoC
 
@@ -230,7 +231,7 @@ handoff records such as `META` for former-symbol alias testing.
 
 Root audit stays at the protocol/config/domain-availability layer. It does not
 call scoped adapters or bubble fixture checks such as ticker probes, database
-counts, filing table checks, or filesystem legacy-command probes. Use scoped
+counts, filing table checks, or filesystem external-command probes. Use scoped
 audit for adapter health:
 
 ```bash
@@ -245,7 +246,8 @@ Offline targets expose a repair path. Down-for-maintenance targets are terminal:
 ## Plan and execute receipts
 
 This build does not mutate domain state, but it does produce deterministic plan
-receipts and writes them to a local runtime ledger under `.xctx_runtime/plans/`.
+receipts and writes them to a protocol-local runtime ledger. By default that is
+`.xctx_runtime/plans/`; set `XCTX_RUNTIME_DIR` to isolate or relocate artifacts.
 `execute` accepts only receipts that resolve to a recorded plan, so a random
 five-character hex string is not enough:
 
@@ -284,12 +286,12 @@ YAML is explicit or selected automatically for a TTY:
 python3 .agents/skills/xctx-yaml-config/scripts/check_xctx_yaml_surface.py
 python3 tests/smoke_protocol.py
 python3 tests/protocol_pressure_pro.py
-python3 tests/protocol_legacy_connector.py
+python3 tests/protocol_connector_supervisor.py
 ```
 
 The YAML guard validates root-boundary cleanliness, scoped domain affordances,
-domain/subdomain references, online entrypoint paths, action aliases, observe
-routes, identity fields, and configured option parseability. The smoke and
+domain/subdomain references, online entrypoint paths, observe routes, removed
+identity fields, and configured option parseability. The smoke and
 pressure tests then validate the modular layout, config-driven routing, ROOT /
 DOMAIN / SUBDOMAIN discovery, scoped affordance routing, refusal of unscoped
 actions, read-only filing and market lookups, observe flows, offline/maintenance
@@ -303,7 +305,7 @@ This build intentionally tightens several edges that were easy to get almost rig
 - Domain-specific command options are declared in YAML `cli_options`; the core parser does not name market-series flags.
 - `discover --name` is intentionally refused; root no longer chooses a stock action from a bare name.
 - Unknown command names are refused; they are not silently treated as protocol commands.
-- `receipt_sha5` is compatibility sugar, not authority. It must bind to a recorded plan in `.xctx_runtime/plans/`.
+- `receipt_sha5` is short debug sugar, not authority. It must bind to a recorded plan in the configured runtime ledger.
 - Instrument search emits minimal identity results and next moves; latest_price discovers the latest available bundled price point, and observe returns the price data.
 - List actions emit compact index rows by default; full bulk rows require `--shape full`, and cursor support is scoped/optional.
 - latest_price is not a live quote; it discovers the latest available bundled price point before observe materializes the data.

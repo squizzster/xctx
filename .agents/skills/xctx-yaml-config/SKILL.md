@@ -6,8 +6,8 @@ description: Safely create, modify, or remove xctx YAML domains, subdomains, sco
 # xctx YAML Configuration Skill
 
 Use this skill when changing the `xctx` protocol surface through YAML: domains,
-subdomains, scoped domain affordances, action aliases, command arguments,
-mode/action discovery, list modes, observe routes, identity search fields,
+subdomains, scoped domain affordances, command arguments,
+mode/action discovery, list modes, observe routes, removed identity fields,
 statuses, audit/repair paths, or entrypoint declarations.
 
 The central rule is strict:
@@ -66,7 +66,7 @@ Scoped adapter health belongs behind explicit audit scope:
 ```
 
 For example, root audit must not bubble stock sentinel checks, filesystem
-legacy-command checks, database row counts, ticker probes, form-taxonomy table
+external-command checks, database row counts, ticker probes, form-taxonomy table
 checks, or middleware profile details. Those are valid only after the relevant
 domain/subdomain is in scope.
 
@@ -109,11 +109,11 @@ exploration. Raw documents, raw price series, bodies, line items, CSV exports,
 or final materialized object state still belong behind `observe`.
 
 Compact discovery should optimize for agent readability. It may omit mechanical
-diagnostics such as legacy command argv arrays, raw stdout/stderr previews, and
+diagnostics such as external command argv arrays, raw stdout/stderr previews, and
 pagination blocks when the complete result is a single returned item
 (`total_count == returned_count == 1` with no cursor/next cursor). Full shape
 should keep diagnostic command details and pagination metadata even when they
-look redundant, so operators can inspect the exact adapter/legacy boundary.
+look redundant, so operators can inspect the exact adapter/external-command boundary.
 
 Domain-specific meaning belongs in scoped YAML and adapter code. Generic
 `libs/xctx` code may present and route configured surfaces, but it must not know
@@ -122,38 +122,38 @@ filing concepts mean.
 
 ## Middleware connector boundary
 
-For enterprise or legacy integrations, keep this layered shape:
+For external-command integrations, keep this layered shape:
 
 ```text
-xctx generic protocol -> scoped YAML entrypoint -> generic middleware connector -> scoped domain or subdomain adapter -> application or legacy command -> JSON object -> xctx envelope
+xctx generic protocol -> scoped YAML entrypoint -> generic middleware connector -> scoped domain or subdomain adapter -> application or external command -> JSON object -> xctx envelope
 ```
 
 The middleware connector is adapter-side code, not xctx core, but it must remain
 generic. Domain behavior shared by multiple scopes belongs under:
 
 ```text
-libs/xctx_connectors/domains/<domain_id>/legacy_adapter.py
+libs/xctx_connectors/domains/<domain_id>/external_command_adapter.py
 ```
 
 Subdomain-specific behavior belongs under:
 
 ```text
-libs/xctx_connectors/domains/<domain_id>/subdomains/<subdomain_id>/legacy_adapter.py
+libs/xctx_connectors/domains/<domain_id>/subdomains/<subdomain_id>/external_command_adapter.py
 ```
 
 The middleware may load scoped config, normalize failures, add connector
 metadata, and dispatch to a deterministic adapter path derived from the
-already-resolved domain/subdomain scope. The adapter may translate legacy
+already-resolved domain/subdomain scope. The adapter may translate external
 command output, enforce a safe root or allowlist, and build the domain payload.
 It must still be declared through subdomain YAML like any other entrypoint.
 
 Do not let YAML declare arbitrary Python import paths. Do not use flat connector
-profiles. The source of truth for legacy adapter dispatch is the resolved scope
+profiles. The source of truth for external-command adapter dispatch is the resolved scope
 plus optional bounded `connector.adapter_scope`:
 
 ```text
-resolved <domain_id>::<subdomain_id> with adapter_scope: domain -> xctx_connectors.domains.<domain_id>.legacy_adapter
-resolved <domain_id>::<subdomain_id> -> xctx_connectors.domains.<domain_id>.subdomains.<subdomain_id>.legacy_adapter
+resolved <domain_id>::<subdomain_id> with adapter_scope: domain -> xctx_connectors.domains.<domain_id>.external_command_adapter
+resolved <domain_id>::<subdomain_id> -> xctx_connectors.domains.<domain_id>.subdomains.<subdomain_id>.external_command_adapter
 ```
 
 Middleware connector payloads should expose a `connector.shape_guarantee`
@@ -164,15 +164,15 @@ one shaped JSON object from the middleware boundary for success and failure:
 ```json
 {
   "connector": {
-    "version": "legacy_connector.v1",
-    "kind": "legacy_command",
+    "version": "xctx_connector.v1",
+    "kind": "external_command",
     "adapter_ref": "<domain_id>::<subdomain_id>",
     "shape_guarantee": {
       "contract": "always_json_object",
       "xctx_receives": "single_json_object_for_live_data",
       "success_shape": "domain_object",
-      "failure_shape": "legacy_connector_error",
-      "raw_legacy_output": "never_returned_unparsed",
+      "failure_shape": "xctx_connector_error",
+      "raw_external_output": "never_returned_unparsed",
       "stdout_stderr": "summarized_in_command_status_when_useful"
     }
   }
@@ -196,7 +196,7 @@ For applications designed for xctx, the connector can be pass-through:
 
 ```yaml
 entrypoint:
-  file: legacy_connector.py
+  file: connector_supervisor.py
   protocol: json_stdout
   compact_flag: --compact
   timeout_seconds: 30
@@ -210,27 +210,27 @@ The pass-through `target_entrypoint` is a scoped YAML executable reference, not 
 Python import path. It must be workspace-relative and must resolve to a file
 inside the repository workspace.
 
-For legacy systems, the connector should declare its kind and bounded controls
+For external-command systems, the connector should declare its kind and bounded controls
 in scoped YAML. The adapter module is derived from the scoped domain/subdomain
 IDs, not configured as a YAML import string:
 
 ```yaml
 entrypoint:
-  file: legacy_connector.py
+  file: connector_supervisor.py
   protocol: json_stdout
   compact_flag: --compact
   timeout_seconds: 10
 connector:
-  kind: legacy_command
+  kind: external_command
   adapter_scope: domain  # optional; default is subdomain
   timeout_seconds: 5
   max_output_bytes: 20000
 ```
 
-Do not add connector profiles, legacy command names, file paths, stock terms,
+Do not add connector profiles, external command names, file paths, stock terms,
 filing terms, or other application semantics to `libs/xctx`,
 `libs/xctx_connectors/middleware.py`, or `libs/xctx_connectors/runtime.py`. Add
-new legacy behavior under the owning domain or subdomain adapter package and
+new external-command behavior under the owning domain or subdomain adapter package and
 prove with tests/checker rules that generic code remains free of the new
 domain-specific literals.
 
@@ -239,8 +239,8 @@ Before adding or changing a discovery action:
 1. Ask whether the payload is an index/pointer to observable data, or the
    materialized data itself.
 2. If it is materialized data, route it through `observe`.
-3. Keep compatibility discovery aliases only when they return pointers and next
-   moves, not observed data.
+3. Do not add discovery aliases unless an explicit release or migration
+   requirement says otherwise.
 4. Add or update tests proving discovery payloads do not leak observation
    fields for that domain pack.
 
@@ -257,7 +257,6 @@ Before adding or changing a discovery action:
 | Add list mode | subdomain `actions.<id>.query_required: false`; adapter `entrypoint_command`; optional `collection` contract | list command returns a compact bounded payload instead of being treated as free-text search |
 | Add command option | owning action `cli_options` | Option appears only on scoped target surface; wrong target/refusal paths work |
 | Change routing | `universe.yaml` `agent_routing` | trusted IDs route correctly; ambiguous IDs do not guess |
-| Change identity fields | `universe.yaml` `identity_resolution.query_fields` | generic fields only, typically `name`, `id`, `aliases` |
 | Remove anything | all referenced YAML/docs/tests | no stale run_cmd, alias, route, status, doc, or test expectation remains |
 
 ## Domain affordance contract
@@ -272,7 +271,6 @@ actions:
     domain_affordance: true
     domain_action_name: <optional_clearer_domain_name>
     entrypoint_command: <adapter-command>
-    aliases: []
     query_required: true
     desc: One precise sentence explaining what this affords.
     run_cmd: ./xctx discover <domain_id>::<domain_action_name> <argument-shape>
@@ -466,14 +464,8 @@ discovery flow over guessing.
 
 ## Identity contract
 
-Universe identity fields should stay generic:
-
-```yaml
-identity_resolution:
-  query_fields: [name, id, aliases]
-```
-
-Domain-specific identity semantics belong in the adapter or scoped domain data.
+Universe-level identity resolution has been removed. Domain-specific identity
+semantics belong in scoped YAML and adapter-side data.
 
 ## Add/change/remove workflows
 
@@ -489,7 +481,7 @@ Domain-specific identity semantics belong in the adapter or scoped domain data.
 
 1. Add `agent_domains/<domain_id>/subdomains/<subdomain_id>/subdomain.yaml`.
 2. Register it in the parent domain's `agent_subdomains` with a priority.
-3. Add aliases only when safe and unambiguous.
+3. Do not add subdomain aliases; canonical subdomain ids are the protocol path.
 4. Add `entrypoint` only when a real adapter exists.
 5. Add actions with scoped `run_cmd` strings.
 6. Add `domain_affordance: true` only for actions that should be callable from
@@ -527,15 +519,15 @@ Domain-specific identity semantics belong in the adapter or scoped domain data.
 
 ### Modify a surface
 
-1. Preserve IDs unless the user explicitly asks for a breaking rename.
-2. Update every `run_cmd`, alias, route, status check, doc, and test expectation.
+1. Prefer a clean rename over preserving stale IDs when the current contract is wrong.
+2. Update every `run_cmd`, route, status check, doc, and test expectation.
 3. Run before/after discovery to ensure the advertised surface changed as intended.
 4. Add or update regression tests for changed refusal behavior.
 
 ### Remove a surface
 
 1. Remove the primary YAML declaration.
-2. Remove all references: aliases, routes, status checks, docs, and tests.
+2. Remove all references: routes, status checks, docs, and tests.
 3. Ensure stale commands fail with a helpful `next valid move`.
 4. Run `grep -R` for the removed id.
 

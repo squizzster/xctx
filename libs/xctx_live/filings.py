@@ -19,7 +19,7 @@ def connect(root: Path) -> sqlite3.Connection:
     path = sqlite_path(root)
     if not path.exists():
         raise FileNotFoundError(f"filing taxonomy sqlite not found: {path}")
-    conn = sqlite3.connect(path)
+    conn = sqlite3.connect(f"file:{path.resolve()}?mode=ro", uri=True)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     return conn

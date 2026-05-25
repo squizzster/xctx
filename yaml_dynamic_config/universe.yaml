@@ -1,16 +1,9 @@
-name: xctx_multi_system_universe
-active_system: stock_intelligence_hub
-active_agent_domain: stock_intelligence_hub
+name: xctx_agent_domain_universe
 version_xctx: v4.2
 protocol: protocols/xctx_v4_2.yaml
 commands: shared/command_sets/core_commands.yaml
 expectations:
-  min_system_count: 4
-identity_resolution:
-  query_fields:
-    - name
-    - id
-    - aliases
+  min_agent_domain_count: 4
 root:
   domain_level: root
   basic_description: xctx (executable context) is an agent-facing gateway for discovering domain capabilities, observing read-only facts, auditing availability, and following lawful repair paths.
@@ -72,20 +65,3 @@ agent_routing:
         - SC 13D
         - S-3
         - 424B5
-systems:
-  - id: stock_intelligence_hub
-    name: stock_intelligence_hub
-    path: systems/stock_intelligence_hub/system.yaml
-    desc: Equity-market intelligence operating system with active market identity/series and filing taxonomy proof-of-concept surfaces.
-  - id: macro_intelligence_hub
-    name: macro_intelligence_hub
-    path: systems/macro_intelligence_hub/system.yaml
-    desc: Macroeconomic calendar and central-bank intelligence operating system example. Offline in this build.
-  - id: crypto_intelligence_hub
-    name: crypto_intelligence_hub
-    path: systems/crypto_intelligence_hub/system.yaml
-    desc: Digital-asset market and on-chain signal operating system example. Down for maintenance in this build.
-  - id: options_intelligence_hub
-    name: options_intelligence_hub
-    path: systems/options_intelligence_hub/system.yaml
-    desc: Equity options chain and volatility-surface intelligence operating system example. Offline in this build.

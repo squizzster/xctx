@@ -1,9 +1,5 @@
 id: equity_filing
 kind: agent_subdomain
-aliases:
-  - entity_filing_gateway
-  - filings
-  - equity_filings
 status: online
 basic_description: SEC/EDGAR company filing taxonomy lookup for equity research agents.
 full_description: >-
@@ -11,7 +7,7 @@ full_description: >-
 data_description: >-
   Bundled read-only SQLite database: 412 EDGAR form lookup records, 41 canonical families, 12 priority buckets, 51 category labels, and 176 amendment forms.
 entrypoint:
-  file: legacy_connector.py
+  file: connector_supervisor.py
   protocol: json_stdout
   compact_flag: --compact
   timeout_seconds: 30
@@ -46,9 +42,6 @@ actions:
     domain_action_name: search_filing_form
     priority: 20
     entrypoint_command: search-forms
-    aliases:
-      - search_filing_form
-      - search-form
     query_required: true
     mode_kind: search
     desc: Search SEC/EDGAR filing form types. Exact form-code queries return the exact form and direct amendment only.
@@ -74,9 +67,6 @@ actions:
   list_forms:
     priority: 25
     entrypoint_command: list-forms
-    aliases:
-      - list-forms
-      - forms
     query_required: false
     mode_kind: list
     desc: List a compact bounded index of SEC/EDGAR filing form taxonomy records without interpreting list_forms as a search term.
@@ -111,9 +101,6 @@ actions:
     domain_action_name: search_filing_family
     priority: 30
     entrypoint_command: search-families
-    aliases:
-      - search_filing_family
-      - search-family
     query_required: true
     mode_kind: search
     desc: Search canonical filing families. Exact family-code queries return the exact family only.
@@ -134,9 +121,6 @@ actions:
   list_families:
     priority: 35
     entrypoint_command: list-families
-    aliases:
-      - list-families
-      - families
     query_required: false
     mode_kind: list
     desc: List a compact bounded canonical filing-family index without interpreting list_families as a search term.
@@ -169,9 +153,6 @@ actions:
     domain_action_name: search_priority_bucket
     priority: 40
     entrypoint_command: search-priority-buckets
-    aliases:
-      - search_priority_bucket
-      - search-priority-bucket
     query_required: true
     mode_kind: search
     desc: Search filing priority buckets. Exact priority-code queries return the exact bucket only.
@@ -191,10 +172,6 @@ actions:
   list_priority_buckets:
     priority: 45
     entrypoint_command: list-priority-buckets
-    aliases:
-      - list-priority-buckets
-      - priority_buckets
-      - priorities
     query_required: false
     mode_kind: list
     desc: List a compact bounded filing-priority bucket index without interpreting list_priority_buckets as a search term.

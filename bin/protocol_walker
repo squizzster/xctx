@@ -22,7 +22,7 @@ from xctx.domain.agent_domains import (  # noqa: E402
     universe_discovery_payload,
 )
 from xctx.io.stdout import write_stdout_record  # noqa: E402
-from xctx.protocol.accessors import command_aliases, protocol_version  # noqa: E402
+from xctx.protocol.accessors import protocol_version  # noqa: E402
 from xctx.protocol.descriptions import selected_description  # noqa: E402
 from xctx.protocol.options import target_option_surface  # noqa: E402
 
@@ -101,7 +101,6 @@ def protocol_surface() -> dict[str, Any]:
         "object_type": "xctx_protocol_walker_surface",
         "version_xctx": protocol_version(store),
         "active_agent_domain": store.get("active_agent_domain"),
-        "active_system": store.get("active_system"),
         "root": str(ROOT),
         "config_files": [str(path.relative_to(ROOT)) for path in store.get("config_files", [])],
         "command_surface": universe.get("command_surface", {}),
@@ -120,14 +119,8 @@ def _add_unique(commands: list[str], seen: set[str], command: str | None) -> Non
     commands.append(command)
 
 
-def _discover_words(store: dict[str, Any]) -> list[str]:
-    aliases = command_aliases(store).get("discover", [])
-    return ["discover", *[str(alias) for alias in aliases]]
-
-
 def _add_discover_target(commands: list[str], seen: set[str], store: dict[str, Any], target: str) -> None:
-    for word in _discover_words(store):
-        _add_unique(commands, seen, f"./xctx {word} {target}".strip())
+    _add_unique(commands, seen, f"./xctx discover {target}".strip())
 
 
 def _add_run_cmd(commands: list[str], seen: set[str], store: dict[str, Any], run_cmd: str | None) -> None:
@@ -135,14 +128,6 @@ def _add_run_cmd(commands: list[str], seen: set[str], store: dict[str, Any], run
     if not run_cmd:
         return
     _add_unique(commands, seen, run_cmd)
-    prefix = "./xctx discover"
-    if run_cmd == prefix:
-        for word in _discover_words(store)[1:]:
-            _add_unique(commands, seen, f"./xctx {word}")
-    elif run_cmd.startswith(prefix + " "):
-        suffix = run_cmd[len(prefix) + 1 :]
-        for word in _discover_words(store)[1:]:
-            _add_unique(commands, seen, f"./xctx {word} {suffix}")
 
 
 def _root_command_surface(commands: list[str], seen: set[str], store: dict[str, Any]) -> None:
@@ -156,10 +141,6 @@ def _root_command_surface(commands: list[str], seen: set[str], store: dict[str, 
                     syntax = str(syntax or "").strip()
                     if syntax:
                         _add_unique(commands, seen, f"./xctx {command_name} {syntax}")
-    for canonical, aliases in command_aliases(store).items():
-        for alias in aliases:
-            _add_unique(commands, seen, f"./xctx {alias}")
-            _add_unique(commands, seen, f"./xctx {alias} [TARGET [TEXT...] | --id ID]" if canonical == "discover" else None)
 
 
 def valid_commands() -> list[str]:

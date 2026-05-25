@@ -16,7 +16,7 @@ Expected proof:
 - root discovery exposes configured agent domains only.
 - root audit exposes protocol/config/availability checks only.
 - root audit does not bubble scoped adapter health checks such as fixture
-  tickers, database counts, filing tables, legacy command probes, or middleware
+  tickers, database counts, filing tables, external command probes, or middleware
   profile details.
 
 ## Domain or subdomain additions
@@ -127,19 +127,19 @@ Expected proof:
 ./xctx --json discover <domain_id>::<subdomain_id> <list_mode> --limit 2
 ./xctx --json observe <trusted_prefix>:<known_id>
 ./xctx --json observe <trusted_prefix>:<invalid_or_blocked_id>
-python3 tests/protocol_legacy_connector.py
+python3 tests/protocol_connector_supervisor.py
 ```
 
 Expected proof:
 
 - xctx routes through the configured middleware entrypoint with no generic core changes.
 - xctx-native pass-through targets retain their existing payload shapes.
-- legacy failures return a JSON object with `found: false` or equivalent status instead of raw stderr/stdout.
+- external-command failures return a JSON object with `found: false` or equivalent status instead of raw stderr/stdout.
 - discovery returns object identities and observe commands, not raw observed data.
 - connector metadata includes `shape_guarantee` when middleware returns connector metadata.
 - `shape_guarantee.xctx_receives` is `single_json_object_for_live_data`.
-- legacy connectors declare `contract: always_json_object`; normalized pass-through failures declare `contract: pass_through_json_object`.
-- core leak checks find no connector profile terms or legacy command semantics in `libs/xctx`.
+- external-command connectors declare `contract: always_json_object`; normalized pass-through failures declare `contract: pass_through_json_object`.
+- core leak checks find no connector profile terms or external-command semantics in `libs/xctx`.
 
 ## Removal changes
 
@@ -150,7 +150,7 @@ grep -RIn '<removed_id_or_flag>' yaml_dynamic_config docs tests README.md || tru
 
 Expected proof:
 
-- no stale YAML/docs/tests references unless intentionally retained for compatibility.
+- no stale YAML/docs/tests references.
 - old command shape fails with guidance.
 
 ## Core leak check

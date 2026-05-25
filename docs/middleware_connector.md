@@ -12,15 +12,15 @@ connector object:
 ```json
 {
   "connector": {
-    "version": "legacy_connector.v1",
-    "kind": "legacy_command",
+    "version": "xctx_connector.v1",
+    "kind": "external_command",
     "adapter_ref": "file_manager::home_directory",
     "shape_guarantee": {
       "contract": "always_json_object",
       "xctx_receives": "single_json_object_for_live_data",
       "success_shape": "domain_object",
-      "failure_shape": "legacy_connector_error",
-      "raw_legacy_output": "never_returned_unparsed",
+      "failure_shape": "xctx_connector_error",
+      "raw_external_output": "never_returned_unparsed",
       "stdout_stderr": "summarized_in_command_status_when_useful"
     }
   }
@@ -28,8 +28,8 @@ connector object:
 ```
 
 The guarantee means the adapter boundary normalizes both success and failure.
-Legacy commands may return arbitrary stdout/stderr, but xctx receives a shaped
-object. Raw legacy output is not passed through as protocol payload.
+External commands may return arbitrary stdout/stderr, but xctx receives a shaped
+object. Raw external output is not passed through as protocol payload.
 
 For xctx-native pass-through adapters, successful calls preserve the target
 adapter payload. Normalized pass-through failures return connector metadata with:
@@ -75,10 +75,10 @@ one-item pagination. `--shape full` keeps those diagnostics for inspection.
 ## Boundary
 
 Do not implement connector profiles in `libs/xctx` or generic connector
-middleware. Add legacy behavior under
-`libs/xctx_connectors/domains/<domain>/legacy_adapter.py` when the domain owns
+middleware. Add external-command behavior under
+`libs/xctx_connectors/domains/<domain>/external_command_adapter.py` when the domain owns
 reusable behavior, or under
-`libs/xctx_connectors/domains/<domain>/subdomains/<subdomain>/legacy_adapter.py`
+`libs/xctx_connectors/domains/<domain>/subdomains/<subdomain>/external_command_adapter.py`
 when the behavior is truly subdomain-specific. Declare only connector
 kind/options in scoped YAML, and prove with tests that generic code contains no
-domain or legacy-command semantics.
+domain or external-command semantics.

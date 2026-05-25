@@ -77,11 +77,7 @@ def run(argv: Sequence[str] | None = None, root: Path | None = None) -> int:
     configure_sigpipe()
     raw_argv = list(argv or [])
     selection = extract_global_options(raw_argv)
-    store = load_store(
-        root=root,
-        override_system=selection.system_id,
-        override_agent_domain=selection.agent_domain_id,
-    )
+    store = load_store(root=root)
     store["output_format"] = select_output_format(store, selection.output_format)
     store["detail"] = selection.detail
     if selection.output_error:
@@ -90,8 +86,6 @@ def run(argv: Sequence[str] | None = None, root: Path | None = None) -> int:
     handlers = command_handlers()
     selection = selection.__class__(
         argv=_with_discover_shortcut(store, selection.argv),
-        system_id=selection.system_id,
-        agent_domain_id=selection.agent_domain_id,
         output_format=selection.output_format,
         output_error=selection.output_error,
         detail=selection.detail,
@@ -138,10 +132,7 @@ def run(argv: Sequence[str] | None = None, root: Path | None = None) -> int:
     args.cmdline_arg = selection.cmdline_arg or shlex.join(selection.argv)
     canonical = canonical_command(store, args.command)
     if unknown_args:
-        if canonical == "discovery" and hasattr(args, "target_args"):
-            args.target_args.extend(unknown_args)
-        else:
-            raise XctxError(f"next valid move: adjust arguments (unrecognized arguments: {' '.join(unknown_args)})")
+        raise XctxError(f"next valid move: adjust arguments (unrecognized arguments: {' '.join(unknown_args)})")
     handler = handlers.get(canonical)
     if handler is None:
         raise XctxError(f"next valid move: command {canonical} is configured but has no production handler")
@@ -156,11 +147,7 @@ def main(argv: Sequence[str] | None = None, root: Path | None = None) -> int:
         command = " ".join(raw_argv) if raw_argv else "help"
         try:
             selection = extract_global_options(raw_argv)
-            fallback_store = load_store(
-                root=root,
-                override_system=selection.system_id,
-                override_agent_domain=selection.agent_domain_id,
-            )
+            fallback_store = load_store(root=root)
             fallback_store["output_format"] = select_output_format(fallback_store, selection.output_format)
             fallback_store["detail"] = selection.detail
             emit_stderr_event(fallback_store, command, "error", str(exc))

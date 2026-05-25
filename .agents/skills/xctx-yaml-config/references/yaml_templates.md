@@ -64,7 +64,6 @@ Subdomain file:
 ```yaml
 id: <subdomain_id>
 kind: agent_subdomain
-aliases: []
 status: offline
 basic_description: <one sentence>
 full_description: >-
@@ -102,7 +101,7 @@ include richer mode metadata, examples, samples, schema notes, or bounded
 full-index rows, but it still must not return raw observed data.
 
 Compact list/discovery payloads should hide mechanical adapter diagnostics that
-do not help choose the next move. For example, omit legacy command argv arrays
+do not help choose the next move. For example, omit external command argv arrays
 in compact and omit pagination when the complete result is one item
 (`total_count == returned_count == 1` with no cursor/next cursor). `--shape full`
 should include diagnostic command details and pagination metadata even when
@@ -123,12 +122,12 @@ data:
 ```
 
 When the subdomain should route through middleware first, keep the middleware as
-the declared entrypoint and put the application or legacy target under
+the declared entrypoint and put the application or external-command target under
 `connector`. For xctx-native adapters this is pass-through:
 
 ```yaml
 entrypoint:
-  file: legacy_connector.py
+  file: connector_supervisor.py
   protocol: json_stdout
   compact_flag: --compact
   timeout_seconds: 30
@@ -141,21 +140,21 @@ connector:
 `target_entrypoint` must be workspace-relative and must resolve to a file inside
 the repository workspace.
 
-For a legacy command adapter, declare bounded connector controls in the scoped
+For an external command adapter, declare bounded connector controls in the scoped
 subdomain YAML and implement reusable domain behavior under
-`libs/xctx_connectors/domains/<domain_id>/legacy_adapter.py` or truly
+`libs/xctx_connectors/domains/<domain_id>/external_command_adapter.py` or truly
 subdomain-specific behavior under
-`libs/xctx_connectors/domains/<domain_id>/subdomains/<subdomain_id>/legacy_adapter.py`,
+`libs/xctx_connectors/domains/<domain_id>/subdomains/<subdomain_id>/external_command_adapter.py`,
 not in `libs/xctx` or generic connector middleware:
 
 ```yaml
 entrypoint:
-  file: legacy_connector.py
+  file: connector_supervisor.py
   protocol: json_stdout
   compact_flag: --compact
   timeout_seconds: 10
 connector:
-  kind: legacy_command
+  kind: external_command
   adapter_scope: domain  # optional; default is subdomain
   timeout_seconds: 5
   max_output_bytes: 20000
@@ -176,15 +175,15 @@ Connector metadata returned by adapter-side middleware should include a
 ```json
 {
   "connector": {
-    "version": "legacy_connector.v1",
-    "kind": "legacy_command",
+    "version": "xctx_connector.v1",
+    "kind": "external_command",
     "adapter_ref": "<domain_id>::<subdomain_id>",
     "shape_guarantee": {
       "contract": "always_json_object",
       "xctx_receives": "single_json_object_for_live_data",
       "success_shape": "domain_object",
-      "failure_shape": "legacy_connector_error",
-      "raw_legacy_output": "never_returned_unparsed",
+      "failure_shape": "xctx_connector_error",
+      "raw_external_output": "never_returned_unparsed",
       "stdout_stderr": "summarized_in_command_status_when_useful"
     }
   }
@@ -204,8 +203,6 @@ actions:
   <action_id>:
     priority: 20
     entrypoint_command: <adapter-command>
-    aliases:
-      - <safe_alias>
     query_required: true
     desc: Discover <object> records by <query shape>; use observe for materialized <object> data.
     run_cmd: ./xctx discover <domain_id>::<subdomain_id> <action_id> <query-shape>
@@ -250,8 +247,6 @@ actions:
   list_<objects>:
     priority: 30
     entrypoint_command: list-<objects>
-    aliases:
-      - list-<objects>
     query_required: false
     mode_kind: list
     desc: List a bounded <objects> discovery index.
@@ -304,8 +299,6 @@ actions:
     domain_affordance: true
     domain_action_name: <optional_public_domain_action_name>
     entrypoint_command: <adapter-command>
-    aliases:
-      - <optional_alias>
     query_required: true
     desc: <one precise sentence.>
     run_cmd: ./xctx discover <domain_id>::<domain_action_name> <argument-shape>
@@ -354,10 +347,5 @@ agent_routing:
 
 ## Identity fields
 
-```yaml
-identity_resolution:
-  query_fields:
-    - name
-    - id
-    - aliases
-```
+Do not define universe-level identity fields. Identity semantics belong inside
+scoped domain adapters.

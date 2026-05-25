@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Focused tests for xctx middleware connectors and legacy filesystem demo."""
+"""Focused tests for xctx middleware connectors and external-command filesystem demo."""
 
 from __future__ import annotations
 
@@ -25,10 +25,10 @@ from xctx.config.loader import load_store  # noqa: E402
 from xctx.errors import XctxError  # noqa: E402
 from xctx.ports.external_command import call_external_command  # noqa: E402
 from xctx_connectors.middleware import _resolve_workspace_entrypoint  # noqa: E402
-from xctx_connectors.domains.file_manager.legacy_adapter import _safe_path  # noqa: E402
+from xctx_connectors.domains.file_manager.external_command_adapter import _safe_path  # noqa: E402
 
 
-DOMAIN_ADAPTER_MODULE = "xctx_connectors.domains.file_manager.legacy_adapter"
+DOMAIN_ADAPTER_MODULE = "xctx_connectors.domains.file_manager.external_command_adapter"
 
 
 def assert_shape_guarantee(connector: dict, *, contract: str, failure_shape: str) -> None:
@@ -36,7 +36,7 @@ def assert_shape_guarantee(connector: dict, *, contract: str, failure_shape: str
     assert guarantee["contract"] == contract
     assert guarantee["xctx_receives"] == "single_json_object_for_live_data"
     assert guarantee["failure_shape"] == failure_shape
-    assert guarantee["raw_legacy_output"] == "never_returned_unparsed"
+    assert guarantee["raw_external_output"] == "never_returned_unparsed"
     assert guarantee["stdout_stderr"] == "summarized_in_command_status_when_useful"
 
 
@@ -57,7 +57,7 @@ def test_middleware_returns_json_without_xctx_env() -> None:
     env.pop("XCTX_AGENT_DOMAIN", None)
     env.pop("XCTX_AGENT_SUBDOMAIN", None)
     proc = subprocess.run(
-        [sys.executable, str(ROOT / "legacy_connector.py"), "observe", "file:README.txt", "--compact"],
+        [sys.executable, str(ROOT / "connector_supervisor.py"), "observe", "file:README.txt", "--compact"],
         cwd=ROOT,
         env=env,
         text=True,
@@ -68,9 +68,9 @@ def test_middleware_returns_json_without_xctx_env() -> None:
     assert proc.returncode == 0, proc.stderr + proc.stdout
     assert proc.stderr == "", proc.stderr
     payload = json.loads(proc.stdout)
-    assert payload["object_type"] == "legacy_connector_error"
+    assert payload["object_type"] == "xctx_connector_error"
     assert payload["found"] is False
-    assert_shape_guarantee(payload["connector"], contract="always_json_object", failure_shape="legacy_connector_error")
+    assert_shape_guarantee(payload["connector"], contract="always_json_object", failure_shape="xctx_connector_error")
     assert "XCTX_AGENT_DOMAIN" in payload["command_status"]["error"]
 
 
@@ -136,7 +136,7 @@ print(json.dumps({{
         "rc": 0,
         "stderr": "",
         "stdout_lines": 1,
-        "live_object_type": "legacy_connector_filesystem_discovery",
+        "live_object_type": "external_command_filesystem_discovery",
         "middleware_loaded": False,
         "domain_adapter_loaded": False,
     }
@@ -149,7 +149,7 @@ def test_live_entrypoint_must_use_connector_supervisor() -> None:
     try:
         call_external_command(store, subdomain, ["discover"])
     except XctxError as exc:
-        assert "route live subdomain through legacy_connector.py" in str(exc)
+        assert "route live subdomain through connector_supervisor.py" in str(exc)
     else:  # pragma: no cover - defensive standalone script check
         raise AssertionError("accepted direct live adapter entrypoint")
 
@@ -185,7 +185,7 @@ def test_generic_connector_runtime_has_no_file_manager_implementation() -> None:
             assert token not in text, f"{token} leaked into {rel}"
 
 
-def test_root_audit_does_not_import_scoped_legacy_adapter() -> None:
+def test_root_audit_does_not_import_scoped_external_command_adapter() -> None:
     code = f"""
 import contextlib
 import io
@@ -247,7 +247,7 @@ def test_xctx_native_passthrough_failure_has_shape_guarantee() -> None:
     env["XCTX_AGENT_DOMAIN"] = "stock_intelligence_hub"
     env["XCTX_AGENT_SUBDOMAIN"] = "market_data_gateway"
     proc = subprocess.run(
-        [sys.executable, str(ROOT / "legacy_connector.py"), "not-a-real-command", "--compact"],
+        [sys.executable, str(ROOT / "connector_supervisor.py"), "not-a-real-command", "--compact"],
         cwd=ROOT,
         env=env,
         text=True,
@@ -299,23 +299,23 @@ def test_xctx_native_passthrough_failure_hides_argv_until_full_shape() -> None:
     assert full_live["command_status"]["argv"][1].endswith("market_data_gateway.py")
 
 
-def test_legacy_filesystem_discovery_and_observation() -> None:
+def test_external_command_filesystem_discovery_and_observation() -> None:
     discovery = run_engine(["discover", "file_manager::home_directory"])
     live = discovery["results"]["live_data"]
-    assert live["object_type"] == "legacy_connector_filesystem_discovery"
-    assert live["connector"]["kind"] == "legacy_command"
+    assert live["object_type"] == "external_command_filesystem_discovery"
+    assert live["connector"]["kind"] == "external_command"
     assert live["connector"]["adapter_scope"] == "domain"
-    assert_shape_guarantee(live["connector"], contract="always_json_object", failure_shape="legacy_connector_error")
+    assert_shape_guarantee(live["connector"], contract="always_json_object", failure_shape="xctx_connector_error")
     assert live["observable_objects"]["file"]["id_shape"] == "file:<relative_path>"
 
     files = run_engine(["discover", "file_manager::home_directory", "list_files", "--limit", "5"])
     file_live = files["results"]["live_data"]
-    assert file_live["object_type"] == "legacy_connector_filesystem_file_list"
-    assert_shape_guarantee(file_live["connector"], contract="always_json_object", failure_shape="legacy_connector_error")
+    assert file_live["object_type"] == "external_command_filesystem_file_list"
+    assert_shape_guarantee(file_live["connector"], contract="always_json_object", failure_shape="xctx_connector_error")
     assert file_live["files"][0]["id"] == "file:README.txt"
     assert file_live["files"][0]["observe_cmd"] == "./xctx observe file_manager::home_directory file:README.txt"
     assert "pagination" not in file_live
-    assert "legacy_command" not in file_live
+    assert "external_command" not in file_live
     assert "command_status" not in file_live
     assert "This is a bundled file-manager demo fixture" not in json.dumps(file_live)
 
@@ -328,15 +328,15 @@ def test_legacy_filesystem_discovery_and_observation() -> None:
 
     discovered_file = run_engine(["discover", "file_manager::home_directory", "file:README.txt"])
     discovered_file_live = discovered_file["results"]["live_data"]
-    assert discovered_file_live["object_type"] == "legacy_connector_filesystem_file_discovery"
-    assert_shape_guarantee(discovered_file_live["connector"], contract="always_json_object", failure_shape="legacy_connector_error")
+    assert discovered_file_live["object_type"] == "external_command_filesystem_file_discovery"
+    assert_shape_guarantee(discovered_file_live["connector"], contract="always_json_object", failure_shape="xctx_connector_error")
     assert discovered_file_live["id"] == "file:README.txt"
     assert discovered_file_live["type"] == "ASCII text"
     assert discovered_file_live["size_bytes"] == 237
     assert discovered_file_live["observe_cmd"] == "./xctx observe file_manager::home_directory file:README.txt"
     assert "file_id" not in discovered_file_live
     assert "file_type" not in discovered_file_live
-    assert "legacy_commands" not in discovered_file_live
+    assert "external_commands" not in discovered_file_live
     assert "command_status" not in discovered_file_live
     assert "content" not in discovered_file_live
     assert "This is a bundled file-manager demo fixture" not in json.dumps(discovered_file_live)
@@ -352,15 +352,15 @@ def test_legacy_filesystem_discovery_and_observation() -> None:
 
     discovered_directory = run_engine(["discover", "file_manager::home_directory", "directory:docs"])
     discovered_directory_live = discovered_directory["results"]["live_data"]
-    assert discovered_directory_live["object_type"] == "legacy_connector_filesystem_directory_discovery"
+    assert discovered_directory_live["object_type"] == "external_command_filesystem_directory_discovery"
     assert discovered_directory_live["id"] == "directory:docs"
     assert discovered_directory_live["child_count"] == 1
 
     observed = run_engine(["observe", "file:README.txt"])
     observed_live = observed["results"]["live_data"]
     assert observed["results"]["agent_domain"] == "file_manager"
-    assert observed_live["object_type"] == "legacy_connector_filesystem_file_observation"
-    assert_shape_guarantee(observed_live["connector"], contract="always_json_object", failure_shape="legacy_connector_error")
+    assert observed_live["object_type"] == "external_command_filesystem_file_observation"
+    assert_shape_guarantee(observed_live["connector"], contract="always_json_object", failure_shape="xctx_connector_error")
     assert observed_live["command_status"]["ok"] is True
     assert observed_live["file_type"]
     assert observed_live["content"]["available"] is True
@@ -368,24 +368,25 @@ def test_legacy_filesystem_discovery_and_observation() -> None:
     assert "This is a bundled file-manager demo fixture" in observed_live["content"]["text"]
 
 
-def test_legacy_filesystem_always_shapes_failures() -> None:
+def test_external_command_filesystem_always_shapes_failures() -> None:
     escaped = run_engine(["observe", "file:../README.md"], code=1)
     assert escaped["ok"] is False
     assert escaped["error"] == "path escapes configured safe root"
     live = escaped["results"]["live_data"]
-    assert live["object_type"] == "legacy_connector_error"
+    assert live["object_type"] == "xctx_connector_error"
     assert live["found"] is False
-    assert_shape_guarantee(live["connector"], contract="always_json_object", failure_shape="legacy_connector_error")
+    assert_shape_guarantee(live["connector"], contract="always_json_object", failure_shape="xctx_connector_error")
     assert live["command_status"]["ok"] is False
     assert "safe root" in live["command_status"]["error"]
 
-    unknown = run_engine(["observe", "file:missing.txt"], code=1)
-    assert unknown["ok"] is False
+    unknown = run_engine(["observe", "file:missing.txt"])
+    assert unknown["ok"] is True
     unknown_live = unknown["results"]["live_data"]
-    assert unknown_live["object_type"] == "legacy_connector_filesystem_observation"
-    assert_shape_guarantee(unknown_live["connector"], contract="always_json_object", failure_shape="legacy_connector_error")
+    assert unknown_live["object_type"] == "external_command_filesystem_observation"
+    assert_shape_guarantee(unknown_live["connector"], contract="always_json_object", failure_shape="xctx_connector_error")
     assert unknown_live["found"] is False
-    assert unknown_live["command_status"]["ok"] is False
+    assert unknown_live["status"] == "not_found"
+    assert unknown_live["command_status"]["ok"] is True
 
 
 def main() -> int:
@@ -396,12 +397,12 @@ def main() -> int:
     test_live_entrypoint_must_use_connector_supervisor()
     test_passthrough_target_entrypoint_stays_inside_workspace()
     test_generic_connector_runtime_has_no_file_manager_implementation()
-    test_root_audit_does_not_import_scoped_legacy_adapter()
+    test_root_audit_does_not_import_scoped_external_command_adapter()
     test_xctx_native_passthrough_stays_transparent()
     test_xctx_native_passthrough_failure_has_shape_guarantee()
     test_xctx_native_passthrough_failure_hides_argv_until_full_shape()
-    test_legacy_filesystem_discovery_and_observation()
-    test_legacy_filesystem_always_shapes_failures()
+    test_external_command_filesystem_discovery_and_observation()
+    test_external_command_filesystem_always_shapes_failures()
 
     cli = subprocess.run(
         [str(XCTX), "--json", "discover", "file_manager::home_directory", "list_directories"],
@@ -413,9 +414,9 @@ def main() -> int:
     )
     assert cli.returncode == 0, cli.stderr + cli.stdout
     assert cli.stderr == "", cli.stderr
-    assert json.loads(cli.stdout)["results"]["live_data"]["object_type"] == "legacy_connector_filesystem_directory_list"
+    assert json.loads(cli.stdout)["results"]["live_data"]["object_type"] == "external_command_filesystem_directory_list"
 
-    print("legacy connector middleware checks passed")
+    print("connector supervisor middleware checks passed")
     return 0
 
 

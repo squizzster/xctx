@@ -12,7 +12,6 @@ CommandHandler = Callable[[dict[str, Any], Any], int]
 def command_handlers() -> dict[str, CommandHandler]:
     return {
         "help": help.handle,
-        "discovery": discover.handle,
         "discover": discover.handle,
         "observe": observe.handle,
         "plan": plan.handle,

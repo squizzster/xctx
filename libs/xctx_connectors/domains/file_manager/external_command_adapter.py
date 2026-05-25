@@ -1,4 +1,4 @@
-"""Domain-owned legacy filesystem adapter for file_manager subdomain scopes."""
+"""Domain-owned external-command filesystem adapter for file_manager scopes."""
 
 from __future__ import annotations
 
@@ -111,12 +111,12 @@ def _filesystem_config(context: Any) -> tuple[Path, int, int, float, int]:
 
 
 def _file_type_payload(path: Path, *, timeout: float, max_output_bytes: int, runtime: Any) -> tuple[str, dict[str, Any]]:
-    legacy = runtime.run_legacy(["file", "--brief", str(path)], timeout=timeout, max_output_bytes=max_output_bytes)
-    return (legacy.get("stdout") or "").strip(), legacy
+    result = runtime.run_command(["file", "--brief", str(path)], timeout=timeout, max_output_bytes=max_output_bytes)
+    return (result.get("stdout") or "").strip(), result
 
 
 def _ls_payload(path: Path, *, timeout: float, max_output_bytes: int, runtime: Any) -> dict[str, Any]:
-    return runtime.run_legacy(["ls", "-lt", str(path)], timeout=timeout, max_output_bytes=max_output_bytes)
+    return runtime.run_command(["ls", "-lt", str(path)], timeout=timeout, max_output_bytes=max_output_bytes)
 
 
 def _discover_filesystem_object(
@@ -135,9 +135,9 @@ def _discover_filesystem_object(
     kind = "directory" if target.path.is_dir() else "file"
     domain_ref = context.adapter_ref
     stat = target.path.stat()
-    ls_legacy = _ls_payload(target.path, timeout=timeout, max_output_bytes=max_output_bytes, runtime=runtime)
+    ls_result = _ls_payload(target.path, timeout=timeout, max_output_bytes=max_output_bytes, runtime=runtime)
     payload: dict[str, Any] = {
-        "object_type": f"legacy_connector_filesystem_{kind}_discovery",
+        "object_type": f"external_command_filesystem_{kind}_discovery",
         "shape": shape,
         "found": True,
         "id": _entry_id(target, kind=kind),
@@ -152,16 +152,16 @@ def _discover_filesystem_object(
             {
                 f"{kind}_id": _entry_id(target, kind=kind),
                 "modified_display": _display_mtime(target.path),
-                "legacy_commands": {
-                    "stat_line": " ".join(shlex.quote(item) for item in ls_legacy["argv"]),
+                "external_commands": {
+                    "stat_line": " ".join(shlex.quote(item) for item in ls_result["argv"]),
                 },
                 "command_status": {
-                    "stat_line": runtime.command_status_from_legacy(ls_legacy, include_argv=True),
+                    "stat_line": runtime.command_status_from_external_result(ls_result, include_argv=True),
                 },
             }
         )
     if kind == "file":
-        file_type, file_legacy = _file_type_payload(target.path, timeout=timeout, max_output_bytes=max_output_bytes, runtime=runtime)
+        file_type, file_result = _file_type_payload(target.path, timeout=timeout, max_output_bytes=max_output_bytes, runtime=runtime)
         payload.update(
             {
                 "type": file_type,
@@ -170,8 +170,8 @@ def _discover_filesystem_object(
         )
         if shape == "full":
             payload["file_type"] = file_type
-            payload["legacy_commands"]["type"] = " ".join(shlex.quote(item) for item in file_legacy["argv"])
-            payload["command_status"]["type"] = runtime.command_status_from_legacy(file_legacy, include_argv=True)
+            payload["external_commands"]["type"] = " ".join(shlex.quote(item) for item in file_result["argv"])
+            payload["command_status"]["type"] = runtime.command_status_from_external_result(file_result, include_argv=True)
     else:
         children = list(target.path.iterdir())
         payload.update(
@@ -203,9 +203,9 @@ def _filesystem_discovery(context: Any, args: list[str], *, runtime: Any) -> dic
         return _discover_filesystem_object(context, " ".join(rest), shape=shape, runtime=runtime)
     domain_ref = context.adapter_ref
     payload: dict[str, Any] = {
-        "object_type": "legacy_connector_filesystem_discovery",
+        "object_type": "external_command_filesystem_discovery",
         "shape": shape,
-        "description": "Discover filesystem objects exposed through a safe legacy-command connector.",
+        "description": "Discover filesystem objects exposed through a safe external-command connector.",
         "observable_objects": {
             "file": {"id_shape": "file:<relative_path>", "observe_shape": f"./xctx observe {domain_ref} file:<relative_path>"},
             "directory": {"id_shape": "directory:<relative_path>", "observe_shape": f"./xctx observe {domain_ref} directory:<relative_path>"},
@@ -236,7 +236,7 @@ def _filesystem_discovery(context: Any, args: list[str], *, runtime: Any) -> dic
     if shape == "full":
         safe_root, *_ = _filesystem_config(context)
         payload["safe_root"] = str(safe_root.relative_to(context.workspace_root))
-        payload["legacy_commands"] = {
+        payload["external_commands"] = {
             "list": "ls -lt",
             "observe_file": "file --brief",
         }
@@ -257,7 +257,7 @@ def _list_filesystem(
     target = _safe_path(safe_root, " ".join(rest) if rest else ".", expected="directory")
     if not target.path.exists():
         return _filesystem_not_found(context, target.relative, expected="directory", runtime=runtime)
-    legacy = _ls_payload(target.path, timeout=timeout, max_output_bytes=max_output_bytes, runtime=runtime)
+    result = _ls_payload(target.path, timeout=timeout, max_output_bytes=max_output_bytes, runtime=runtime)
     entries = [item for item in target.path.iterdir() if (item.is_file() if kind == "file" else item.is_dir())]
     entries.sort(key=lambda item: (item.stat().st_mtime, item.name), reverse=True)
     page, pagination = _paginate(entries, limit=int(controls["limit"]), cursor=int(controls["cursor"]))
@@ -265,7 +265,7 @@ def _list_filesystem(
     result_key = "files" if kind == "file" else "directories"
     shape = str(controls["shape"])
     payload = {
-        "object_type": f"legacy_connector_filesystem_{'file' if kind == 'file' else 'directory'}_list",
+        "object_type": f"external_command_filesystem_{'file' if kind == 'file' else 'directory'}_list",
         "shape": shape,
         "found": True,
         "directory_id": _entry_id(target, kind="directory"),
@@ -274,8 +274,8 @@ def _list_filesystem(
         "data_boundary": f"Discovery index of {result_key}. Use observe on an emitted id for materialized object details.",
     }
     if shape == "full":
-        payload["legacy_command"] = " ".join(shlex.quote(item) for item in legacy["argv"])
-        payload["command_status"] = runtime.command_status_from_legacy(legacy, include_argv=True)
+        payload["external_command"] = " ".join(shlex.quote(item) for item in result["argv"])
+        payload["command_status"] = runtime.command_status_from_external_result(result, include_argv=True)
     if shape == "full" or not (
         pagination["total_count"] == 1
         and pagination["returned_count"] == 1
@@ -323,11 +323,12 @@ def _read_text_content(path: Path, *, max_content_bytes: int) -> dict[str, Any]:
 
 def _filesystem_not_found(context: Any, relative: str, *, expected: str, runtime: Any) -> dict[str, Any]:
     return {
-        "object_type": "legacy_connector_filesystem_observation",
+        "object_type": "external_command_filesystem_observation",
         "found": False,
         "expected_type": expected,
         "relative_path": relative,
-        "command_status": runtime.command_status(ok=False, error="target does not exist"),
+        "status": "not_found",
+        "command_status": runtime.command_status(ok=True),
         "next_moves": [f"./xctx discover {context.adapter_ref} list_files"],
     }
 
@@ -341,10 +342,10 @@ def _observe_filesystem(context: Any, args: list[str], *, runtime: Any) -> dict[
     if not target.path.exists():
         return _filesystem_not_found(context, target.relative, expected=expected or "file_or_directory", runtime=runtime)
     if target.path.is_dir():
-        legacy = _ls_payload(target.path, timeout=timeout, max_output_bytes=max_output_bytes, runtime=runtime)
+        result = _ls_payload(target.path, timeout=timeout, max_output_bytes=max_output_bytes, runtime=runtime)
         children = sorted(target.path.iterdir(), key=lambda item: (item.is_file(), item.name.lower()))
         return {
-            "object_type": "legacy_connector_filesystem_directory_observation",
+            "object_type": "external_command_filesystem_directory_observation",
             "found": True,
             "directory_id": _entry_id(target, kind="directory"),
             "relative_path": target.relative,
@@ -358,14 +359,14 @@ def _observe_filesystem(context: Any, args: list[str], *, runtime: Any) -> dict[
                 }
                 for child in children[:10]
             ],
-            "legacy_command": " ".join(shlex.quote(item) for item in legacy["argv"]),
-            "command_status": runtime.command_status_from_legacy(legacy),
+            "external_command": " ".join(shlex.quote(item) for item in result["argv"]),
+            "command_status": runtime.command_status_from_external_result(result),
             "data_boundary": "Directory observation returns materialized directory metadata and a bounded child summary.",
         }
-    file_type, legacy = _file_type_payload(target.path, timeout=timeout, max_output_bytes=max_output_bytes, runtime=runtime)
+    file_type, result = _file_type_payload(target.path, timeout=timeout, max_output_bytes=max_output_bytes, runtime=runtime)
     stat = target.path.stat()
     return {
-        "object_type": "legacy_connector_filesystem_file_observation",
+        "object_type": "external_command_filesystem_file_observation",
         "found": True,
         "file_id": _entry_id(target, kind="file"),
         "relative_path": target.relative,
@@ -374,8 +375,8 @@ def _observe_filesystem(context: Any, args: list[str], *, runtime: Any) -> dict[
         "modified_display": _display_mtime(target.path),
         "file_type": file_type,
         "content": _read_text_content(target.path, max_content_bytes=max_content_bytes),
-        "legacy_command": " ".join(shlex.quote(item) for item in legacy["argv"]),
-        "command_status": runtime.command_status_from_legacy(legacy),
+        "external_command": " ".join(shlex.quote(item) for item in result["argv"]),
+        "command_status": runtime.command_status_from_external_result(result),
         "data_boundary": "File observation returns materialized filesystem metadata and bounded text content when safely readable.",
     }
 
@@ -390,17 +391,17 @@ def _filesystem_audit(context: Any, *, runtime: Any) -> dict[str, Any]:
         }
     ]
     for binary in ("ls", "file"):
-        proc = runtime.run_legacy([binary, "--version"], timeout=timeout, max_output_bytes=max_output_bytes)
+        proc = runtime.run_command([binary, "--version"], timeout=timeout, max_output_bytes=max_output_bytes)
         if binary == "file" and not proc["ok"]:
-            proc = runtime.run_legacy([binary, "-v"], timeout=timeout, max_output_bytes=max_output_bytes)
+            proc = runtime.run_command([binary, "-v"], timeout=timeout, max_output_bytes=max_output_bytes)
         checks.append(
             {
-                "id": f"audit:{context.domain_id}:{context.subdomain_id}:legacy_command:{binary}",
+                "id": f"audit:{context.domain_id}:{context.subdomain_id}:external_command:{binary}",
                 "status": "pass" if proc["ok"] else "fail",
                 "command": binary,
             }
         )
-    return {"object_type": "legacy_connector_filesystem_audit", "checks": checks}
+    return {"object_type": "external_command_filesystem_audit", "checks": checks}
 
 
 def safe_root_exists(context: Any) -> bool:

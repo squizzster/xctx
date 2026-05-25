@@ -2,10 +2,10 @@ id: file_manager
 kind: agent_domain
 status: online
 health: online
-basic_description: File-manager demonstration domain for xctx legacy connector middleware.
+basic_description: File-manager demonstration domain for xctx connector supervisor middleware.
 full_description: >-
   file_manager demonstrates how xctx can present a clean protocol surface for an
-  existing legacy system. The file_manager domain owns ordinary filesystem
+  existing external command surface. The file_manager domain owns ordinary filesystem
   command adaptation into stable JSON objects; the home_directory subdomain
   configures one safe-root instance while xctx remains a generic YAML-driven
   router.

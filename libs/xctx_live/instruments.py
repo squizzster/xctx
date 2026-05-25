@@ -14,7 +14,6 @@ from xctx_live.common import load_yaml, normalize_search_text
 
 INSTRUMENT_DATA = Path("yaml_dynamic_config/agent_domains/stock_intelligence_hub/subdomains/market_data_gateway/instruments.yaml")
 MINI_STOCKS_DB = Path("data/mini_stocks.sqlite")
-EXPORT_DIR = Path(".xctx_runtime/exports")
 PRICE_SCALE = 1_000_000
 DEFAULT_SEARCH_LIMIT = 10
 LIST_DEFAULT_LIMIT = 25
@@ -87,7 +86,7 @@ def connect_market(root: Path) -> sqlite3.Connection:
     path = market_db_path(root)
     if not path.exists():
         raise FileNotFoundError(f"mini_stocks sqlite not found: {path}")
-    conn = sqlite3.connect(path)
+    conn = sqlite3.connect(f"file:{path.resolve()}?mode=ro", uri=True)
     conn.row_factory = sqlite3.Row
     return conn
 
@@ -809,11 +808,27 @@ def _csv_safe_token(value: Any) -> str:
     return cleaned or "unknown"
 
 
+def runtime_dir(root: Path) -> Path:
+    configured = os.environ.get("XCTX_RUNTIME_DIR")
+    directory = Path(configured) if configured else root / ".xctx_runtime"
+    if not directory.is_absolute():
+        directory = root / directory
+    return directory
+
+
 def _range_csv_path(root: Path, series: dict[str, Any], value: int, unit: str) -> Path:
     ticker = _csv_safe_token(series.get("ticker") or str(series.get("instrument_id", "")).replace("instrument:", ""))
     amount = "all" if value == 0 else str(value)
     filename = f"instrument_{ticker}_{amount}_{unit}_{secrets.token_hex(4)}.csv"
-    return root / EXPORT_DIR / filename
+    return runtime_dir(root) / "exports" / filename
+
+
+def _display_path(root: Path, path: Path) -> str:
+    try:
+        return str(path.resolve().relative_to(root.resolve()))
+    except ValueError:
+        return str(path.resolve())
+
 
 
 def _write_bars_csv(root: Path, series: dict[str, Any], bars: list[dict[str, Any]], value: int, unit: str) -> Path:
@@ -1106,7 +1121,7 @@ def market_series_range_observation(
     if export_csv:
         csv_path = _write_bars_csv(root, found, ranged_bars, value, unit)
         payload["csv"] = {
-            "path": str(csv_path.relative_to(root)),
+            "path": _display_path(root, csv_path),
             "format": "csv",
             "columns": BAR_CSV_COLUMNS,
         }

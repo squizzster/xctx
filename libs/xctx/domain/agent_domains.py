@@ -10,10 +10,10 @@ from xctx.config.paths import as_project_path
 from xctx.errors import XctxError
 from xctx.ports.external_command import call_external_command
 from xctx.protocol.actions import action_matches
-from xctx.protocol.accessors import advertised_command_aliases, command_map_for_group, protocol_version
+from xctx.protocol.accessors import command_map_for_group, protocol_version
 from xctx.protocol.options import encode_cli_options_for_target, option_config_checks, target_option_surface
 from xctx.protocol.descriptions import detail_enabled, selected_description, with_description
-from xctx.store.plans import resolve_plan, write_plan
+from xctx.store.plans import plan_store_dir, resolve_plan, write_plan
 
 
 ## Protocol boundary: this module routes configured domains, subdomains, and
@@ -22,17 +22,6 @@ from xctx.store.plans import resolve_plan, write_plan
 
 def has_agent_domains(store: dict[str, Any]) -> bool:
     return bool(store.get("agent_domains"))
-
-
-def active_domain(store: dict[str, Any]) -> dict[str, Any]:
-    domain_id = store.get("active_agent_domain")
-    domains = store.get("agent_domains", {})
-    if domain_id in domains:
-        return domains[domain_id]
-    if domains:
-        return next(iter(domains.values()))
-    raise XctxError("next valid move: configure agent_domains")
-
 
 
 def _domain_action_name(action_name: str, action: dict[str, Any]) -> str:
@@ -53,12 +42,8 @@ def _domain_action_candidate(
     a named domain.
     """
     public_name = _domain_action_name(action_name, action)
-    aliases = list(action.get("aliases") or [])
-    if action_name != public_name and action_name not in aliases:
-        aliases.append(action_name)
     return {
         **action,
-        "aliases": aliases,
         "agent_domain": domain_id,
         "agent_subdomain": subdomain_id,
         "_action_name": public_name,
@@ -101,6 +86,18 @@ def subdomain_action_config(subdomain: dict[str, Any], action_name: str) -> tupl
     return None, None
 
 
+def canonical_action_for_structural_token(subdomain: dict[str, Any], token: str) -> str | None:
+    for name, action in (subdomain.get("actions") or {}).items():
+        structural_tokens = {
+            str(value)
+            for value in (action.get("entrypoint_command"), action.get("domain_action_name"))
+            if value
+        }
+        if token in structural_tokens and token != name:
+            return name
+    return None
+
+
 def parse_scoped_subdomain_mode_ref(
     store: dict[str, Any],
     token: str | None,
@@ -119,8 +116,7 @@ def parse_scoped_subdomain_mode_ref(
     domains = store.get("agent_domains", {})
     if domain_id not in domains:
         return None, None, None, None
-    aliases = domains[domain_id].get("_subdomain_aliases", {})
-    subdomain_id = str(aliases.get(subdomain_token, subdomain_token))
+    subdomain_id = str(subdomain_token)
     subdomain = (domains[domain_id].get("_subdomains") or {}).get(subdomain_id)
     if not subdomain:
         return None, None, None, None
@@ -323,7 +319,6 @@ def compact_subdomain(store: dict[str, Any], domain_id: str, subdomain: dict[str
         "kind": subdomain.get("kind", "agent_subdomain"),
         "status": subdomain.get("status", "unknown"),
         "description": selected_description(store, subdomain),
-        "aliases": subdomain.get("aliases", []),
         "run_cmd": f"./xctx discover {domain_id}::{subdomain['id']}",
     }
     if subdomain.get("offline_reason"):
@@ -347,8 +342,7 @@ def parse_ref(store: dict[str, Any], token: str | None) -> tuple[str | None, str
             return None, None
         if not subdomain_id:
             return domain_id, None
-        aliases = domains[domain_id].get("_subdomain_aliases", {})
-        return domain_id, aliases.get(subdomain_id, subdomain_id)
+        return domain_id, subdomain_id
     if token in domains:
         return token, None
     return None, None
@@ -415,13 +409,8 @@ def joined_identifier(parts: list[str | None]) -> str | None:
 
 
 def scoped_action_run_cmd(store: dict[str, Any], action_name: str) -> str:
-    active_id = store.get("active_agent_domain")
     domains = store.get("agent_domains", {})
-    ordered_domain_ids: list[str] = []
-    if active_id and active_id in domains:
-        ordered_domain_ids.append(str(active_id))
-    ordered_domain_ids.extend(domain_id for domain_id in domains if domain_id not in ordered_domain_ids)
-    for domain_id in ordered_domain_ids:
+    for domain_id in domains:
         for name, action in iter_domain_action_configs(store, domain_id):
             if action_matches(name, action, action_name):
                 return f"./xctx discover {domain_id}::{name}"
@@ -460,7 +449,6 @@ def universe_discovery_payload(store: dict[str, Any]) -> dict[str, Any]:
             "description": selected_description(store, interface),
             "run_cmd": interface.get("run_cmd", "./xctx"),
         },
-        "active_agent_domain": store.get("active_agent_domain"),
         "contains": {
             "agent_domain_count": len(domains),
             "online_agent_domain_count": sum(1 for domain in domains.values() if domain.get("status") == "online"),
@@ -471,7 +459,6 @@ def universe_discovery_payload(store: dict[str, Any]) -> dict[str, Any]:
         },
         "command_surface": {
             "xctx": command_map_for_group(store, "xctx", "main"),
-            "aliases": advertised_command_aliases(store),
         },
         "next_moves": [
             {
@@ -492,20 +479,14 @@ def universe_discovery_payload(store: dict[str, Any]) -> dict[str, Any]:
 
 def root_discovery_payload(store: dict[str, Any]) -> dict[str, Any]:
     root = store.get("universe", {}).get("root", {})
-    domain = active_domain(store)
-    online_subdomains = [
-        subdomain
-        for subdomain in sorted(domain.get("_subdomains", {}).values(), key=lambda item: item.get("_priority", 9999))
-        if subdomain.get("status") == "online"
-    ]
-    next_moves = [f"./xctx discover {domain['id']}::"]
-    if domain.get("status") != "online" and (domain.get("repair_path") or {}).get("run_cmd"):
-        next_moves.append(domain["repair_path"]["run_cmd"])
+    domains = [compact_domain(store, domain) for domain in store.get("agent_domains", {}).values()]
+    next_moves = [domain["run_cmd"] for domain in domains if domain.get("status") == "online"]
+    if not next_moves:
+        next_moves = ["./xctx discover <agent_domain>::"]
     next_moves.append("./xctx audit root")
     return {
         "description": selected_description(store, root),
-        "active_agent_domain": store.get("active_agent_domain"),
-        "agent_domains": [compact_domain(store, domain) for domain in store.get("agent_domains", {}).values()],
+        "agent_domains": domains,
         "next_moves": next_moves,
     }
 
@@ -556,6 +537,11 @@ def subdomain_discovery_payload(
         action_name, action = subdomain_action_config(subdomain, query_parts[0])
         if action_name and action:
             return scoped_subdomain_action_payload(store, domain_id, subdomain, action_name, action, query_parts[1:])
+        canonical_action = canonical_action_for_structural_token(subdomain, query_parts[0])
+        if canonical_action:
+            raise XctxError(
+                f"next valid move: use canonical action ./xctx discover {domain_id}::{subdomain_id} {canonical_action}"
+            )
     _discover_action_name, discover_action = subdomain_action_config(subdomain, "discover")
     if discover_action:
         validate_declared_action_args(discover_action, query_parts)
@@ -928,7 +914,7 @@ def plan_payload(args: list[str], store: dict[str, Any]) -> dict[str, Any]:
         "receipt_sha256": receipt,
         "receipt_sha5": receipt[:5],
         "receipt_note": "receipt_sha5 is accepted only when it resolves uniquely to a recorded plan in the local xctx plan ledger; receipt_sha256 is the canonical deterministic receipt.",
-        "planner_ledger": ".xctx_runtime/plans",
+        "planner_ledger": as_project_path(store["root"], plan_store_dir(store)),
         "accepted_execute_shape": f"./xctx execute {plan_id} --commit",
         "lawful_next_moves": [
             "./xctx discover",

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 import selectors
 import signal
 import subprocess
@@ -13,7 +14,7 @@ from types import MappingProxyType
 from typing import Any, Mapping
 
 
-CONNECTOR_VERSION = "legacy_connector.v1"
+CONNECTOR_VERSION = "xctx_connector.v1"
 DEFAULT_MAX_OUTPUT_BYTES = 65536
 MAX_CAPTURE_BYTES = 1048576
 MIN_TIMEOUT_SECONDS = 0.05
@@ -29,6 +30,10 @@ SAFE_ENV_KEYS = {
     "TMPDIR",
     "VIRTUAL_ENV",
 }
+SECRET_PATTERNS = (
+    re.compile(r"(?i)(api[_-]?key|secret|token|password|passwd|authorization)(\\s*[=:]\\s*)([^\\s;&]+)"),
+    re.compile(r"(?i)(bearer\\s+)[a-z0-9._~+/=-]+"),
+)
 
 
 @dataclass(frozen=True)
@@ -51,15 +56,15 @@ def readonly_mapping(value: Mapping[str, Any]) -> Mapping[str, Any]:
 def shape_guarantee(kind: str) -> dict[str, str]:
     base = {
         "xctx_receives": "single_json_object_for_live_data",
-        "raw_legacy_output": "never_returned_unparsed",
+        "raw_external_output": "never_returned_unparsed",
         "stdout_stderr": "summarized_in_command_status_when_useful",
     }
-    if kind == "legacy_command":
+    if kind == "external_command":
         return {
             **base,
             "contract": "always_json_object",
             "success_shape": "domain_object",
-            "failure_shape": "legacy_connector_error",
+            "failure_shape": "xctx_connector_error",
         }
     if kind == "xctx_native_passthrough":
         return {
@@ -72,7 +77,7 @@ def shape_guarantee(kind: str) -> dict[str, str]:
         **base,
         "contract": "always_json_object",
         "success_shape": "connector_object",
-        "failure_shape": "legacy_connector_error",
+        "failure_shape": "xctx_connector_error",
     }
 
 
@@ -119,10 +124,17 @@ def command_status(
     if error:
         payload["error"] = error
     if stdout is not None:
-        payload["stdout_preview"] = stdout[:500]
+        payload["stdout_preview"] = redact_preview(stdout)
     if stderr is not None:
-        payload["stderr_preview"] = stderr[:500]
+        payload["stderr_preview"] = redact_preview(stderr)
     return {key: value for key, value in payload.items() if value is not None}
+
+
+def redact_preview(value: str, limit: int = 500) -> str:
+    preview = value[:limit]
+    for pattern in SECRET_PATTERNS:
+        preview = pattern.sub(lambda match: f"{match.group(1)}{match.group(2) if len(match.groups()) > 1 else ''}<redacted>", preview)
+    return preview
 
 
 def validated_timeout(value: Any, *, label: str = "timeout_seconds") -> float:
@@ -153,14 +165,14 @@ def sanitized_env(extra: Mapping[str, str] | None = None) -> dict[str, str]:
     return env
 
 
-def command_status_from_legacy(legacy: Mapping[str, Any], *, include_argv: bool = True) -> dict[str, Any]:
+def command_status_from_external_result(result: Mapping[str, Any], *, include_argv: bool = True) -> dict[str, Any]:
     return command_status(
-        ok=bool(legacy["ok"]),
-        argv=list(legacy["argv"]) if include_argv else None,
-        exit_code=legacy["exit_code"],
-        timed_out=bool(legacy["timed_out"]),
-        error=legacy.get("error"),
-        stderr=legacy.get("stderr"),
+        ok=bool(result["ok"]),
+        argv=list(result["argv"]) if include_argv else None,
+        exit_code=result["exit_code"],
+        timed_out=bool(result["timed_out"]),
+        error=result.get("error"),
+        stderr=result.get("stderr"),
     )
 
 
@@ -186,7 +198,7 @@ def connector_error_payload(
     if context:
         next_moves.insert(0, f"./xctx audit {context.adapter_ref}")
     payload: dict[str, Any] = {
-        "object_type": "legacy_connector_error",
+        "object_type": "xctx_connector_error",
         "found": False,
         "connector": connector_meta(context, connector),
         "requested_command": command,
@@ -333,10 +345,10 @@ def run_external(
     }
 
 
-def run_legacy(argv: list[str], *, timeout: float, max_output_bytes: int) -> dict[str, Any]:
+def run_command(argv: list[str], *, timeout: float, max_output_bytes: int) -> dict[str, Any]:
     result = run_external(argv, timeout=timeout, max_output_bytes=max_output_bytes)
     if result["timed_out"]:
-        result["error"] = f"legacy command timed out after {timeout:g} seconds"
+        result["error"] = f"external command timed out after {timeout:g} seconds"
     elif not result["ok"] and result["error"] == "external command failed":
-        result["error"] = "legacy command failed"
+        result["error"] = "external command failed"
     return result

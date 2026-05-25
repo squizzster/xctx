@@ -4,11 +4,11 @@ The active protocol proof-of-concept is configured under `yaml_dynamic_config/`.
 
 Important files:
 
-- `universe.yaml`: root universe, active agent domain, generic identity fields,
-  domain routing, and compatibility system list. It must not contain
-  domain-action shortcuts or domain option names.
-- `protocols/xctx_v4_2.yaml`: envelope keys, command groups, aliases, record
-  types, and output policy.
+- `universe.yaml`: root universe and domain routing. It must not contain
+  domain-action shortcuts, active/default domain selectors, removed system
+  registries, universe identity fields, or domain option names.
+- `protocols/xctx_v4_2.yaml`: envelope keys, exact command groups, record types,
+  and output policy. Root command aliases are intentionally not supported.
 - `shared/command_sets/core_commands.yaml`: the core xctx command surface.
 - `agent_domains/*/domain.yaml`: agent-domain status and descriptions.
 - `agent_domains/*/subdomains/*/subdomain.yaml`: subdomain actions,
@@ -106,7 +106,7 @@ resolve bare subdomain/action/object tokens such as `market_data_gateway`,
 
 Root audit is generic too. `./xctx audit root` must not call subdomain adapters
 or bubble application-specific health probes. Adapter checks such as fixture
-tickers, database counts, filing tables, scoped connector adapters, or legacy
+tickers, database counts, filing tables, scoped connector adapters, or external
 command availability belong behind explicit scoped audits such as
 `./xctx audit <domain_id>::<subdomain_id>`.
 
@@ -114,11 +114,11 @@ command availability belong behind explicit scoped audits such as
 
 Subdomains declare the connector supervisor entrypoint that xctx calls. Online
 live execution routes through this middleware first, then passes through to an
-xctx-native application adapter or legacy adapter:
+xctx-native application adapter or external command adapter:
 
 ```yaml
 entrypoint:
-  file: legacy_connector.py
+  file: connector_supervisor.py
   protocol: json_stdout
 connector:
   kind: xctx_native_passthrough
@@ -129,7 +129,7 @@ and:
 
 ```yaml
 entrypoint:
-  file: legacy_connector.py
+  file: connector_supervisor.py
   protocol: json_stdout
 connector:
   kind: xctx_native_passthrough
@@ -144,7 +144,7 @@ know what a ticker, CIK, latest price, filing form, bar, or calendar day means.
 Pass-through `target_entrypoint` values are workspace-relative executable files;
 absolute paths and paths that resolve outside the workspace are rejected.
 
-Legacy integrations use the same xctx surface. The subdomain still declares a
+External-command integrations use the same xctx surface. The subdomain still declares a
 single JSON entrypoint, but the generic connector middleware derives a
 deterministic adapter from the resolved scope and normalizes success and failure
 into one object for xctx to envelope. The default adapter scope is the concrete
@@ -153,10 +153,10 @@ domain-owned adapter without declaring an arbitrary Python import path:
 
 ```yaml
 entrypoint:
-  file: legacy_connector.py
+  file: connector_supervisor.py
   protocol: json_stdout
 connector:
-  kind: legacy_command
+  kind: external_command
   adapter_scope: domain
   safe_root: data/file_manager_home
 ```
@@ -164,9 +164,9 @@ connector:
 The file-manager demo proves this with ordinary filesystem commands. Discovery
 returns `file:<relative_path>` and `directory:<relative_path>` identities;
 observation inspects the selected object. The generic `libs/xctx` runtime still
-contains no file-manager, stock, or filing semantics. The file-manager legacy
+contains no file-manager, stock, or filing semantics. The file-manager external-command
 behavior lives under
-`libs/xctx_connectors/domains/file_manager/legacy_adapter.py`; the
+`libs/xctx_connectors/domains/file_manager/external_command_adapter.py`; the
 `home_directory` subdomain only configures one bounded safe-root scope.
 
 Middleware payloads that return connector metadata also declare a
@@ -176,22 +176,22 @@ contract made visible in the live data object:
 ```json
 {
   "connector": {
-    "version": "legacy_connector.v1",
-    "kind": "legacy_command",
+    "version": "xctx_connector.v1",
+    "kind": "external_command",
     "adapter_ref": "file_manager::home_directory",
     "shape_guarantee": {
       "contract": "always_json_object",
       "xctx_receives": "single_json_object_for_live_data",
       "success_shape": "domain_object",
-      "failure_shape": "legacy_connector_error",
-      "raw_legacy_output": "never_returned_unparsed",
+      "failure_shape": "xctx_connector_error",
+      "raw_external_output": "never_returned_unparsed",
       "stdout_stderr": "summarized_in_command_status_when_useful"
     }
   }
 }
 ```
 
-The guarantee means the legacy command may fail, time out, or emit terminal
+The guarantee means the external command may fail, time out, or emit terminal
 text, but xctx still receives one JSON object to envelope. Successful
 xctx-native pass-through calls can preserve the target adapter payload
 unchanged; normalized pass-through failures use
@@ -245,15 +245,9 @@ They are not visible at:
 Unsupported target/option combinations, such as `form:10-K --bars 5`, are
 refused after target resolution and before the filing adapter is called.
 
-## Generic universe identity fields
+## Identity Semantics
 
-Universe-level identity search stays generic:
-
-```yaml
-identity_resolution:
-  query_fields: [name, id, aliases]
-```
-
-Ticker, symbol, issuer CIK, punctuation-normalized company names, aliases, and
-former-symbol handling are stock-domain behavior implemented in
-`market_data_gateway.py` and `libs/xctx_live/instruments.py`.
+Universe-level identity search has been removed. Ticker, symbol, issuer CIK,
+punctuation-normalized company names, aliases, and former-symbol handling are
+stock-domain behavior implemented in `market_data_gateway.py` and
+`libs/xctx_live/instruments.py`.

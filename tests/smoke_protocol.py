@@ -127,15 +127,14 @@ def assert_modular_layout() -> None:
         "libs/xctx_live/filings.py",
         "libs/xctx_live/instruments.py",
         "equity_filings.py",
-        "equity_instruments.py",
         "market_data_gateway.py",
-        "legacy_connector.py",
+        "connector_supervisor.py",
         "libs/xctx_connectors/__init__.py",
         "libs/xctx_connectors/middleware.py",
         "libs/xctx_connectors/runtime.py",
         "libs/xctx_connectors/domains/__init__.py",
         "libs/xctx_connectors/domains/file_manager/__init__.py",
-        "libs/xctx_connectors/domains/file_manager/legacy_adapter.py",
+        "libs/xctx_connectors/domains/file_manager/external_command_adapter.py",
         "libs/xctx_connectors/domains/file_manager/subdomains/__init__.py",
         "libs/xctx_connectors/domains/file_manager/subdomains/home_directory/__init__.py",
         "yaml_dynamic_config/protocols/xctx_v4_2.yaml",
@@ -161,17 +160,18 @@ def assert_protocol_is_config_driven() -> None:
     protocol = yaml.safe_load((ROOT / "yaml_dynamic_config" / "protocols" / "xctx_v4_2.yaml").read_text())
     assert protocol["command_groups"]["main"] == ["discover", "observe", "plan", "execute", "audit", "repair"]
     assert protocol["command_groups"]["other"] == ["other"]
-    assert protocol["command_aliases"]["discover"] == ["discovery"]
+    assert "command_aliases" not in protocol
     universe = yaml.safe_load((ROOT / "yaml_dynamic_config" / "universe.yaml").read_text())
     assert "command_shortcuts" not in universe
     assert "root_affordances" not in universe
-    assert universe["identity_resolution"]["query_fields"] == ["name", "id", "aliases"]
+    assert "identity_resolution" not in universe
+    assert "active_agent_domain" not in universe
     assert any(item["id"] == "file_manager" for item in universe["agent_domains"])
     file_routes = [route for route in universe["agent_routing"]["observe_routes"] if route["id"] == "file_manager_objects"]
     assert file_routes[0]["agent_domain"] == "file_manager"
     assert file_routes[0]["prefixes"] == ["file:", "directory:"]
     market_subdomain = yaml.safe_load((ROOT / "yaml_dynamic_config" / "agent_domains" / "stock_intelligence_hub" / "subdomains" / "market_data_gateway" / "subdomain.yaml").read_text())
-    assert market_subdomain["entrypoint"]["file"] == "legacy_connector.py"
+    assert market_subdomain["entrypoint"]["file"] == "connector_supervisor.py"
     assert market_subdomain["connector"]["kind"] == "xctx_native_passthrough"
     assert market_subdomain["connector"]["target_entrypoint"] == "market_data_gateway.py"
     assert market_subdomain["actions"]["search_entity_instrument"]["domain_affordance"] is True
@@ -181,7 +181,7 @@ def assert_protocol_is_config_driven() -> None:
     observe_flags = [option["flags"][0] for option in market_subdomain["actions"]["observe"]["cli_options"]]
     assert observe_flags == ["--bars", "--calendar-days", "--export"]
     filing_subdomain = yaml.safe_load((ROOT / "yaml_dynamic_config" / "agent_domains" / "stock_intelligence_hub" / "subdomains" / "equity_filing" / "subdomain.yaml").read_text())
-    assert filing_subdomain["entrypoint"]["file"] == "legacy_connector.py"
+    assert filing_subdomain["entrypoint"]["file"] == "connector_supervisor.py"
     assert filing_subdomain["connector"]["kind"] == "xctx_native_passthrough"
     assert filing_subdomain["connector"]["target_entrypoint"] == "equity_filings.py"
     assert filing_subdomain["actions"]["search_forms"]["domain_affordance"] is True
@@ -201,7 +201,6 @@ def assert_protocol_is_config_driven() -> None:
         "libs/xctx/commands/observe.py",
         "libs/xctx/domain/agent_domains.py",
         "libs/xctx/commands/discover.py",
-        "libs/xctx/domain/identity.py",
         "libs/xctx/protocol/command_policy.py",
     ):
         text = (ROOT / core_rel).read_text(encoding="utf-8")
@@ -233,7 +232,7 @@ def assert_root_domain_subdomain_discovery() -> None:
     assert "extension_lane" not in universe["results"]["command_surface"]
     assert "xctx_other" not in universe["results"]["command_surface"]
     assert "identify" not in universe["results"]["command_surface"]["xctx"]
-    assert universe["results"]["command_surface"]["aliases"]["discover"] == ["discovery"]
+    assert "aliases" not in universe["results"]["command_surface"]
     assert_no_description_variants(universe)
     assert_root_surface_clean(universe)
 
@@ -269,10 +268,15 @@ def assert_root_domain_subdomain_discovery() -> None:
     assert domains["macro_intelligence_hub"]["status"] == "offline"
     assert domains["crypto_intelligence_hub"]["status"] == "down_for_maintenance"
     assert domains["options_intelligence_hub"]["repair_cmd"] == "./xctx repair offline:options_intelligence_hub"
-    assert root_results["next_moves"] == ["./xctx discover stock_intelligence_hub::", "./xctx audit root"]
+    assert root_results["next_moves"] == [
+        "./xctx discover file_manager::",
+        "./xctx discover stock_intelligence_hub::",
+        "./xctx audit root",
+    ]
 
-    alias_root = one(["discovery"])
-    assert alias_root["domain_level"] == "root"
+    rejected_alias = one(["discovery"], expected_code=1)
+    assert rejected_alias["ok"] is False
+    assert "known xctx command" in rejected_alias["error"]
 
     for domain_id in domains:
         bare_domain = one(["discover", domain_id])
@@ -374,8 +378,8 @@ def assert_root_domain_subdomain_discovery() -> None:
     file_subdomain = one(["discover", "file_manager::home_directory"])
     assert file_subdomain["domain_level"] == "agent_subdomain"
     file_live = file_subdomain["results"]["live_data"]
-    assert file_live["object_type"] == "legacy_connector_filesystem_discovery"
-    assert file_live["connector"]["kind"] == "legacy_command"
+    assert file_live["object_type"] == "external_command_filesystem_discovery"
+    assert file_live["connector"]["kind"] == "external_command"
     assert file_live["observable_objects"]["file"]["id_shape"] == "file:<relative_path>"
     assert {item["id"] for item in file_live["discoverable_modes"]} == {"list_files", "list_directories"}
 
@@ -590,7 +594,7 @@ def assert_observe_audit_repair() -> None:
         "csv",
     ])
     exported_live = exported["results"]["live_data"]
-    assert re.fullmatch(r"\.xctx_runtime/exports/instrument_aapl_5_bars_[0-9a-f]{8}\.csv", exported_live["csv"]["path"])
+    assert re.fullmatch(r"instrument_aapl_5_bars_[0-9a-f]{8}\.csv", Path(exported_live["csv"]["path"]).name)
     assert (ROOT / exported_live["csv"]["path"]).exists()
 
     ranged_large = one(["observe", "stock_intelligence_hub::market_data_gateway", "instrument:aapl", "--bars", "31"])
@@ -654,7 +658,7 @@ def assert_observe_audit_repair() -> None:
         "market_data_gateway:",
         "equity_filing:",
         "file_manager:home_directory",
-        "legacy_command",
+        "external_command",
         "mini_stocks_sqlite",
         "edgar_form_reference",
     ):
@@ -671,7 +675,7 @@ def assert_observe_audit_repair() -> None:
 
     file_audit = one(["audit", "file_manager::home_directory"])
     file_check_ids = {item["id"] for item in file_audit["results"]["checks"]}
-    assert "audit:file_manager:home_directory:legacy_command:ls" in file_check_ids
+    assert "audit:file_manager:home_directory:external_command:ls" in file_check_ids
 
     repairable = one(["repair", "offline:macro_intelligence_hub"])
     assert repairable["record_type"] == "repair_result"
@@ -685,19 +689,19 @@ def assert_observe_audit_repair() -> None:
     assert "down for maintenance" in maintenance["results"]["message"]
 
 
-def assert_legacy_connector_middleware() -> None:
+def assert_connector_supervisor_middleware() -> None:
     def guarantee(connector: dict) -> dict:
         value = connector["shape_guarantee"]
         assert value["xctx_receives"] == "single_json_object_for_live_data"
-        assert value["raw_legacy_output"] == "never_returned_unparsed"
+        assert value["raw_external_output"] == "never_returned_unparsed"
         return value
 
     files = one(["discover", "file_manager::home_directory", "list_files", "--limit", "2"])
     live_files = files["results"]["live_data"]
-    assert live_files["object_type"] == "legacy_connector_filesystem_file_list"
+    assert live_files["object_type"] == "external_command_filesystem_file_list"
     assert live_files["connector"]["adapter_ref"] == "file_manager::home_directory"
     assert guarantee(live_files["connector"])["contract"] == "always_json_object"
-    assert "legacy_command" not in live_files
+    assert "external_command" not in live_files
     assert "command_status" not in live_files
     assert "pagination" not in live_files
     assert live_files["files"][0]["id"] == "file:README.txt"
@@ -705,20 +709,20 @@ def assert_legacy_connector_middleware() -> None:
 
     full_files = one(["discover", "file_manager::home_directory", "list_files", "--limit", "1", "--shape", "full"])
     full_files_live = full_files["results"]["live_data"]
-    assert guarantee(full_files_live["connector"])["failure_shape"] == "legacy_connector_error"
+    assert guarantee(full_files_live["connector"])["failure_shape"] == "xctx_connector_error"
     assert full_files_live["pagination"]["returned_count"] == 1
     assert full_files_live["command_status"]["argv"][0] == "ls"
 
     discovered_file = one(["discover", "file_manager::home_directory", "file:README.txt"])
     discovered_file_live = discovered_file["results"]["live_data"]
-    assert discovered_file_live["object_type"] == "legacy_connector_filesystem_file_discovery"
+    assert discovered_file_live["object_type"] == "external_command_filesystem_file_discovery"
     assert guarantee(discovered_file_live["connector"])["success_shape"] == "domain_object"
     assert discovered_file_live["id"] == "file:README.txt"
     assert discovered_file_live["type"] == "ASCII text"
     assert discovered_file_live["size_bytes"] == 237
     assert "file_id" not in discovered_file_live
     assert "file_type" not in discovered_file_live
-    assert "legacy_commands" not in discovered_file_live
+    assert "external_commands" not in discovered_file_live
     assert "command_status" not in discovered_file_live
     assert "content" not in discovered_file_live
     assert "This is a bundled file-manager demo fixture" not in json.dumps(discovered_file_live)
@@ -731,7 +735,7 @@ def assert_legacy_connector_middleware() -> None:
 
     observed_file = one(["observe", "file_manager::home_directory", "file:README.txt"])
     file_live = observed_file["results"]["live_data"]
-    assert file_live["object_type"] == "legacy_connector_filesystem_file_observation"
+    assert file_live["object_type"] == "external_command_filesystem_file_observation"
     assert guarantee(file_live["connector"])["stdout_stderr"] == "summarized_in_command_status_when_useful"
     assert file_live["file_id"] == "file:README.txt"
     assert file_live["command_status"]["ok"] is True
@@ -750,9 +754,9 @@ def assert_legacy_connector_middleware() -> None:
     assert escaped["ok"] is False
     assert escaped["error"] == "path escapes configured safe root"
     escaped_live = escaped["results"]["live_data"]
-    assert escaped_live["object_type"] == "legacy_connector_error"
+    assert escaped_live["object_type"] == "xctx_connector_error"
     assert escaped_live["found"] is False
-    assert guarantee(escaped_live["connector"])["failure_shape"] == "legacy_connector_error"
+    assert guarantee(escaped_live["connector"])["failure_shape"] == "xctx_connector_error"
     assert escaped_live["command_status"]["ok"] is False
     assert "safe root" in escaped_live["command_status"]["error"]
 
@@ -825,7 +829,7 @@ def main() -> int:
     assert_protocol_is_config_driven()
     assert_root_domain_subdomain_discovery()
     assert_scoped_affordance_routing()
-    assert_legacy_connector_middleware()
+    assert_connector_supervisor_middleware()
     assert_observe_audit_repair()
     assert_plan_execute_other_and_output()
     print("hardened xctx protocol smoke checks passed")

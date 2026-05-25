@@ -6,8 +6,8 @@ Validated on the packaged workspace with:
 python3 .agents/skills/xctx-yaml-config/scripts/check_xctx_yaml_surface.py
 python3 tests/smoke_protocol.py
 python3 tests/protocol_pressure_pro.py
-python3 tests/protocol_legacy_connector.py
-python3 -m compileall -q libs market_data_gateway.py equity_filings.py equity_instruments.py tests
+python3 tests/protocol_connector_supervisor.py
+python3 -m compileall -q libs market_data_gateway.py equity_filings.py tests
 ```
 
 Result:
@@ -16,7 +16,7 @@ Result:
 check_xctx_yaml_surface.py: ok=true, error_count=0, warning_count=0
 smoke_protocol.py: hardened xctx protocol smoke checks passed
 protocol_pressure_pro.py: PRO xctx protocol pressure checks passed
-protocol_legacy_connector.py: legacy connector middleware checks passed
+protocol_connector_supervisor.py: connector supervisor middleware checks passed
 compileall: ok
 ```
 

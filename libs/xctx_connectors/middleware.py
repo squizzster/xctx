@@ -1,4 +1,4 @@
-"""Generic middleware for xctx-native pass-through and legacy adapters."""
+"""Generic middleware for xctx-native pass-through and external command adapters."""
 
 from __future__ import annotations
 
@@ -184,26 +184,26 @@ def _adapter_module_name(context: runtime.ConnectorContext) -> str:
             raise ValueError(f"{label} id is not import-safe for connector adapter dispatch: {value}")
     adapter_scope = str(context.connector_config.get("adapter_scope", "subdomain"))
     if adapter_scope == "domain":
-        return f"xctx_connectors.domains.{context.domain_id}.legacy_adapter"
+        return f"xctx_connectors.domains.{context.domain_id}.external_command_adapter"
     if adapter_scope != "subdomain":
-        raise ValueError(f"unsupported legacy adapter_scope: {adapter_scope}")
+        raise ValueError(f"unsupported external command adapter_scope: {adapter_scope}")
     return (
         "xctx_connectors.domains."
-        f"{context.domain_id}.subdomains.{context.subdomain_id}.legacy_adapter"
+        f"{context.domain_id}.subdomains.{context.subdomain_id}.external_command_adapter"
     )
 
 
-def _legacy_adapter(context: runtime.ConnectorContext, command: str, rest: list[str]) -> dict[str, Any]:
+def _external_command_adapter(context: runtime.ConnectorContext, command: str, rest: list[str]) -> dict[str, Any]:
     module_name = _adapter_module_name(context)
     module = importlib.import_module(module_name)
     adapter_run = getattr(module, "run", None)
     if not callable(adapter_run):
-        raise ValueError(f"legacy adapter has no callable run(context, command, rest, runtime): {module_name}")
+        raise ValueError(f"external command adapter has no callable run(context, command, rest, runtime): {module_name}")
     payload = adapter_run(context, command, rest, runtime)
     if not isinstance(payload, dict):
-        raise ValueError(f"legacy adapter returned non-object payload: {module_name}")
+        raise ValueError(f"external command adapter returned non-object payload: {module_name}")
     if "connector" in payload:
-        raise ValueError(f"legacy adapter must not construct connector metadata: {module_name}")
+        raise ValueError(f"external command adapter must not construct connector metadata: {module_name}")
     shaped = dict(payload)
     shaped["connector"] = runtime.connector_meta(context)
     return shaped
@@ -220,8 +220,8 @@ def _run_with_context(
         return _passthrough(context, argv, compact=compact)
     command = argv[0] if argv else "discover"
     rest = argv[1:]
-    if kind == "legacy_command":
-        return _legacy_adapter(context, command, rest)
+    if kind == "external_command":
+        return _external_command_adapter(context, command, rest)
     raise ValueError(f"unsupported connector kind: {kind}")
 
 

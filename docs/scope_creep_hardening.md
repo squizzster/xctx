@@ -56,7 +56,7 @@ Those examples must fail rather than route through a configured fallback.
 Root audit follows the same no-bubbling rule. `./xctx audit root` may summarize
 configuration health and availability findings, but it must not inline scoped
 adapter checks such as ticker sentinels, filing-table counts, filesystem
-legacy-command probes, or scoped connector diagnostics. Use scoped audit for
+external-command probes, or scoped connector diagnostics. Use scoped audit for
 those:
 
 ```bash
@@ -137,17 +137,10 @@ name. Agents should enter a scoped domain/action explicitly:
 ./xctx discover stock_intelligence_hub::search_entity_instrument Apple
 ```
 
-### 4. Universe identity fields
+### 4. Universe Identity Fields
 
-Universe-level identity fields are generic again:
-
-```yaml
-identity_resolution:
-  query_fields:
-    - name
-    - id
-    - aliases
-```
+Universe-level identity fields have been removed. Identity semantics now belong
+inside scoped domain adapters.
 
 Ticker, symbol, issuer CIK, former-symbol aliases, and punctuation-normalized
 company matching remain in the stock adapter layer.
@@ -215,7 +208,7 @@ must not advertise it as an available root move.
 
 Enterprise middleware belongs outside `libs/xctx`. The generic runtime may route
 to a configured entrypoint and envelope one returned JSON object, but scoped
-connector adapters, legacy command names, path policies, and transform rules
+connector adapters, external command names, path policies, and transform rules
 remain in domain/subdomain packages under `libs/xctx_connectors`.
 
 The file-manager demo is therefore configured through scoped YAML and an
@@ -224,7 +217,7 @@ so agents can see that the middleware promises:
 
 ```text
 xctx_receives = single_json_object_for_live_data
-raw_legacy_output = never_returned_unparsed
+raw_external_output = never_returned_unparsed
 ```
 
 These guarantee names must not become generic runtime semantics. They are

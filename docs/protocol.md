@@ -11,12 +11,28 @@ universe discoverable without assuming the agent already knows the domain.
 4. `xctx execute <plan> --commit`
 5. `xctx audit <scope>`
 6. `xctx repair <finding>`
-7. `xctx other` as an extension lane
 
-The protocol file accepts `discovery` as a compatibility alias for `discover`.
-The single-letter `d` alias is intentionally refused. No `identify`, `write`,
-`doctor`, or `status` command is advertised or accepted in the core surface; use
-the explicit `other` lane for extension topics.
+`xctx other` is a hidden accepted extension lane, not a visible core command.
+No `discovery`, `d`, `identify`, `write`, `doctor`, or `status` command is
+advertised or accepted in the core surface.
+
+## Backward-Compatibility Posture
+
+This project does not carry a backward-compatibility burden unless a specific
+release or migration requirement says otherwise. It is better to remove relic
+surfaces than to preserve them behind aliases, shims, wrappers, or undocumented
+fallbacks.
+
+Protocol changes should optimize for the clean current contract:
+
+- remove stale commands rather than deprecating them indefinitely;
+- rename obsolete concepts when they obscure the current model;
+- make tests assert the intended protocol, not old behavior;
+- reject aliases/shims unless an explicit release or migration requirement says
+  otherwise.
+
+There is no active/default domain selector. Commands use explicit scoped domain
+references when a domain matters.
 
 ## Protocol path
 
@@ -102,7 +118,7 @@ specific agent domain or subdomain is selected.
 `audit root` is also generic. It reports xctx/config checks, configured option
 shape, and availability findings for domains/subdomains. It does not call scoped
 adapters or inline application checks such as fixture tickers, database row
-counts, filing tables, or legacy command probes. Use a scoped audit for those:
+counts, filing tables, or external command probes. Use a scoped audit for those:
 
 ```bash
 ./xctx audit stock_intelligence_hub::market_data_gateway
@@ -168,8 +184,8 @@ logic into the protocol runtime.
 
 ## Middleware Shape Guarantee
 
-Legacy connector middleware sits behind scoped YAML entrypoints. Its job is to
-call an application adapter or legacy command behind the supervisor boundary and
+Connector supervisor middleware sits behind scoped YAML entrypoints. Its job is to
+call an application adapter or external command behind the supervisor boundary and
 return one JSON-compatible object for xctx to envelope. When a connector returns
 connector metadata, it declares a `shape_guarantee` such as:
 
@@ -178,15 +194,15 @@ connector metadata, it declares a `shape_guarantee` such as:
   "contract": "always_json_object",
   "xctx_receives": "single_json_object_for_live_data",
   "success_shape": "domain_object",
-  "failure_shape": "legacy_connector_error",
-  "raw_legacy_output": "never_returned_unparsed"
+  "failure_shape": "xctx_connector_error",
+  "raw_external_output": "never_returned_unparsed"
 }
 ```
 
 This is visible protocol evidence, not extra domain logic in `libs/xctx`. The
 generic runtime still only routes to the configured entrypoint and envelopes the
 returned object. The connector owns the guarantee that raw stdout/stderr and
-legacy failures are transformed or summarized before xctx sees them.
+connector failures are transformed or summarized before xctx sees them.
 
 ## Action Discovery
 

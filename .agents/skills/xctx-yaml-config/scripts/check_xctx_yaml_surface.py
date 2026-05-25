@@ -24,8 +24,10 @@ if str(LIBS) not in sys.path:
     sys.path.insert(0, str(LIBS))
 
 ALLOWED_STATUSES = {"online", "offline", "down_for_maintenance"}
-ALLOWED_CONNECTOR_KINDS = {"legacy_command", "xctx_native_passthrough"}
+ALLOWED_CONNECTOR_KINDS = {"external_command", "xctx_native_passthrough"}
 ALLOWED_RUN_CMD_ROOTS = {"discover", "observe", "plan", "execute", "audit", "repair"}
+VISIBLE_CORE_COMMANDS = {"discover", "observe", "plan", "execute", "audit", "repair"}
+HIDDEN_EXTENSION_COMMANDS = {"other"}
 MIN_TIMEOUT_SECONDS = 0.05
 MAX_TIMEOUT_SECONDS = 300.0
 MIN_OUTPUT_BYTES = 1024
@@ -193,18 +195,40 @@ def main() -> int:
         return 1
 
     domains = store.get("agent_domains") or {}
-    active_domain = store.get("active_agent_domain")
-    if active_domain not in domains:
+
+    universe = store.get("universe") or {}
+    if "active_agent_domain" in universe:
         findings.append(
             finding(
                 "error",
-                "active_domain_known",
-                "active_agent_domain must reference a known domain",
-                active_agent_domain=active_domain,
+                "universe:active_agent_domain_removed",
+                "active_agent_domain has been removed; use explicit scoped domain references",
             )
         )
-
-    universe = store.get("universe") or {}
+    if "active_system" in universe:
+        findings.append(
+            finding(
+                "error",
+                "universe:active_system_removed",
+                "active_system has been removed; use explicit scoped domain references",
+            )
+        )
+    if "identity_resolution" in universe:
+        findings.append(
+            finding(
+                "error",
+                "universe:identity_resolution_removed",
+                "identity_resolution has been removed; identity semantics belong in scoped domain adapters",
+            )
+        )
+    if universe.get("systems"):
+        findings.append(
+            finding(
+                "error",
+                "universe:systems_removed",
+                "systems compatibility registries have been removed; configure agent_domains directly",
+            )
+        )
     if universe.get("root_affordances"):
         findings.append(
             finding(
@@ -239,6 +263,40 @@ def main() -> int:
             )
         )
 
+    protocol = store.get("protocol") or {}
+    command_groups = protocol.get("command_groups") or {}
+    configured_main = set(command_groups.get("main") or [])
+    configured_other = set(command_groups.get("other") or [])
+    if configured_main != VISIBLE_CORE_COMMANDS:
+        findings.append(
+            finding(
+                "error",
+                "protocol:command_groups:main_exact",
+                "main command group must be exactly the six visible core commands",
+                expected=sorted(VISIBLE_CORE_COMMANDS),
+                actual=sorted(configured_main),
+            )
+        )
+    if configured_other != HIDDEN_EXTENSION_COMMANDS:
+        findings.append(
+            finding(
+                "error",
+                "protocol:command_groups:other_exact",
+                "other command group must contain only the hidden extension lane",
+                expected=sorted(HIDDEN_EXTENSION_COMMANDS),
+                actual=sorted(configured_other),
+            )
+        )
+    if protocol.get("command_aliases"):
+        findings.append(
+            finding(
+                "error",
+                "protocol:command_aliases_removed",
+                "root command aliases have been removed; keep command identity exact",
+                command_aliases=protocol.get("command_aliases"),
+            )
+        )
+
     for payload_name, args in {
         "universe_default": [],
         "help": ["help"],
@@ -264,7 +322,7 @@ def main() -> int:
     try:
         root_audit = _json_payload_for_xctx(["audit", "root"])
         for token in (
-            "legacy_command:",
+            "external_command:",
             "safe_root_exists",
             "aapl_latest_price_resolves",
             "mini_stocks_sqlite",
@@ -290,7 +348,6 @@ def main() -> int:
         "libs/xctx/commands/discover.py",
         "libs/xctx/commands/observe.py",
         "libs/xctx/domain/agent_domains.py",
-        "libs/xctx/domain/identity.py",
         "libs/xctx/protocol/command_policy.py",
     ):
         text = (ROOT / rel).read_text(encoding="utf-8")
@@ -343,9 +400,9 @@ def main() -> int:
         domain_affordance_names: dict[str, str] = {}
         for subdomain_id, subdomain in sorted((domain.get("_subdomains") or {}).items()):
             bare_root_targets_that_must_fail.add(str(subdomain_id))
-            for alias in subdomain.get("aliases") or []:
-                bare_root_targets_that_must_fail.add(str(alias))
             sub_prefix = f"subdomain:{domain_id}::{subdomain_id}"
+            if subdomain.get("aliases"):
+                findings.append(finding("error", f"{sub_prefix}:aliases_removed", "subdomain aliases have been removed; use the canonical subdomain id"))
             sub_status = str(subdomain.get("status") or "unknown")
             if sub_status not in ALLOWED_STATUSES:
                 findings.append(finding("error", f"{sub_prefix}:status", "subdomain status must be online, offline, or down_for_maintenance", status=sub_status))
@@ -419,14 +476,14 @@ def main() -> int:
                                         target_entrypoint=str(target),
                                     )
                                 )
-                if kind == "legacy_command":
+                if kind == "external_command":
                     adapter_scope = str(connector.get("adapter_scope", "subdomain"))
                     if adapter_scope not in {"domain", "subdomain"}:
                         findings.append(
                             finding(
                                 "error",
                                 f"{connector_prefix}:adapter_scope",
-                                "legacy connector adapter_scope must be domain or subdomain",
+                                "external command adapter_scope must be domain or subdomain",
                                 adapter_scope=adapter_scope,
                             )
                         )
@@ -435,21 +492,21 @@ def main() -> int:
                             finding(
                                 "error",
                                 f"{connector_prefix}:import_safe_ids",
-                                "legacy connector domain and subdomain ids must be import-safe",
+                                "external command connector domain and subdomain ids must be import-safe",
                                 agent_domain=domain_id,
                                 agent_subdomain=subdomain_id,
                             )
                         )
                     if adapter_scope == "domain":
-                        adapter_path = ROOT / "libs" / "xctx_connectors" / "domains" / str(domain_id) / "legacy_adapter.py"
+                        adapter_path = ROOT / "libs" / "xctx_connectors" / "domains" / str(domain_id) / "external_command_adapter.py"
                     else:
-                        adapter_path = ROOT / "libs" / "xctx_connectors" / "domains" / str(domain_id) / "subdomains" / str(subdomain_id) / "legacy_adapter.py"
+                        adapter_path = ROOT / "libs" / "xctx_connectors" / "domains" / str(domain_id) / "subdomains" / str(subdomain_id) / "external_command_adapter.py"
                     if sub_status == "online" and not adapter_path.exists():
                         findings.append(
                             finding(
                                 "error",
                                 f"{connector_prefix}:adapter_exists",
-                                "legacy connector adapter must live under the declared adapter scope package",
+                                "external command adapter must live under the declared adapter scope package",
                                 adapter_path=str(adapter_path.relative_to(ROOT)),
                             )
                         )
@@ -475,16 +532,13 @@ def main() -> int:
                 bare_root_targets_that_must_fail.add(str(action_name))
                 if action.get("domain_action_name"):
                     bare_root_targets_that_must_fail.add(str(action["domain_action_name"]))
-                for alias in action.get("aliases") or []:
-                    bare_root_targets_that_must_fail.add(str(alias))
                 action_prefix = f"action:{domain_id}::{subdomain_id}:{action_name}"
+                if action.get("aliases"):
+                    findings.append(finding("error", f"{action_prefix}:aliases_removed", "action aliases have been removed; use the canonical action name"))
                 run_cmd = str(action.get("run_cmd") or "")
                 _validate_run_cmd(findings, f"{action_prefix}:run_cmd", run_cmd)
                 if not (action.get("desc") or action.get("description")):
                     findings.append(finding("warning", f"{action_prefix}:description", "action should describe its operational meaning"))
-                aliases = [str(alias) for alias in (action.get("aliases") or [])]
-                if len(aliases) != len(set(aliases)):
-                    findings.append(finding("error", f"{action_prefix}:aliases", "action aliases must be unique", aliases=aliases))
                 if action.get("domain_affordance"):
                     public_name = str(action.get("domain_action_name") or action_name)
                     existing = domain_affordance_names.get(public_name)
@@ -497,9 +551,9 @@ def main() -> int:
                                 first=existing,
                                 second=f"{subdomain_id}:{action_name}",
                             )
-                        )
+                    )
                     domain_affordance_names[public_name] = f"{subdomain_id}:{action_name}"
-                    if not action_matches(public_name, {**action, "aliases": aliases + [action_name]}, public_name):
+                    if not action_matches(public_name, {"entrypoint_command": public_name}, public_name):
                         findings.append(finding("error", f"{action_prefix}:domain_action_name", "domain affordance name must resolve through action matching"))
 
     for token in sorted(item for item in bare_root_targets_that_must_fail if item and item not in domains):
@@ -532,14 +586,6 @@ def main() -> int:
         if not (route.get("prefixes") or route.get("unprefixed_exact")):
             findings.append(finding("error", f"{route_prefix}:matchers", "observe route needs prefixes or unprefixed_exact tokens"))
 
-    identity_fields = universe.get("identity_resolution", {}).get("query_fields") or []
-    if not identity_fields or not all(isinstance(item, str) and item.strip() for item in identity_fields):
-        findings.append(finding("error", "identity_resolution:query_fields", "identity query_fields must be a non-empty list of strings"))
-    if len(identity_fields) != len(set(identity_fields)):
-        findings.append(finding("error", "identity_resolution:query_fields_unique", "identity query_fields must be unique", query_fields=identity_fields))
-    if any(field in {"ticker", "symbol"} for field in identity_fields):
-        findings.append(finding("error", "identity_resolution:generic_fields_only", "universe identity fields must stay generic; ticker/symbol belong in domain adapters"))
-
     for check in option_config_checks(store):
         if check.get("status") != "pass":
             findings.append(finding("error", check.get("id", "cli_options"), "configured CLI option surface failed audit", check=check))
@@ -557,7 +603,6 @@ def main() -> int:
     payload = {
         "ok": not errors,
         "repo_root": str(ROOT),
-        "active_agent_domain": active_domain,
         "domain_count": len(domains),
         "parser_option_counts": {command: len(entries) for command, entries in parser_surface.items()},
         "scoped_configured_options": scoped_option_surfaces,
