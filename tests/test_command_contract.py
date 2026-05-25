@@ -12,6 +12,22 @@ from framework_helpers import ROOT, ensure_libs_path, run_runtime_json
 pytestmark = [pytest.mark.unit, pytest.mark.release, pytest.mark.timeout(60)]
 
 
+ROOT_NEXT_MOVES = [
+    {
+        "desc": "Discover configured agent domains in this universe.",
+        "run_cmd": "./xctx discover",
+    },
+    {
+        "desc": "Inspect the machine command surface explicitly.",
+        "run_cmd": "./xctx help",
+    },
+    {
+        "desc": "Audit loaded configuration, live adapters, and offline/maintenance findings.",
+        "run_cmd": "./xctx audit root",
+    },
+]
+
+
 def test_no_stale_status_or_identify_guidance() -> None:
     scanned_paths = [
         ROOT / "bin",
@@ -91,7 +107,9 @@ def test_framework_cli_command_contract() -> None:
 
 
 def test_root_discovery_explains_scoped_next_moves() -> None:
+    universe_rc, universe_payload = run_runtime_json([])
     rc, payload = run_runtime_json(["discover"])
+    assert universe_rc == 0
     assert rc == 0
     results = payload["results"]
     assert results["next_move_context"] == {
@@ -102,11 +120,33 @@ def test_root_discovery_explains_scoped_next_moves() -> None:
             "./xctx discover file_manager::",
         ],
     }
-    assert results["next_moves"][:2] == [
-        "./xctx discover {{agent_domain_id}}::",
-        "./xctx audit root",
-    ]
+    assert universe_payload["results"]["next_moves"] == ROOT_NEXT_MOVES
+    assert results["next_moves"] == ROOT_NEXT_MOVES
     assert "xctx_other" not in json.dumps(results, sort_keys=True)
+
+
+def test_next_moves_are_command_hint_objects() -> None:
+    def assert_no_string_next_moves(value: object) -> None:
+        if isinstance(value, dict):
+            for key, item in value.items():
+                if key in {"next_moves", "lawful_next_moves"}:
+                    assert isinstance(item, list)
+                    assert all(isinstance(move, dict) and "run_cmd" in move for move in item)
+                assert_no_string_next_moves(item)
+        elif isinstance(value, list):
+            for item in value:
+                assert_no_string_next_moves(item)
+
+    for args in (
+        [],
+        ["discover"],
+        ["discover", "macro_intelligence_hub::"],
+        ["other", "--topic", "ping"],
+        ["plan", "inspect", "root"],
+    ):
+        rc, payload = run_runtime_json(list(args))
+        assert rc == 0
+        assert_no_string_next_moves(payload)
 
 
 def test_protocol_walker_uses_visible_command_surface_only() -> None:

@@ -20,6 +20,7 @@ from xctx.errors import XctxError
 from xctx.ports.external_command import call_external_command
 from xctx.protocol.accessors import command_map_for_group, protocol_version
 from xctx.protocol.descriptions import detail_enabled, selected_description, with_description
+from xctx.protocol.guidance import command_hint, command_hints, root_protocol_next_moves
 from xctx.protocol.option_surface import target_option_surface
 
 
@@ -28,11 +29,10 @@ from xctx.protocol.option_surface import target_option_surface
 def agent_domain_scope_guidance(
     store: dict[str, Any],
     domains: list[dict[str, Any]],
-) -> tuple[list[str], dict[str, Any]]:
+) -> dict[str, Any]:
     root = store.get("universe", {}).get("root", {})
     guidance = root.get("next_move_guidance") or {}
     template = str(guidance.get("agent_domain_scope_template") or "./xctx discover {{agent_domain_id}}::")
-    audit_cmd = str(guidance.get("audit_root_run_cmd") or "./xctx audit root")
     requested_example_ids = [str(item) for item in guidance.get("example_agent_domains") or []]
     domains_by_id = {str(domain.get("id")): domain for domain in domains if domain.get("id")}
 
@@ -48,7 +48,7 @@ def agent_domain_scope_guidance(
         if len(examples) >= 2:
             break
 
-    return [template, audit_cmd, *examples[:2]], {
+    return {
         "agent_domain_id": str(
             guidance.get("agent_domain_id_context")
             or "Replace {{agent_domain_id}} with an id from agent_domains."
@@ -62,9 +62,7 @@ def universe_discovery_payload(store: dict[str, Any]) -> dict[str, Any]:
     interface = universe.get("xctx_interface", {})
     domains = store.get("agent_domains", {})
     compact_domains = [compact_domain(store, domain) for domain in domains.values()]
-    _next_moves, next_move_context = agent_domain_scope_guidance(store, compact_domains)
-    discover_domains_cmd = interface.get("discover_domains_run_cmd", "./xctx discover")
-    help_cmd = interface.get("help_run_cmd", "./xctx help")
+    next_move_context = agent_domain_scope_guidance(store, compact_domains)
     return {
         "id": universe.get("name", "xctx_universe"),
         "kind": "xctx_universe",
@@ -88,31 +86,18 @@ def universe_discovery_payload(store: dict[str, Any]) -> dict[str, Any]:
             "xctx": command_map_for_group(store, "xctx", "main"),
         },
         "next_move_context": next_move_context,
-        "next_moves": [
-            {
-                "desc": "Discover configured agent domains in this universe.",
-                "run_cmd": discover_domains_cmd,
-            },
-            {
-                "desc": "Inspect the machine command surface explicitly.",
-                "run_cmd": help_cmd,
-            },
-            {
-                "desc": "Audit loaded configuration, live adapters, and offline/maintenance findings.",
-                "run_cmd": "./xctx audit root",
-            },
-        ],
+        "next_moves": root_protocol_next_moves(store),
     }
 
 def root_discovery_payload(store: dict[str, Any]) -> dict[str, Any]:
     root = store.get("universe", {}).get("root", {})
     domains = [compact_domain(store, domain) for domain in store.get("agent_domains", {}).values()]
-    next_moves, next_move_context = agent_domain_scope_guidance(store, domains)
+    next_move_context = agent_domain_scope_guidance(store, domains)
     return {
         "description": selected_description(store, root),
         "agent_domains": domains,
         "next_move_context": next_move_context,
-        "next_moves": next_moves,
+        "next_moves": root_protocol_next_moves(store),
     }
 
 def domain_discovery_payload(store: dict[str, Any], domain_id: str) -> dict[str, Any]:
@@ -126,12 +111,14 @@ def domain_discovery_payload(store: dict[str, Any], domain_id: str) -> dict[str,
         name: {key: value for key, value in config.items() if not key.startswith("_")}
         for name, config in iter_domain_action_configs(store, domain_id)
     }
-    payload["next_moves"] = [f"./xctx discover {domain_id}::{sub['id']}" for sub in domain.get("_subdomains", {}).values()]
+    payload["next_moves"] = command_hints(
+        [f"./xctx discover {domain_id}::{sub['id']}" for sub in domain.get("_subdomains", {}).values()]
+    )
     if domain.get("status") == "offline" and domain.get("repair_path"):
         repair_cmd = domain["repair_path"].get("run_cmd")
         payload["repair_cmd"] = repair_cmd
         if repair_cmd:
-            payload["next_moves"].append(repair_cmd)
+            payload["next_moves"].append(command_hint(str(repair_cmd)))
     if domain.get("status") == "down_for_maintenance":
         payload["repair_path"] = None
         payload["terminal_reason"] = "down_for_maintenance"

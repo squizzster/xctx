@@ -8,6 +8,7 @@ from typing import Any
 
 from xctx.config.paths import as_project_path
 from xctx.domain.execution_contract import parse_execute_request, parse_plan_request
+from xctx.protocol.guidance import command_hints
 from xctx.store.fingerprints import config_fingerprint_payload
 from xctx.store.plans import plan_store_dir, resolve_plan, write_plan
 
@@ -59,13 +60,15 @@ def plan_payload(args: list[str], store: dict[str, Any]) -> dict[str, Any]:
         "planner_context": context,
         "planner_ledger": as_project_path(store["root"], plan_store_dir(store)),
         "accepted_execute_shape": f"./xctx execute {plan_id} --commit",
-        "lawful_next_moves": [
-            "./xctx discover",
-            "./xctx audit root",
-            "./xctx repair <finding_id>",
-            f"./xctx execute {plan_id} --commit",
-            f"./xctx execute {receipt[:5]} --commit",
-        ],
+        "lawful_next_moves": command_hints(
+            [
+                "./xctx discover",
+                "./xctx audit root",
+                "./xctx repair <finding_id>",
+                f"./xctx execute {plan_id} --commit",
+                f"./xctx execute {receipt[:5]} --commit",
+            ]
+        ),
     }
     write_plan(store, payload)
     return payload

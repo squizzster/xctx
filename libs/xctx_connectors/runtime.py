@@ -18,6 +18,7 @@ from xctx.process.limits import (
     validated_max_output_bytes,
     validated_timeout,
 )
+from xctx.protocol.guidance import command_hints
 
 
 CONNECTOR_VERSION = "xctx_connector.v1"
@@ -172,7 +173,7 @@ def connector_error_payload(
         "requested_args": args or [],
         "command_status": command_status(ok=False, error=message),
         "data_boundary": "Middleware error payload. xctx received a structured object instead of raw connector failure output.",
-        "next_moves": next_moves,
+        "next_moves": command_hints(next_moves),
     }
     if command == "audit":
         payload["checks"] = [audit_failure_check(context, message)]

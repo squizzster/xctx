@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from xctx.errors import XctxError
+from xctx.protocol.guidance import command_hints
 
 REPAIR_STATUS_PREFIXES = {"offline", "down_for_maintenance"}
 
@@ -116,10 +117,12 @@ def repair_payload(store: dict[str, Any], target: str) -> tuple[bool, dict[str, 
                 "repair_path": repair_path,
                 "execution_state": "not_applied_read_only_external_adapter_surface",
                 "message": "Repair path exposed. xctx describes the repair; domain tools or operators perform real state changes.",
-                "next_moves": [
-                    f"./xctx plan bring_online {resolved.resolved_target}",
-                    f"./xctx audit {resolved.resolved_target}",
-                ],
+                "next_moves": command_hints(
+                    [
+                        f"./xctx plan bring_online {resolved.resolved_target}",
+                        f"./xctx audit {resolved.resolved_target}",
+                    ]
+                ),
             }
         )
         return True, payload, None

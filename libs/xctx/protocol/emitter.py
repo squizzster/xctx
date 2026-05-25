@@ -10,6 +10,7 @@ import yaml
 
 from xctx.io.stdout import write_stdout_record
 from xctx.protocol.accessors import key_for, protocol_version
+from xctx.protocol.guidance import normalize_guidance
 
 
 def now_ms() -> int:
@@ -72,11 +73,11 @@ def emit_record(
             envelope[output_key] = value
     if error:
         envelope[key_for(store, "error", "error")] = error
-    write_stdout_record(envelope, store.get("output_format", "jsonl"))
+    write_stdout_record(normalize_guidance(envelope), store.get("output_format", "jsonl"))
 
 
 def emit_raw_for_store(store: dict[str, Any], payload: dict[str, Any]) -> None:
-    write_stdout_record(payload, store.get("output_format", "jsonl"))
+    write_stdout_record(normalize_guidance(payload), store.get("output_format", "jsonl"))
 
 
 def emit_minimal_error(

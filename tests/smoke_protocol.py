@@ -291,10 +291,18 @@ def assert_root_domain_subdomain_discovery() -> None:
     assert domains["crypto_intelligence_hub"]["status"] == "down_for_maintenance"
     assert domains["options_intelligence_hub"]["repair_cmd"] == "./xctx repair offline:options_intelligence_hub"
     assert root_results["next_moves"] == [
-        "./xctx discover {{agent_domain_id}}::",
-        "./xctx audit root",
-        "./xctx discover stock_intelligence_hub::",
-        "./xctx discover file_manager::",
+        {
+            "desc": "Discover configured agent domains in this universe.",
+            "run_cmd": "./xctx discover",
+        },
+        {
+            "desc": "Inspect the machine command surface explicitly.",
+            "run_cmd": "./xctx help",
+        },
+        {
+            "desc": "Audit loaded configuration, live adapters, and offline/maintenance findings.",
+            "run_cmd": "./xctx audit root",
+        },
     ]
     assert root_results["next_move_context"] == {
         "agent_domain_id": "Replace {{agent_domain_id}} with an id from agent_domains.",
@@ -364,7 +372,10 @@ def assert_root_domain_subdomain_discovery() -> None:
         "search_priority_buckets",
         "list_priority_buckets",
     }
-    assert "./xctx discover stock_intelligence_hub::equity_filing list_forms" in filing_live["next_moves"]
+    assert any(
+        move["run_cmd"] == "./xctx discover stock_intelligence_hub::equity_filing list_forms"
+        for move in filing_live["next_moves"]
+    )
     filing_full = one(["discover", "stock_intelligence_hub::equity_filing", "--shape", "full"])
     filing_full_live = filing_full["results"]["live_data"]
     assert filing_full["results"]["shape"] == "full"
@@ -669,7 +680,7 @@ def assert_observe_audit_repair() -> None:
     assert offline_domain["ok"] is False
     assert offline_domain["error"] == "offline"
     assert offline_domain["results"]["repair_cmd"] == "./xctx repair offline:macro_intelligence_hub"
-    assert offline_domain["results"]["next_moves"] == ["./xctx repair offline:macro_intelligence_hub"]
+    assert offline_domain["results"]["next_moves"] == [{"run_cmd": "./xctx repair offline:macro_intelligence_hub"}]
 
     maintenance_subdomain = one(["observe", "stock_intelligence_hub::fundamentals_gateway"], expected_code=1)
     assert maintenance_subdomain["ok"] is False

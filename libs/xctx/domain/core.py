@@ -6,6 +6,7 @@ from typing import Any
 
 from xctx.errors import XctxError
 from xctx.protocol.descriptions import selected_description, with_description
+from xctx.protocol.guidance import command_hint
 
 
 ## Protocol boundary: helpers in this module know the generic domain/subdomain
@@ -65,7 +66,7 @@ def offline_subdomain_payload(store: dict[str, Any], domain_id: str, subdomain: 
         repair_cmd = subdomain["repair_path"].get("run_cmd")
         payload["repair_cmd"] = repair_cmd
         if repair_cmd:
-            payload["next_moves"] = [repair_cmd]
+            payload["next_moves"] = [command_hint(str(repair_cmd))]
     if subdomain.get("status") == "down_for_maintenance":
         payload["repair_path"] = None
         payload["terminal_reason"] = "down_for_maintenance"

@@ -13,6 +13,7 @@ from typing import Any
 from xctx.config.loader import load_store
 from xctx.config.paths import project_root_from_module
 from xctx.process.python_subprocess import python_entrypoint_argv
+from xctx.protocol.guidance import normalize_guidance
 from xctx_connectors import runtime
 
 
@@ -20,6 +21,7 @@ _IMPORT_SAFE_ID = re.compile(r"^[a-z][a-z0-9_]*$")
 
 
 def _emit_json(payload: dict[str, Any], *, compact: bool) -> None:
+    payload = normalize_guidance(payload)
     if compact:
         print(json.dumps(payload, ensure_ascii=False, separators=(",", ":")))
     else:

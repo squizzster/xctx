@@ -103,10 +103,18 @@ def assert_root_universe_command_surface() -> None:
     assert "configured_options" not in root["results"]
     assert "root_affordances" not in root["results"]
     assert root["results"]["next_moves"] == [
-        "./xctx discover {{agent_domain_id}}::",
-        "./xctx audit root",
-        "./xctx discover stock_intelligence_hub::",
-        "./xctx discover file_manager::",
+        {
+            "desc": "Discover configured agent domains in this universe.",
+            "run_cmd": "./xctx discover",
+        },
+        {
+            "desc": "Inspect the machine command surface explicitly.",
+            "run_cmd": "./xctx help",
+        },
+        {
+            "desc": "Audit loaded configuration, live adapters, and offline/maintenance findings.",
+            "run_cmd": "./xctx audit root",
+        },
     ]
     assert root["results"]["next_move_context"]["agent_domain_scope_template"] == "./xctx discover {{agent_domain_id}}::"
     assert root["results"]["next_move_context"]["examples"] == [
@@ -195,7 +203,7 @@ def assert_domain_subdomain_discovery() -> None:
     macro = run_engine(["discover", "macro_intelligence_hub::"])
     assert macro["results"]["status"] == "offline"
     assert macro["results"]["repair_cmd"] == "./xctx repair offline:macro_intelligence_hub"
-    assert macro["results"]["next_moves"] == ["./xctx repair offline:macro_intelligence_hub"]
+    assert macro["results"]["next_moves"] == [{"run_cmd": "./xctx repair offline:macro_intelligence_hub"}]
     crypto = run_engine(["discover", "crypto_intelligence_hub::"])
     assert crypto["results"]["status"] == "down_for_maintenance"
     assert crypto["results"]["repair_path"] is None

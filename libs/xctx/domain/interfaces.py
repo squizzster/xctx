@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from xctx.domain.core import compact_subdomain
+from xctx.protocol.guidance import command_hint
 
 
 ## Protocol boundary: action interface payloads publish declared metadata only.
@@ -34,7 +35,7 @@ def scoped_mode_interface_payload(
     }
     if run_cmd:
         payload["run_cmd"] = run_cmd
-        payload["next_moves"] = [run_cmd]
+        payload["next_moves"] = [command_hint(str(run_cmd))]
     for key in (
         "mode",
         "mode_kind",
