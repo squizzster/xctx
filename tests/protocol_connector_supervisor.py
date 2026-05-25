@@ -29,6 +29,7 @@ from xctx_connectors.domains.file_manager.external_command_adapter import _safe_
 
 
 DOMAIN_ADAPTER_MODULE = "xctx_connectors.domains.file_manager.external_command_adapter"
+MARKET_ADAPTER_ENTRYPOINT = "examples/stock_intelligence_hub/adapters/market_data_gateway.py"
 
 
 def assert_shape_guarantee(connector: dict, *, contract: str, failure_shape: str) -> None:
@@ -145,7 +146,7 @@ print(json.dumps({{
 def test_live_entrypoint_must_use_connector_supervisor() -> None:
     store = load_store(root=ROOT)
     subdomain = dict(store["agent_domains"]["stock_intelligence_hub"]["_subdomains"]["market_data_gateway"])
-    subdomain["entrypoint"] = {**subdomain["entrypoint"], "file": "market_data_gateway.py"}
+    subdomain["entrypoint"] = {**subdomain["entrypoint"], "file": MARKET_ADAPTER_ENTRYPOINT}
     try:
         call_external_command(store, subdomain, ["discover"])
     except XctxError as exc:
@@ -155,8 +156,8 @@ def test_live_entrypoint_must_use_connector_supervisor() -> None:
 
 
 def test_passthrough_target_entrypoint_stays_inside_workspace() -> None:
-    assert _resolve_workspace_entrypoint(ROOT, "market_data_gateway.py", label="target_entrypoint") == (
-        ROOT / "market_data_gateway.py"
+    assert _resolve_workspace_entrypoint(ROOT, MARKET_ADAPTER_ENTRYPOINT, label="target_entrypoint") == (
+        ROOT / MARKET_ADAPTER_ENTRYPOINT
     ).resolve()
     for raw in ("/tmp/outside.py", "../outside.py"):
         try:
@@ -296,7 +297,7 @@ def test_xctx_native_passthrough_failure_hides_argv_until_full_shape() -> None:
     full_live = full["results"]["live_data"]
     assert full_live["object_type"] == "xctx_native_passthrough_error"
     assert full_live["command_status"]["ok"] is False
-    assert full_live["command_status"]["argv"][1].endswith("market_data_gateway.py")
+    assert full_live["command_status"]["argv"][1].endswith(MARKET_ADAPTER_ENTRYPOINT)
 
 
 def test_external_command_filesystem_discovery_and_observation() -> None:

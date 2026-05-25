@@ -122,7 +122,7 @@ entrypoint:
   protocol: json_stdout
 connector:
   kind: xctx_native_passthrough
-  target_entrypoint: market_data_gateway.py
+  target_entrypoint: examples/stock_intelligence_hub/adapters/market_data_gateway.py
 ```
 
 and:
@@ -133,7 +133,7 @@ entrypoint:
   protocol: json_stdout
 connector:
   kind: xctx_native_passthrough
-  target_entrypoint: equity_filings.py
+  target_entrypoint: examples/stock_intelligence_hub/adapters/equity_filings.py
 ```
 
 The protocol runtime loads YAML declarations and subprocesses the connector
@@ -249,5 +249,6 @@ refused after target resolution and before the filing adapter is called.
 
 Universe-level identity search has been removed. Ticker, symbol, issuer CIK,
 punctuation-normalized company names, aliases, and former-symbol handling are
-stock-domain behavior implemented in `market_data_gateway.py` and
+stock-domain behavior implemented in
+`examples/stock_intelligence_hub/adapters/market_data_gateway.py` and
 `libs/xctx_live/instruments.py`.

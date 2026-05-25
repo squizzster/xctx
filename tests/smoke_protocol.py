@@ -124,10 +124,11 @@ def assert_modular_layout() -> None:
         "libs/xctx/process/runtime.py",
         "libs/xctx/domain/agent_domains.py",
         "libs/xctx/ports/external_command.py",
+        "examples/stock_intelligence_hub/README.md",
+        "examples/stock_intelligence_hub/adapters/equity_filings.py",
+        "examples/stock_intelligence_hub/adapters/market_data_gateway.py",
         "libs/xctx_live/filings.py",
         "libs/xctx_live/instruments.py",
-        "equity_filings.py",
-        "market_data_gateway.py",
         "connector_supervisor.py",
         "libs/xctx_connectors/__init__.py",
         "libs/xctx_connectors/middleware.py",
@@ -173,7 +174,7 @@ def assert_protocol_is_config_driven() -> None:
     market_subdomain = yaml.safe_load((ROOT / "yaml_dynamic_config" / "agent_domains" / "stock_intelligence_hub" / "subdomains" / "market_data_gateway" / "subdomain.yaml").read_text())
     assert market_subdomain["entrypoint"]["file"] == "connector_supervisor.py"
     assert market_subdomain["connector"]["kind"] == "xctx_native_passthrough"
-    assert market_subdomain["connector"]["target_entrypoint"] == "market_data_gateway.py"
+    assert market_subdomain["connector"]["target_entrypoint"] == "examples/stock_intelligence_hub/adapters/market_data_gateway.py"
     assert market_subdomain["actions"]["search_entity_instrument"]["domain_affordance"] is True
     assert market_subdomain["actions"]["latest_price"]["domain_affordance"] is True
     assert market_subdomain["actions"]["latest_price"]["entrypoint_command"] == "latest-price"
@@ -183,7 +184,7 @@ def assert_protocol_is_config_driven() -> None:
     filing_subdomain = yaml.safe_load((ROOT / "yaml_dynamic_config" / "agent_domains" / "stock_intelligence_hub" / "subdomains" / "equity_filing" / "subdomain.yaml").read_text())
     assert filing_subdomain["entrypoint"]["file"] == "connector_supervisor.py"
     assert filing_subdomain["connector"]["kind"] == "xctx_native_passthrough"
-    assert filing_subdomain["connector"]["target_entrypoint"] == "equity_filings.py"
+    assert filing_subdomain["connector"]["target_entrypoint"] == "examples/stock_intelligence_hub/adapters/equity_filings.py"
     assert filing_subdomain["actions"]["search_forms"]["domain_affordance"] is True
     assert filing_subdomain["actions"]["search_forms"]["domain_action_name"] == "search_filing_form"
     assert filing_subdomain["actions"]["discover"]["discovery_shapes"]["default_shape"] == "compact"

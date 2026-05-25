@@ -11,7 +11,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent
+ROOT = next(parent for parent in Path(__file__).resolve().parents if (parent / "libs").is_dir())
 LIBS = ROOT / "libs"
 if str(LIBS) not in sys.path:
     sys.path.insert(0, str(LIBS))

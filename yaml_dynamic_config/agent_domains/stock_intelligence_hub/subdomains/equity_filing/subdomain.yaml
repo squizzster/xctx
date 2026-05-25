@@ -13,7 +13,7 @@ entrypoint:
   timeout_seconds: 30
 connector:
   kind: xctx_native_passthrough
-  target_entrypoint: equity_filings.py
+  target_entrypoint: examples/stock_intelligence_hub/adapters/equity_filings.py
   timeout_seconds: 30
 data:
   storage_engine: sqlite
