@@ -246,7 +246,10 @@ def assert_scoped_filing_affordance_routing() -> None:
     print("[pressure] scoped filing affordance routing", flush=True)
     invalid_unscoped = run_engine(["discover", "search_filing_family", "annual"], code=1)
     assert_cmd(invalid_unscoped, ok=False, record_type="error")
-    assert "./xctx discover stock_intelligence_hub::search_filing_family" in invalid_unscoped["error"]
+    assert invalid_unscoped["error"] == "unscoped discovery target: search_filing_family"
+    assert invalid_unscoped["next_moves"] == [
+        {"run_cmd": "./xctx discover stock_intelligence_hub::search_filing_family"}
+    ]
 
     family = run_engine(["discover", "stock_intelligence_hub::search_filing_family", "annual"])
     assert any(item["id"] == "family:ANNUAL_REPORT" for item in family["results"]["live_data"]["matches"])
@@ -411,9 +414,9 @@ def assert_market_observe_range_semantics() -> None:
 def assert_observe_error_and_cross_domain_routes() -> None:
     print("[pressure] observe error and cross-domain routes", flush=True)
     unsupported_range = run_engine(["observe", "form:10-K", "--bars", "5"], code=1)
-    assert "remove unsupported option --bars for stock_intelligence_hub::equity_filing observe" in unsupported_range["error"]
+    assert unsupported_range["error"] == "unsupported option --bars for stock_intelligence_hub::equity_filing observe"
     missing_range_target = run_engine(["observe", "stock_intelligence_hub::market_data_gateway", "--bars", "5"], code=1)
-    assert "provide an observation target before configured observe options" in missing_range_target["error"]
+    assert missing_range_target["error"] == "missing observation target before configured observe options"
     spaced_form = run_engine(["observe", "DEF", "14A"])
     assert spaced_form["results"]["agent_subdomain"] == "equity_filing"
     assert spaced_form["results"]["live_data"]["id"] == "form:DEF 14A"
