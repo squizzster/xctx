@@ -150,7 +150,8 @@ def subdomain_discovery_payload(
         canonical_action = canonical_action_for_structural_token(subdomain, query_parts[0])
         if canonical_action:
             raise XctxError(
-                f"next valid move: use canonical action ./xctx discover {domain_id}::{subdomain_id} {canonical_action}"
+                f"non-canonical action token for {domain_id}::{subdomain_id}: {query_parts[0]}",
+                next_moves=[f"./xctx discover {domain_id}::{subdomain_id} {canonical_action}"],
             )
     _discover_action_name, discover_action = subdomain_action_config(subdomain, "discover")
     if discover_action:
@@ -274,10 +275,15 @@ def discover_payload(
     if domain_id and subdomain_id:
         return "agent_subdomain", subdomain_discovery_payload(store, domain_id, subdomain_id, query_parts)
     if domain_id:
+        if query_parts:
+            raise XctxError(
+                f"discovery arguments require a scoped agent_subdomain target: {domain_id}",
+                next_moves=[f"./xctx discover {domain_id}::<agent_subdomain>"],
+            )
         return "agent_domain", domain_discovery_payload(store, domain_id)
 
     scoped_run_cmd = scoped_action_run_cmd(store, target)
     if scoped_run_cmd:
-        raise XctxError(f"next valid move: {scoped_run_cmd}")
+        raise XctxError(f"unscoped discovery target: {target}", next_moves=[scoped_run_cmd])
 
-    raise XctxError("next valid move: ./xctx discover")
+    raise XctxError(f"unknown discovery target: {target}", next_moves=["./xctx discover"])

@@ -19,7 +19,7 @@ class XctxParser(argparse.ArgumentParser):
     """Argument parser that keeps errors inside the xctx JSON contract."""
 
     def error(self, message: str) -> None:
-        raise XctxError(f"next valid move: adjust arguments ({message})")
+        raise XctxError(f"invalid arguments: {message}")
 
 
 def _add_discover_parser(subparsers: argparse._SubParsersAction, name: str) -> None:

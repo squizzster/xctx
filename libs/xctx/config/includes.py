@@ -9,5 +9,5 @@ from xctx.errors import XctxError
 
 def require_config(mapping: dict[str, Any], key: str, context: str) -> Any:
     if key not in mapping:
-        raise XctxError(f"next valid move: add {key} to {context}")
+        raise XctxError(f"missing required config key {key} in {context}")
     return mapping[key]

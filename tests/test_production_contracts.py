@@ -29,8 +29,9 @@ def test_repair_finding_prefix_must_match_current_state() -> None:
     assert rc == 1
     assert payload["record_type"] == "error"
     assert payload["ok"] is False
-    assert "refresh audit findings" in payload["error"]
+    assert "stale repair finding" in payload["error"]
     assert "down_for_maintenance" in payload["error"]
+    assert payload["next_moves"] == [{"run_cmd": "./xctx audit root"}]
 
 
 def test_command_surface_audit_reports_duplicate_group_entries() -> None:
@@ -98,7 +99,7 @@ def test_config_validation_rejects_subdomain_id_mismatch() -> None:
     subdomain_id, subdomain = next(iter(domain["_subdomains"].items()))
     subdomain["id"] = "wrong_subdomain_id"
 
-    with pytest.raises(XctxError, match=f"align agent_subdomain id for {domain_id}::{subdomain_id}"):
+    with pytest.raises(XctxError, match=f"agent_subdomain id mismatch for {domain_id}::{subdomain_id}"):
         validate_loaded_store(store)
 
 

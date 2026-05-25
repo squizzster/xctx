@@ -47,19 +47,19 @@ def target_from_repair_arg(target: str) -> tuple[str, str, str | None]:
 
 def _resolve_repair_target(store: dict[str, Any], target: str) -> RepairTarget:
     if not target:
-        raise XctxError("next valid move: ./xctx audit root, then ./xctx repair <finding_id>")
+        raise XctxError("missing repair target", next_moves=["./xctx audit root", "./xctx repair <finding_id>"])
     status_prefix, domain_id, subdomain_id = target_from_repair_arg(target)
     if domain_id not in store.get("agent_domains", {}):
-        raise XctxError(f"next valid move: choose a known repair target ({target})")
+        raise XctxError(f"unknown repair target: {target}", next_moves=["./xctx audit root"])
     domain = store["agent_domains"][domain_id]
     obj = domain if not subdomain_id else domain.get("_subdomains", {}).get(subdomain_id)
     if not obj:
-        raise XctxError(f"next valid move: choose a known repair target ({target})")
+        raise XctxError(f"unknown repair target: {target}", next_moves=["./xctx audit root"])
     current_status = obj.get("status")
     if status_prefix and status_prefix != current_status:
         raise XctxError(
-            "next valid move: refresh audit findings; "
-            f"{target} no longer matches current status {current_status}"
+            f"stale repair finding: {target} no longer matches current status {current_status}",
+            next_moves=["./xctx audit root"],
         )
     return RepairTarget(
         raw=target,

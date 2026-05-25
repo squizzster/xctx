@@ -66,18 +66,18 @@ def _primary_flag(spec: dict[str, Any]) -> str:
 def _coerce_scalar(value: Any, option_type: str, *, label: str) -> Any:
     if option_type == "int":
         if isinstance(value, bool):
-            raise XctxError(f"next valid move: make {label} an integer")
+            raise XctxError(f"invalid integer for {label}")
         try:
             return int(value)
         except (TypeError, ValueError) as exc:
-            raise XctxError(f"next valid move: make {label} an integer") from exc
+            raise XctxError(f"invalid integer for {label}") from exc
     if option_type == "float":
         if isinstance(value, bool):
-            raise XctxError(f"next valid move: make {label} a number")
+            raise XctxError(f"invalid number for {label}")
         try:
             return float(value)
         except (TypeError, ValueError) as exc:
-            raise XctxError(f"next valid move: make {label} a number") from exc
+            raise XctxError(f"invalid number for {label}") from exc
     if option_type == "bool":
         return bool(value) if isinstance(value, bool) else str(value)
     return str(value)
@@ -89,7 +89,7 @@ def _normalise_min_max(spec: dict[str, Any], option_type: str, dest: str) -> Non
     if not has_min and not has_max:
         return
     if option_type not in {"int", "float"}:
-        raise XctxError(f"next valid move: remove min/max from non-numeric cli_option {dest}")
+        raise XctxError(f"non-numeric cli_option has min/max: {dest}")
     lower = _coerce_scalar(spec.get("min"), option_type, label=f"cli_option {dest}.min") if has_min else None
     upper = _coerce_scalar(spec.get("max"), option_type, label=f"cli_option {dest}.max") if has_max else None
     if lower is not None:
@@ -97,14 +97,14 @@ def _normalise_min_max(spec: dict[str, Any], option_type: str, dest: str) -> Non
     if upper is not None:
         spec["max"] = upper
     if lower is not None and upper is not None and lower > upper:
-        raise XctxError(f"next valid move: make cli_option {dest}.min <= max")
+        raise XctxError(f"invalid cli_option bounds: {dest}.min is greater than max")
 
 
 def _normalise_choices(spec: dict[str, Any], option_type: str, dest: str) -> None:
     if spec.get("choices") is None:
         return
     if option_type == "bool":
-        raise XctxError(f"next valid move: remove choices from bool cli_option {dest}")
+        raise XctxError(f"bool cli_option cannot declare choices: {dest}")
     spec["choices"] = [
         _coerce_scalar(choice, option_type, label=f"cli_option {dest}.choices")
         for choice in _as_list(spec.get("choices"))
@@ -116,19 +116,19 @@ def _normalise_option_spec(raw: dict[str, Any], *, source: dict[str, Any], index
     flags = _option_flags(spec)
     dest = _option_dest(spec)
     if not dest:
-        raise XctxError("next valid move: add dest or flags to configured cli_option")
+        raise XctxError("configured cli_option is missing dest or flags")
     if not flags:
         flags = ["--" + dest.replace("_", "-")]
     invalid_flags = [flag for flag in flags if not flag.startswith("-") or flag in {"-", "--"}]
     if invalid_flags:
         raise XctxError(
-            "next valid move: make configured cli_option flags start with '-' "
+            "configured cli_option flags must start with '-' "
             f"for {dest} ({', '.join(invalid_flags)})"
         )
     option_type = str(spec.get("type", "str"))
     if option_type not in SUPPORTED_OPTION_TYPES:
         supported = ", ".join(sorted(SUPPORTED_OPTION_TYPES))
-        raise XctxError(f"next valid move: choose supported cli_option type for {dest} ({supported})")
+        raise XctxError(f"unsupported cli_option type for {dest}: {option_type} (supported: {supported})")
     _normalise_min_max(spec, option_type, dest)
     _normalise_choices(spec, option_type, dest)
     spec["_flags"] = flags
@@ -158,7 +158,7 @@ def _iter_raw_cli_options(container: dict[str, Any]) -> Iterable[tuple[str | Non
             else:
                 yield None, {"flags": [str(value)]}
         return
-    raise XctxError("next valid move: make cli_options a list or mapping")
+    raise XctxError("cli_options must be a list or mapping")
 
 
 def _commands_declared(spec: dict[str, Any]) -> set[str]:

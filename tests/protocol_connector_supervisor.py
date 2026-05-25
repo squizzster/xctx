@@ -151,7 +151,7 @@ def test_live_entrypoint_must_use_connector_supervisor() -> None:
     try:
         call_external_command(store, subdomain, ["discover"])
     except XctxError as exc:
-        assert "route live subdomain through connector_supervisor.py" in str(exc)
+        assert str(exc) == "live subdomain must route through connector_supervisor.py"
     else:  # pragma: no cover - defensive standalone script check
         raise AssertionError("accepted direct live adapter entrypoint")
 

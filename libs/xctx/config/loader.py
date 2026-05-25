@@ -23,7 +23,7 @@ def _resolve_workspace_config(root: Path, base: Path, maybe_relative: str, *, la
     candidate = _resolve(base, maybe_relative).resolve()
     workspace = root.resolve()
     if candidate != workspace and workspace not in candidate.parents:
-        raise XctxError(f"next valid move: keep {label} inside the xctx workspace")
+        raise XctxError(f"{label} resolves outside the xctx workspace")
     return candidate
 
 
@@ -37,7 +37,7 @@ def _load_agent_domains(
     for ref in universe.get("agent_domains", []) or []:
         domain_id = str(require_config(ref, "id", "yaml_dynamic_config/universe.yaml"))
         if domain_id in domains:
-            raise XctxError(f"next valid move: remove duplicate agent_domain id {domain_id}")
+            raise XctxError(f"duplicate agent_domain id: {domain_id}")
         domain_file = _resolve_workspace_config(
             root,
             config_dir,
@@ -47,7 +47,7 @@ def _load_agent_domains(
         domain = load_yaml(domain_file)
         configured_domain_id = str(domain.get("id", domain_id))
         if configured_domain_id != domain_id:
-            raise XctxError(f"next valid move: align agent_domain id {configured_domain_id} with universe id {domain_id}")
+            raise XctxError(f"agent_domain id mismatch: {configured_domain_id} != {domain_id}")
         domain.setdefault("id", domain_id)
         domain["_config_path"] = as_project_path(root, domain_file)
         domain["_dir"] = domain_file.parent
@@ -66,8 +66,8 @@ def _load_agent_domains(
             configured_subdomain_id = str(subdomain.get("id", str(subdomain_id)))
             if configured_subdomain_id != str(subdomain_id):
                 raise XctxError(
-                    "next valid move: align agent_subdomain id "
-                    f"{configured_subdomain_id} with domain ref {domain_id}::{subdomain_id}"
+                    "agent_subdomain id mismatch: "
+                    f"{configured_subdomain_id} != {domain_id}::{subdomain_id}"
                 )
             subdomain.setdefault("id", str(subdomain_id))
             subdomain["_config_path"] = as_project_path(root, subdomain_file)

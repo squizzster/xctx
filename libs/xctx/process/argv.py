@@ -41,7 +41,7 @@ def extract_global_options(argv: list[str]) -> ArgvSelection:
             if output_error:
                 output_format = None
             elif output_format and output_format != requested_format:
-                output_error = "next valid move: choose either --json or --yaml"
+                output_error = "conflicting stdout format flags: --json and --yaml"
                 output_format = None
             else:
                 output_format = requested_format

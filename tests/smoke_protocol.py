@@ -312,7 +312,7 @@ def assert_root_domain_subdomain_discovery() -> None:
 
     rejected_alias = one(["discovery"], expected_code=1)
     assert rejected_alias["ok"] is False
-    assert "known xctx command" in rejected_alias["error"]
+    assert rejected_alias["error"] == "unknown xctx command"
 
     for domain_id in domains:
         bare_domain = one(["discover", domain_id])
@@ -336,7 +336,8 @@ def assert_root_domain_subdomain_discovery() -> None:
         bare = one(["discover", bare_target], expected_code=1)
         assert bare["record_type"] == "error"
         assert bare["ok"] is False
-        assert "next valid move:" in bare["error"]
+        assert "next " + "valid move:" not in bare["error"]
+        assert all(isinstance(move, dict) and "run_cmd" in move for move in bare["next_moves"])
         assert "free_text_discovery_routed_to_configured_fallback" not in json.dumps(bare, sort_keys=True)
 
     domain = one(["discover", "stock_intelligence_hub::"])
@@ -384,7 +385,7 @@ def assert_root_domain_subdomain_discovery() -> None:
     assert "modes" in filing_full_live
     assert filing_full_live["command_grammar"]["mode_discovery"].endswith("::equity_filing::<mode>")
     bad_shape = one(["discover", "stock_intelligence_hub::equity_filing", "--shape", "wide"], expected_code=1)
-    assert "choose --shape compact|full" in bad_shape["error"]
+    assert bad_shape["error"] == "unsupported --shape value: wide (allowed: compact|full)"
 
     market = one(["discover", "stock_intelligence_hub::market_data_gateway"])
     assert market["domain_level"] == "agent_subdomain"
@@ -883,12 +884,12 @@ def assert_plan_execute_other_and_output() -> None:
 
     unknown_command = one(["something-new"], expected_code=1)
     assert unknown_command["record_type"] == "error"
-    assert "choose a known xctx command" in unknown_command["error"]
+    assert unknown_command["error"] == "unknown xctx command"
     assert "other" not in unknown_command["error"]
 
     old_group_as_command = one(["xctx_other", "other", "--topic", "ping"], expected_code=1)
     assert old_group_as_command["record_type"] == "error"
-    assert "choose a known xctx command" in old_group_as_command["error"]
+    assert old_group_as_command["error"] == "unknown xctx command"
     assert "other" not in old_group_as_command["error"]
 
     other = one(["other", "--topic", "something-new"])
@@ -910,7 +911,7 @@ def assert_plan_execute_other_and_output() -> None:
     assert conflict.stderr == ""
     payload = json.loads(conflict.stdout.splitlines()[0])
     assert payload["ok"] is False
-    assert "choose either --json or --yaml" in payload["error"]
+    assert payload["error"] == "conflicting stdout format flags: --json and --yaml"
 
 
 

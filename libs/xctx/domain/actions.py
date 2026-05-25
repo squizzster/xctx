@@ -57,10 +57,23 @@ def iter_domain_action_configs(store: dict[str, Any], domain_id: str) -> list[tu
 
 def domain_action_config(store: dict[str, Any], domain_id: str, action_name: str) -> dict[str, Any] | None:
     """Resolve a named affordance inside an explicit agent-domain scope."""
+    matches: list[tuple[str, dict[str, Any]]] = []
     for name, action in iter_domain_action_configs(store, domain_id):
         if action_matches(name, action, action_name):
-            return {**action, "_action_name": name, "_matched_as": action_name}
-    return None
+            matches.append((name, action))
+    if not matches:
+        return None
+    if len(matches) > 1:
+        sources = sorted(
+            f"{domain_id}::{action.get('agent_subdomain')}::{action.get('_source_action_name') or name}"
+            for name, action in matches
+        )
+        raise XctxError(
+            f"ambiguous domain affordance: {domain_id}::{action_name} ({', '.join(sources)})",
+            next_moves=[f"./xctx audit {domain_id}"],
+        )
+    name, action = matches[0]
+    return {**action, "_action_name": name, "_matched_as": action_name}
 
 def domain_affordance_config_check(store: dict[str, Any]) -> dict[str, Any]:
     """Return an audit check for ambiguous domain-scoped affordance names."""
@@ -134,7 +147,7 @@ def parse_scoped_subdomain_mode_ref(
         return None, None, None, None
     mode_name, mode = subdomain_action_config(subdomain, action_token)
     if not mode_name or not mode:
-        raise XctxError(f"next valid move: choose a known action for {domain_id}::{subdomain_id} ({action_token})")
+        raise XctxError(f"unknown action for {domain_id}::{subdomain_id}: {action_token}")
     return domain_id, subdomain_id, mode_name, mode
 
 def _collection_contract(action: dict[str, Any]) -> dict[str, Any]:
@@ -210,29 +223,29 @@ def validate_declared_action_args(action: dict[str, Any], action_args: list[str]
             index += 1
             continue
         if index + 1 >= len(action_args):
-            raise XctxError(f"next valid move: provide a value for {token}")
+            raise XctxError(f"missing value for {token}")
         value = action_args[index + 1]
         if token == "--cursor":
             if not collection:
-                raise XctxError(f"next valid move: remove {token}; this action does not declare collection controls")
+                raise XctxError(f"unsupported collection control for this action: {token}")
             if not _has_collection_cursor(collection):
-                raise XctxError("next valid move: remove --cursor; this collection does not declare cursor support")
+                raise XctxError("--cursor is not supported by this collection")
         elif token == "--shape":
             shapes = _action_shapes(action)
             if not shapes:
-                raise XctxError("next valid move: remove --shape; this action does not declare output shapes")
+                raise XctxError("--shape is not supported by this action")
             if value not in shapes:
-                raise XctxError(f"next valid move: choose --shape {'|'.join(sorted(shapes))}")
+                raise XctxError(f"unsupported --shape value: {value} (allowed: {'|'.join(sorted(shapes))})")
         elif token == "--limit":
             if not collection:
-                raise XctxError(f"next valid move: remove {token}; this action does not declare collection controls")
+                raise XctxError(f"unsupported collection control for this action: {token}")
             try:
                 limit = int(value)
             except ValueError as exc:
-                raise XctxError("next valid move: --limit requires an integer") from exc
+                raise XctxError("--limit requires an integer") from exc
             if limit < 1:
-                raise XctxError("next valid move: --limit must be at least 1")
+                raise XctxError("--limit must be at least 1")
             max_limit = collection.get("max_limit")
             if max_limit is not None and limit > int(max_limit):
-                raise XctxError(f"next valid move: choose --limit <= {max_limit}")
+                raise XctxError(f"--limit exceeds maximum {max_limit}")
         index += 2

@@ -66,8 +66,8 @@ ids are refused:
 ./xctx discover search_filing_family annual
 ```
 
-The returned error points to the next valid move when a scoped equivalent is
-known.
+Error records keep the actual error in `error` and emit runnable recovery
+commands in `next_moves` when a scoped equivalent is known.
 
 ## Record envelope
 

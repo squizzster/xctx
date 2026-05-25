@@ -16,7 +16,7 @@ def handle(store: dict, args: argparse.Namespace) -> int:
     called_as = cmdline_arg(args, command)
     emit_stderr_event(store, command, "start", "resolving discovery target")
     if not has_agent_domains(store):
-        raise XctxError("next valid move: configure agent_domains")
+        raise XctxError("no agent_domains are configured")
     if getattr(args, "discover_universe", False):
         emit_record(
             store,
@@ -31,9 +31,15 @@ def handle(store: dict, args: argparse.Namespace) -> int:
 
     target_args = list(getattr(args, "target_args", []))
     if "--id" in target_args:
-        raise XctxError("next valid move: place --id before TARGET or choose discover TARGET or --id ID, not both")
+        raise XctxError(
+            "invalid discover arguments: --id must appear before TARGET",
+            next_moves=["./xctx discover TARGET", "./xctx discover --id ID"],
+        )
     if getattr(args, "id", None) and getattr(args, "target", None):
-        raise XctxError("next valid move: choose discover TARGET or --id ID, not both")
+        raise XctxError(
+            "conflicting discovery targets: TARGET and --id",
+            next_moves=["./xctx discover TARGET", "./xctx discover --id ID"],
+        )
     if getattr(args, "id", None):
         args.target = args.id
     level, payload = discover_payload(store, getattr(args, "target", None), target_args)

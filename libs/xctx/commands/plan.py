@@ -14,7 +14,7 @@ def handle(store: dict, args: argparse.Namespace) -> int:
     command = "plan"
     called_as = cmdline_arg(args, command)
     if not " ".join(args.plan_args).strip():
-        raise XctxError("next valid move: ./xctx plan <operation> <target>")
+        raise XctxError("missing plan arguments", next_moves=["./xctx plan <operation> <target>"])
     emit_stderr_event(store, command, "start", "building read-only plan", args=args.plan_args)
     payload = plan_payload(list(args.plan_args), store)
     emit_record(store, command, "plan", payload, cmdline_arg=called_as, domain_level="root")

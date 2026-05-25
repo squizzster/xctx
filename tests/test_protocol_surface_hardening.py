@@ -59,7 +59,8 @@ def test_discover_id_target_conflict_is_refused() -> None:
     rc, payload = run_runtime_json(["discover", "stock_intelligence_hub", "--id", "file_manager"])
     assert rc == 1
     assert payload["ok"] is False
-    assert "choose discover TARGET or --id ID" in payload["error"]
+    assert payload["error"] == "invalid discover arguments: --id must appear before TARGET"
+    assert payload["next_moves"] == [{"run_cmd": "./xctx discover TARGET"}, {"run_cmd": "./xctx discover --id ID"}]
 
 
 def test_removed_name_shortcut_is_not_part_of_parser_contract() -> None:
@@ -75,9 +76,12 @@ def test_observe_id_conflicts_are_refused_before_routing() -> None:
     )
     assert rc == 1
     assert payload["ok"] is False
-    assert "choose positional ID or --id ID" in payload["error"]
+    assert payload["error"] == "conflicting observation identifiers: positional ID and --id"
 
     rc, payload = run_runtime_json(["observe", "instrument:AAPL", "--id", "instrument:GOOG"])
     assert rc == 1
     assert payload["ok"] is False
-    assert "use --id only with a scoped observe target" in payload["error"]
+    assert payload["error"] == "invalid observe arguments: --id requires a scoped target"
+    assert payload["next_moves"] == [
+        {"run_cmd": "./xctx observe <agent_domain>::<agent_subdomain> --id <id>"}
+    ]

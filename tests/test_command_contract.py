@@ -44,7 +44,6 @@ def test_no_stale_status_or_identify_guidance() -> None:
         "XCTX_ACTIVE_SYSTEM",
         "XCTX_ACTIVE_AGENT_DOMAIN",
         "identity_resolution",
-        "next valid move: identify",
         "identify_query_run_cmd",
     )
     for base in scanned_paths:
@@ -85,7 +84,8 @@ def test_framework_cli_command_contract() -> None:
         elif command == "plan":
             assert rc == 1
             assert payload["ok"] is False
-            assert payload["error"] == "next valid move: ./xctx plan <operation> <target>"
+            assert payload["error"] == "missing plan arguments"
+            assert payload["next_moves"] == [{"run_cmd": "./xctx plan <operation> <target>"}]
         else:
             assert rc == 0
             assert payload["record_type"] in {"discovery", "audit"}
@@ -104,6 +104,25 @@ def test_framework_cli_command_contract() -> None:
         assert rc == 1
         assert payload["record_type"] == "error"
         assert "other" not in payload["error"]
+        assert payload["next_moves"] == ROOT_NEXT_MOVES
+
+
+def test_error_records_keep_guidance_out_of_error_text() -> None:
+    marker = "next " + "valid move"
+    cases = (
+        ["discovery"],
+        ["plan"],
+        ["repair"],
+        ["discover", "GOOG"],
+        ["observe"],
+    )
+    for args in cases:
+        rc, payload = run_runtime_json(list(args))
+        assert rc == 1
+        assert payload["record_type"] == "error"
+        assert marker not in payload["error"]
+        if "next_moves" in payload:
+            assert all(isinstance(move, dict) and "run_cmd" in move for move in payload["next_moves"])
 
 
 def test_root_discovery_explains_scoped_next_moves() -> None:
@@ -170,4 +189,4 @@ def test_configured_command_without_handler_fails_closed(monkeypatch) -> None:
     assert rc == 1
     assert payload["ok"] is False
     assert payload["record_type"] == "error"
-    assert payload["error"] == "next valid move: command repair is configured but has no production handler"
+    assert payload["error"] == "configured command has no production handler: repair"

@@ -16,11 +16,11 @@ def load_yaml(path: Path) -> dict[str, Any]:
         with path.open("r", encoding="utf-8") as handle:
             data = yaml.safe_load(handle)
     except FileNotFoundError as exc:
-        raise XctxError(f"next valid move: create or inspect YAML file {path}") from exc
+        raise XctxError(f"missing YAML file: {path}") from exc
     if data is None:
         return {}
     if not isinstance(data, dict):
-        raise XctxError(f"next valid move: inspect YAML mapping at {path}")
+        raise XctxError(f"YAML file must contain a mapping: {path}")
     return data
 
 

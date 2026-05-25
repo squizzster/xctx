@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
 from pathlib import Path
 from types import MappingProxyType
@@ -18,14 +17,11 @@ from xctx.process.limits import (
     validated_max_output_bytes,
     validated_timeout,
 )
+from xctx.process.redaction import redact_preview
 from xctx.protocol.guidance import command_hints
 
 
 CONNECTOR_VERSION = "xctx_connector.v1"
-SECRET_PATTERNS = (
-    re.compile(r"(?i)(api[_-]?key|secret|token|password|passwd|authorization)(\\s*[=:]\\s*)([^\\s;&]+)"),
-    re.compile(r"(?i)(bearer\\s+)[a-z0-9._~+/=-]+"),
-)
 
 
 @dataclass(frozen=True)
@@ -122,13 +118,6 @@ def command_status(
     return {key: value for key, value in payload.items() if value is not None}
 
 
-def redact_preview(value: str, limit: int = 500) -> str:
-    preview = value[:limit]
-    for pattern in SECRET_PATTERNS:
-        preview = pattern.sub(lambda match: f"{match.group(1)}{match.group(2) if len(match.groups()) > 1 else ''}<redacted>", preview)
-    return preview
-
-
 def sanitized_connector_env(extra: Mapping[str, str] | None = None) -> dict[str, str]:
     return sanitized_env(extra)
 
@@ -219,16 +208,38 @@ def run_external(
     env: Mapping[str, str] | None = None,
     max_output_bytes: int | None = None,
 ) -> dict[str, Any]:
+    argv = [str(part) for part in argv]
+    if not argv or not argv[0].strip():
+        return {
+            "ok": False,
+            "argv": argv,
+            "exit_code": None,
+            "timed_out": False,
+            "stdout": "",
+            "stderr": "",
+            "error": "external command argv must not be empty",
+        }
     timeout = validated_timeout(timeout)
     configured_max_output = DEFAULT_MAX_OUTPUT_BYTES if max_output_bytes is None else max_output_bytes
     max_bytes = validated_max_output_bytes(configured_max_output)
-    captured = capture_process(
-        argv,
-        cwd=cwd,
-        env=sanitized_connector_env(env),
-        timeout=timeout,
-        max_output_bytes=max_bytes,
-    )
+    try:
+        captured = capture_process(
+            argv,
+            cwd=cwd,
+            env=sanitized_connector_env(env),
+            timeout=timeout,
+            max_output_bytes=max_bytes,
+        )
+    except OSError as exc:
+        return {
+            "ok": False,
+            "argv": argv,
+            "exit_code": None,
+            "timed_out": False,
+            "stdout": "",
+            "stderr": "",
+            "error": str(exc),
+        }
     if captured.timed_out:
         return {
             "ok": False,

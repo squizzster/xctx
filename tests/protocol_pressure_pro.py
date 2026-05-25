@@ -99,7 +99,7 @@ def assert_root_universe_command_surface() -> None:
     assert_root_surface_clean(root)
     rejected_alias = run_engine(["discovery"], code=1)
     assert rejected_alias["ok"] is False
-    assert "known xctx command" in rejected_alias["error"]
+    assert rejected_alias["error"] == "unknown xctx command"
     assert "configured_options" not in root["results"]
     assert "root_affordances" not in root["results"]
     assert root["results"]["next_moves"] == [
@@ -148,7 +148,8 @@ def assert_root_universe_command_surface() -> None:
     ):
         bare = run_engine(["discover", bare_target], code=1)
         assert_cmd(bare, ok=False, record_type="error")
-        assert "next valid move:" in bare["error"]
+        assert "next " + "valid move:" not in bare["error"]
+        assert all(isinstance(move, dict) and "run_cmd" in move for move in bare["next_moves"])
         assert "free_text_discovery_routed_to_configured_fallback" not in json.dumps(bare, sort_keys=True)
     for core_rel in (
         "libs/xctx/process/parser.py",
@@ -496,11 +497,11 @@ def assert_extension_lane_discipline() -> None:
     for rejected_command in ("d", "identify", "status", "write", "doctor"):
         payload = run_engine([rejected_command], code=1)
         assert_cmd(payload, ok=False, record_type="error")
-        assert "choose a known xctx command" in payload["error"]
+        assert payload["error"] == "unknown xctx command"
         assert "other" not in payload["error"]
     old_group_as_command = run_engine(["xctx_other", "other", "--topic", "ping"], code=1)
     assert_cmd(old_group_as_command, ok=False, record_type="error")
-    assert "choose a known xctx command" in old_group_as_command["error"]
+    assert old_group_as_command["error"] == "unknown xctx command"
     assert "other" not in old_group_as_command["error"]
     other = run_engine(["other", "--topic", "something-new"])
     assert_cmd(other, record_type="extension")
@@ -523,7 +524,7 @@ def assert_real_cli_launcher_and_ledger_probe() -> None:
         rc = xctx_main(["--json", "--yaml", "discover"], root=ROOT)
     assert rc == 1
     assert err.getvalue() == ""
-    assert "choose either --json or --yaml" in json.loads(out.getvalue())["error"]
+    assert json.loads(out.getvalue())["error"] == "conflicting stdout format flags: --json and --yaml"
 
 def main() -> int:
     assert_root_universe_command_surface()

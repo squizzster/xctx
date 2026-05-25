@@ -29,8 +29,11 @@ def _emit_json(payload: dict[str, Any], *, compact: bool) -> None:
 
 
 def _take_flag(argv: list[str], flag: str) -> tuple[bool, list[str]]:
-    present = flag in argv
-    return present, [item for item in argv if item != flag]
+    """Consume one middleware-owned trailing flag without stripping target args."""
+
+    if argv and argv[-1] == flag:
+        return True, argv[:-1]
+    return False, list(argv)
 
 
 def _project_root() -> Path:
@@ -152,6 +155,8 @@ def _passthrough(context: runtime.ConnectorContext, args: list[str], *, compact:
         target_payload = json.loads(text)
     except json.JSONDecodeError:
         target_payload = {}
+    raw_exit_code = result.get("exit_code")
+    exit_code = int(raw_exit_code) if raw_exit_code is not None else None
     payload = {
         "object_type": "xctx_native_passthrough_error",
         "found": False,
@@ -162,7 +167,7 @@ def _passthrough(context: runtime.ConnectorContext, args: list[str], *, compact:
         "command_status": runtime.command_status(
             ok=False,
             argv=argv if include_argv else None,
-            exit_code=int(result.get("exit_code") or 0),
+            exit_code=exit_code,
             error=(
                 str(result.get("stderr") or "").strip()
                 or (target_payload.get("error") if isinstance(target_payload, dict) else None)

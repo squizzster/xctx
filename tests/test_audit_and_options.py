@@ -80,9 +80,9 @@ def test_option_audit_rejects_non_flag_option_names_before_argparse_crash() -> N
     checks = option_config_checks(store)
     observe_check = next(check for check in checks if check["id"] == "audit:xctx:cli_options:observe")
     assert observe_check["status"] == "fail"
-    assert "flags start with '-'" in observe_check["error"]
+    assert "flags must start with '-'" in observe_check["error"]
 
-    with pytest.raises(XctxError, match="flags start with '-'"):
+    with pytest.raises(XctxError, match="flags must start with '-'"):
         build_parser(store)
 
 

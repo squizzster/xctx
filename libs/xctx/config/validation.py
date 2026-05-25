@@ -17,13 +17,13 @@ VALID_AVAILABILITY_STATES = frozenset({"online", "offline", "down_for_maintenanc
 
 def _require_mapping(value: Any, label: str) -> dict[str, Any]:
     if not isinstance(value, dict):
-        raise XctxError(f"next valid move: make {label} a YAML mapping")
+        raise XctxError(f"{label} must be a YAML mapping")
     return value
 
 
 def _require_list(value: Any, label: str) -> list[Any]:
     if not isinstance(value, list):
-        raise XctxError(f"next valid move: make {label} a YAML list")
+        raise XctxError(f"{label} must be a YAML list")
     return value
 
 
@@ -35,14 +35,14 @@ def validate_universe_shape(universe: dict[str, Any]) -> None:
     ids = [str(item.get("id")) for item in agent_domains if isinstance(item, dict) and item.get("id")]
     duplicates = sorted(item for item, count in Counter(ids).items() if count > 1)
     if duplicates:
-        raise XctxError(f"next valid move: remove duplicate agent_domain ids ({', '.join(duplicates)})")
+        raise XctxError(f"duplicate agent_domain ids: {', '.join(duplicates)}")
 
 
 def _validate_availability(value: Any, label: str) -> None:
     status = str(value or "unknown")
     if status not in VALID_AVAILABILITY_STATES:
         allowed = "|".join(sorted(VALID_AVAILABILITY_STATES))
-        raise XctxError(f"next valid move: choose {label}.status {allowed}")
+        raise XctxError(f"unsupported {label}.status: {status} (allowed: {allowed})")
 
 
 def validate_loaded_store(store: dict[str, Any]) -> None:
@@ -54,13 +54,13 @@ def validate_loaded_store(store: dict[str, Any]) -> None:
     for domain_id, domain in domains.items():
         _require_mapping(domain, f"agent_domain {domain_id}")
         if str(domain.get("id", "")) != str(domain_id):
-            raise XctxError(f"next valid move: align agent_domain id for {domain_id}")
+            raise XctxError(f"agent_domain id mismatch for {domain_id}")
         _validate_availability(domain.get("status"), f"agent_domain {domain_id}")
         subdomains = _require_mapping(domain.get("_subdomains", {}), f"agent_domain {domain_id} subdomains")
         for subdomain_id, subdomain in subdomains.items():
             _require_mapping(subdomain, f"agent_subdomain {domain_id}::{subdomain_id}")
             if str(subdomain.get("id", "")) != str(subdomain_id):
-                raise XctxError(f"next valid move: align agent_subdomain id for {domain_id}::{subdomain_id}")
+                raise XctxError(f"agent_subdomain id mismatch for {domain_id}::{subdomain_id}")
             _validate_availability(subdomain.get("status"), f"agent_subdomain {domain_id}::{subdomain_id}")
             if subdomain.get("status") == "online" and not isinstance(subdomain.get("actions", {}), dict):
-                raise XctxError(f"next valid move: make actions a mapping for {domain_id}::{subdomain_id}")
+                raise XctxError(f"actions must be a mapping for {domain_id}::{subdomain_id}")

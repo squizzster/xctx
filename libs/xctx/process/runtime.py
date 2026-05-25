@@ -18,8 +18,8 @@ from xctx.process.argv import extract_global_options
 from xctx.process.parser import build_parser
 from xctx.process.signals import configure_sigpipe
 from xctx.protocol.accessors import canonical_command, configured_command_names, help_aliases
-from xctx.protocol.command_policy import visible_command_names_for_guidance
 from xctx.protocol.emitter import emit_final_stderr, emit_minimal_error, emit_record, emit_stderr_event
+from xctx.protocol.guidance import root_protocol_next_moves
 
 
 ## Protocol boundary: this module owns process-level xctx mechanics only.
@@ -48,7 +48,7 @@ def select_output_format(store: dict, explicit_format: str | None) -> str:
     selected = explicit_format or (tty_default_format if _stdout_is_tty() else default_format)
     if selected not in supported:
         supported_display = "|".join(sorted(supported))
-        raise XctxError(f"next valid move: choose supported stdout format {supported_display}")
+        raise XctxError(f"unsupported stdout format: {selected} (supported: {supported_display})")
     return selected
 
 
@@ -123,19 +123,48 @@ def run(argv: Sequence[str] | None = None, root: Path | None = None) -> int:
 
     configured = configured_command_names(store)
     if selection.argv[0] not in configured:
-        allowed = ", ".join(sorted(visible_command_names_for_guidance(store)))
-        raise XctxError(f"next valid move: choose a known xctx command ({allowed})")
+        raise XctxError("unknown xctx command", next_moves=root_protocol_next_moves(store))
 
     parser = build_parser(store)
     args, unknown_args = parser.parse_known_args(selection.argv)
     args.cmdline_arg = selection.cmdline_arg or shlex.join(selection.argv)
     canonical = canonical_command(store, args.command)
     if unknown_args:
-        raise XctxError(f"next valid move: adjust arguments (unrecognized arguments: {' '.join(unknown_args)})")
+        raise XctxError(f"unrecognized arguments: {' '.join(unknown_args)}")
     handler = handlers.get(canonical)
     if handler is None:
-        raise XctxError(f"next valid move: command {canonical} is configured but has no production handler")
+        raise XctxError(f"configured command has no production handler: {canonical}")
     return handler(store, args)
+
+
+def _emit_process_error(
+    raw_argv: Sequence[str],
+    message: str,
+    *,
+    root: Path | None = None,
+    next_moves: list | None = None,
+) -> None:
+    command = " ".join(raw_argv) if raw_argv else "help"
+    moves = list(next_moves or [])
+    try:
+        selection = extract_global_options(list(raw_argv))
+        fallback_store = load_store(root=root)
+        fallback_store["output_format"] = select_output_format(fallback_store, selection.output_format)
+        fallback_store["detail"] = selection.detail
+        emit_stderr_event(fallback_store, command, "error", message)
+        emit_record(
+            fallback_store,
+            command,
+            "error",
+            {},
+            ok=False,
+            error=message,
+            next_moves=moves,
+            cmdline_arg=command,
+        )
+        emit_final_stderr(fallback_store, command, False, "error emitted", error=message, next_moves=moves)
+    except Exception:
+        emit_minimal_error(command, message, next_moves=moves, output_format=_minimal_output_format(raw_argv))
 
 
 def main(argv: Sequence[str] | None = None, root: Path | None = None) -> int:
@@ -144,16 +173,10 @@ def main(argv: Sequence[str] | None = None, root: Path | None = None) -> int:
     raw_argv = list(sys.argv[1:] if argv is None else argv)
     try:
         return run(raw_argv, root=root)
-    except (XctxError, json.JSONDecodeError, yaml.YAMLError) as exc:
-        command = " ".join(raw_argv) if raw_argv else "help"
-        try:
-            selection = extract_global_options(raw_argv)
-            fallback_store = load_store(root=root)
-            fallback_store["output_format"] = select_output_format(fallback_store, selection.output_format)
-            fallback_store["detail"] = selection.detail
-            emit_stderr_event(fallback_store, command, "error", str(exc))
-            emit_record(fallback_store, command, "error", {}, ok=False, error=str(exc), cmdline_arg=command)
-            emit_final_stderr(fallback_store, command, False, "guidance emitted", error=str(exc))
-        except Exception:
-            emit_minimal_error(command, str(exc), output_format=_minimal_output_format(raw_argv))
+    except (XctxError, json.JSONDecodeError, yaml.YAMLError, OSError) as exc:
+        next_moves = exc.next_moves if isinstance(exc, XctxError) else []
+        _emit_process_error(raw_argv, str(exc), root=root, next_moves=next_moves)
+        return 1
+    except Exception as exc:
+        _emit_process_error(raw_argv, f"unexpected_framework_error: {type(exc).__name__}: {exc}", root=root)
         return 1

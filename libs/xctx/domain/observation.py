@@ -29,21 +29,29 @@ def observe_payload(
             return "agent_subdomain", offline_subdomain_payload(store, domain_id, subdomain)
         if not identifier:
             if options:
-                raise XctxError("next valid move: provide an observation target before configured observe options")
+                raise XctxError("missing observation target before configured observe options")
             live = call_external_command(store, subdomain, ["discover"])
         else:
             option_args = observe_adapter_option_args(store, subdomain, options)
             live = call_external_command(store, subdomain, ["observe", identifier, *option_args])
         return "agent_subdomain", {"agent_domain": domain_id, "agent_subdomain": subdomain_id, "live_data": live}
     if domain_id:
+        if options:
+            raise XctxError(
+                f"configured observe options require a scoped observe target: {domain_id}",
+                next_moves=[f"./xctx observe {domain_id}::<agent_subdomain> --id <id>"],
+            )
         return "agent_domain", domain_discovery_payload(store, domain_id)
 
     identifier = item_id or joined_identifier([target, *rest])
     if not identifier:
-        raise XctxError("next valid move: ./xctx observe <thing> or ./xctx observe <target> --id <id>")
+        raise XctxError(
+            "missing observe target",
+            next_moves=["./xctx observe <thing>", "./xctx observe <target> --id <id>"],
+        )
     domain_id, subdomain_id = route_for_identifier(store, identifier)
     if not domain_id or not subdomain_id:
-        raise XctxError("next valid move: observe a discovered id with a known prefix")
+        raise XctxError("unknown observation identifier prefix", next_moves=["./xctx discover"])
     subdomain = resolve_subdomain(store, domain_id, subdomain_id)
     if subdomain.get("status") != "online":
         return "agent_subdomain", offline_subdomain_payload(store, domain_id, subdomain)

@@ -6,7 +6,7 @@ from typing import Any
 
 from xctx.errors import XctxError
 from xctx.protocol.descriptions import selected_description, with_description
-from xctx.protocol.guidance import command_hint
+from xctx.protocol.guidance import command_hint, root_protocol_next_moves
 
 
 ## Protocol boundary: helpers in this module know the generic domain/subdomain
@@ -75,12 +75,15 @@ def offline_subdomain_payload(store: dict[str, Any], domain_id: str, subdomain: 
 def resolve_domain(store: dict[str, Any], domain_id: str) -> dict[str, Any]:
     domain = store.get("agent_domains", {}).get(domain_id)
     if not domain:
-        raise XctxError(f"next valid move: choose a known agent_domain ({domain_id})")
+        raise XctxError(f"unknown agent_domain: {domain_id}", next_moves=root_protocol_next_moves(store))
     return domain
 
 def resolve_subdomain(store: dict[str, Any], domain_id: str, subdomain_id: str) -> dict[str, Any]:
     domain = resolve_domain(store, domain_id)
     subdomain = domain.get("_subdomains", {}).get(subdomain_id)
     if not subdomain:
-        raise XctxError(f"next valid move: choose a known agent_subdomain ({domain_id}::{subdomain_id})")
+        raise XctxError(
+            f"unknown agent_subdomain: {domain_id}::{subdomain_id}",
+            next_moves=[f"./xctx discover {domain_id}::"],
+        )
     return subdomain

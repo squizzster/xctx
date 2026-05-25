@@ -56,6 +56,7 @@ def emit_record(
     payload: Any,
     ok: bool = True,
     error: str | None = None,
+    next_moves: list[Any] | None = None,
     cmdline_arg: str | None = None,
     domain_level: str | None = None,
 ) -> None:
@@ -73,6 +74,8 @@ def emit_record(
             envelope[output_key] = value
     if error:
         envelope[key_for(store, "error", "error")] = error
+    if next_moves:
+        envelope["next_moves"] = next_moves
     write_stdout_record(normalize_guidance(envelope), store.get("output_format", "jsonl"))
 
 
@@ -83,17 +86,18 @@ def emit_raw_for_store(store: dict[str, Any], payload: dict[str, Any]) -> None:
 def emit_minimal_error(
     command: str,
     message: str,
+    next_moves: list[Any] | None = None,
     version: str = "v4.2",
     output_format: str = "jsonl",
 ) -> None:
-    write_stdout_record(
-        {
-            "version_xctx": version,
-            "cmdline_arg": command,
-            "record_type": "error",
-            "ok": False,
-            "results": {},
-            "error": str(message),
-        },
-        output_format,
-    )
+    payload: dict[str, Any] = {
+        "version_xctx": version,
+        "cmdline_arg": command,
+        "record_type": "error",
+        "ok": False,
+        "results": {},
+        "error": str(message),
+    }
+    if next_moves:
+        payload["next_moves"] = next_moves
+    write_stdout_record(normalize_guidance(payload), output_format)

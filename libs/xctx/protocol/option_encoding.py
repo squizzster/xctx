@@ -35,9 +35,9 @@ def _validate_min_max(spec: dict[str, Any], value: Any) -> None:
     lower = _coerce_bound(spec, "min")
     upper = _coerce_bound(spec, "max")
     if lower is not None and value < lower:
-        raise XctxError(f"next valid move: {spec['_primary_flag']} must be at least {lower}")
+        raise XctxError(f"{spec['_primary_flag']} is below minimum {lower}")
     if upper is not None and value > upper:
-        raise XctxError(f"next valid move: {spec['_primary_flag']} must be at most {upper}")
+        raise XctxError(f"{spec['_primary_flag']} is above maximum {upper}")
 
 
 def encode_cli_options_for_target(
@@ -60,7 +60,7 @@ def encode_cli_options_for_target(
     unsupported = [dest for dest, value in values.items() if _is_present(value) and dest not in by_dest]
     if unsupported:
         flag = _display_flag_for_dest(store, command, unsupported[0])
-        raise XctxError(f"next valid move: remove unsupported option {flag} for {target_ref} {command}")
+        raise XctxError(f"unsupported option {flag} for {target_ref} {command}")
 
     present_specs: list[tuple[str, dict[str, Any], Any]] = []
     for dest, value in values.items():
@@ -70,7 +70,7 @@ def encode_cli_options_for_target(
         _validate_min_max(spec, value)
         if spec.get("choices") and str(value) not in {str(choice) for choice in spec.get("choices") or []}:
             choices = "|".join(str(choice) for choice in spec.get("choices") or [])
-            raise XctxError(f"next valid move: {spec['_primary_flag']} must be one of {choices}")
+            raise XctxError(f"unsupported value for {spec['_primary_flag']}: {value} (allowed: {choices})")
         present_specs.append((dest, spec, value))
 
     groups: dict[str, list[dict[str, Any]]] = {}
@@ -84,7 +84,7 @@ def encode_cli_options_for_target(
             if not message:
                 options = " or ".join(str(spec["_primary_flag"]) for spec in group_specs)
                 message = f"choose either {options}"
-            raise XctxError(f"next valid move: {message}")
+            raise XctxError(f"mutually exclusive options conflict: {message}")
 
     encoded: list[str] = []
     for _dest, spec, value in sorted(present_specs, key=lambda item: item[1].get("_order", 9999)):

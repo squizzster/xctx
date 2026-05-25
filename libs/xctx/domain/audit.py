@@ -13,6 +13,8 @@ from xctx.ports.external_command import call_external_command
 from xctx.protocol.command_policy import command_surface_check
 from xctx.protocol.option_surface import option_config_checks
 
+VALID_LIVE_CHECK_STATUSES = frozenset({"pass", "fail", "warn", "warning", "skip"})
+
 
 ## Protocol boundary: audits prove framework/config/adapter health; repairs are
 ## described elsewhere and real domain mutation remains outside this layer.
@@ -67,14 +69,13 @@ def availability_findings(store: dict[str, Any], scope: str = "root") -> list[di
                 )
     return findings
 
-def _known_audit_scope_guidance(store: dict[str, Any], domain_id: str | None = None) -> str:
+def _known_audit_scope_next_moves(store: dict[str, Any], domain_id: str | None = None) -> list[str]:
     if domain_id and domain_id in store.get("agent_domains", {}):
         subdomains = sorted((store["agent_domains"][domain_id].get("_subdomains") or {}).keys())
-        examples = [f"{domain_id}::{subdomain_id}" for subdomain_id in subdomains[:5]]
-        return f"next valid move: choose a known audit scope ({', '.join(examples)})"
+        return [f"./xctx audit {domain_id}::{subdomain_id}" for subdomain_id in subdomains[:5]]
     domains = sorted(store.get("agent_domains", {}).keys())
     examples = ["root", *domains[:5]]
-    return f"next valid move: choose a known audit scope ({', '.join(examples)})"
+    return [f"./xctx audit {example}" for example in examples]
 
 def audit_domain_level(store: dict[str, Any], scope: str) -> str:
     scope = scope or "root"
@@ -85,16 +86,16 @@ def audit_domain_level(store: dict[str, Any], scope: str) -> str:
     if "::" in scope:
         domain_id, subdomain_id = scope.split("::", 1)
         if not domain_id or not subdomain_id:
-            raise XctxError(_known_audit_scope_guidance(store, domain_id or None))
+            raise XctxError("malformed audit scope", next_moves=_known_audit_scope_next_moves(store, domain_id or None))
         domain = domains.get(domain_id)
         if not domain:
-            raise XctxError(_known_audit_scope_guidance(store))
+            raise XctxError(f"unknown audit scope: {scope}", next_moves=_known_audit_scope_next_moves(store))
         if subdomain_id not in (domain.get("_subdomains") or {}):
-            raise XctxError(_known_audit_scope_guidance(store, domain_id))
+            raise XctxError(f"unknown audit scope: {scope}", next_moves=_known_audit_scope_next_moves(store, domain_id))
         return "agent_subdomain"
 
     if scope not in domains:
-        raise XctxError(_known_audit_scope_guidance(store))
+        raise XctxError(f"unknown audit scope: {scope}", next_moves=_known_audit_scope_next_moves(store))
     return "agent_domain"
 
 def _live_audit_subdomains(store: dict[str, Any], scope: str) -> list[tuple[str, str, dict[str, Any]]]:
@@ -110,6 +111,71 @@ def _live_audit_subdomains(store: dict[str, Any], scope: str) -> list[tuple[str,
             if subdomain.get("status") == "online" and subdomain.get("entrypoint"):
                 selected.append((domain_id, subdomain_id, subdomain))
     return selected
+
+
+def _live_payload_failed(payload: dict[str, Any]) -> bool:
+    object_type = str(payload.get("object_type", "")).lower()
+    if object_type.endswith("_error"):
+        return True
+    command_status = payload.get("command_status")
+    return isinstance(command_status, dict) and (
+        command_status.get("timed_out") is True or command_status.get("ok") is False
+    )
+
+
+def _live_audit_failure_check(domain_id: str, subdomain_id: str, message: str) -> dict[str, Any]:
+    return {
+        "id": f"audit:{domain_id}:{subdomain_id}:live_adapter_contract",
+        "status": "fail",
+        "message": message,
+    }
+
+
+def _normalise_live_audit_checks(
+    domain_id: str,
+    subdomain_id: str,
+    live: dict[str, Any],
+) -> list[dict[str, Any]]:
+    """Return fail-closed, framework-safe audit checks from a live adapter."""
+
+    checks = live.get("checks")
+    normalised: list[dict[str, Any]] = []
+
+    if checks is None:
+        if _live_payload_failed(live):
+            return [_live_audit_failure_check(domain_id, subdomain_id, "live adapter returned an error payload")]
+        return []
+    if not isinstance(checks, list):
+        return [_live_audit_failure_check(domain_id, subdomain_id, "live adapter checks must be a list")]
+
+    for index, check in enumerate(checks):
+        if not isinstance(check, dict):
+            normalised.append(
+                _live_audit_failure_check(
+                    domain_id,
+                    subdomain_id,
+                    f"live adapter check at index {index} must be a mapping",
+                )
+            )
+            continue
+        status = str(check.get("status", "")).lower()
+        if status not in VALID_LIVE_CHECK_STATUSES:
+            normalised.append(
+                _live_audit_failure_check(
+                    domain_id,
+                    subdomain_id,
+                    f"live adapter check at index {index} has invalid status {check.get('status')!r}",
+                )
+            )
+            continue
+        normalized_check = dict(check)
+        normalized_check["status"] = "warn" if status == "warning" else status
+        normalised.append(normalized_check)
+
+    if _live_payload_failed(live) and not any(check.get("status") == "fail" for check in normalised):
+        normalised.append(_live_audit_failure_check(domain_id, subdomain_id, "live adapter returned an error payload"))
+    return normalised
+
 
 def audit_payload(store: dict[str, Any], scope: str) -> dict[str, Any]:
     scope = scope or "root"
@@ -139,9 +205,13 @@ def audit_payload(store: dict[str, Any], scope: str) -> dict[str, Any]:
     checks.append(domain_affordance_config_check(store))
     checks.extend(option_config_checks(store))
 
-    for _domain_id, _subdomain_id, subdomain in _live_audit_subdomains(store, scope):
-        live = call_external_command(store, subdomain, ["audit"])
-        checks.extend(live.get("checks", []))
+    for domain_id, subdomain_id, subdomain in _live_audit_subdomains(store, scope):
+        try:
+            live = call_external_command(store, subdomain, ["audit"])
+        except XctxError as exc:
+            checks.append(_live_audit_failure_check(domain_id, subdomain_id, str(exc)))
+            continue
+        checks.extend(_normalise_live_audit_checks(domain_id, subdomain_id, live))
 
     return {
         "scope": scope,

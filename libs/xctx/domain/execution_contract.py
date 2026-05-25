@@ -41,7 +41,7 @@ def parse_plan_request(args: list[str]) -> PlanRequest:
 
     cleaned = [str(arg).strip() for arg in args if str(arg).strip()]
     if not cleaned:
-        raise XctxError(f"next valid move: {PLAN_USAGE}")
+        raise XctxError("missing plan arguments", next_moves=[PLAN_USAGE])
     operation = cleaned[0]
     target = " ".join(cleaned[1:]).strip() or None
     return PlanRequest(raw_args=tuple(cleaned), operation=operation, target=target)
@@ -52,7 +52,7 @@ def parse_execute_request(args: list[str], *, commit: bool) -> ExecuteRequest:
 
     cleaned = [str(arg).strip() for arg in args if str(arg).strip()]
     if not cleaned:
-        raise XctxError(f"next valid move: {EXECUTE_USAGE}")
+        raise XctxError("missing execute target", next_moves=[EXECUTE_USAGE])
     if len(cleaned) != 1:
-        raise XctxError("next valid move: provide exactly one plan id or receipt to execute")
+        raise XctxError("expected exactly one plan id or receipt to execute")
     return ExecuteRequest(plan_identifier=cleaned[0], commit=commit)
