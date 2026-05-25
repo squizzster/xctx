@@ -262,6 +262,46 @@ def main() -> int:
                 "bare observe targets must not use a default catch-all route; require typed IDs or explicit domain/subdomain scope",
             )
         )
+    root_guidance = (universe.get("root") or {}).get("next_move_guidance") or {}
+    scope_template = str(root_guidance.get("agent_domain_scope_template") or "")
+    if "{{agent_domain_id}}" not in scope_template:
+        findings.append(
+            finding(
+                "error",
+                "root:next_move_guidance:agent_domain_scope_template",
+                "root next-move guidance must expose the {{agent_domain_id}} scope template",
+                template=scope_template,
+            )
+        )
+    if root_guidance.get("audit_root_run_cmd") != "./xctx audit root":
+        findings.append(
+            finding(
+                "error",
+                "root:next_move_guidance:audit_root_run_cmd",
+                "root next-move guidance must include the root audit command",
+                run_cmd=root_guidance.get("audit_root_run_cmd"),
+            )
+        )
+    example_domain_ids = [str(item) for item in root_guidance.get("example_agent_domains") or []]
+    if len(example_domain_ids) < 2:
+        findings.append(
+            finding(
+                "error",
+                "root:next_move_guidance:example_agent_domains",
+                "root next-move guidance must provide at least two configured example domains",
+                examples=example_domain_ids,
+            )
+        )
+    for domain_id in example_domain_ids:
+        if domain_id not in domains:
+            findings.append(
+                finding(
+                    "error",
+                    f"root:next_move_guidance:example_domain:{domain_id}",
+                    "root next-move example references an unknown domain",
+                    agent_domain=domain_id,
+                )
+            )
 
     protocol = store.get("protocol") or {}
     command_groups = protocol.get("command_groups") or {}

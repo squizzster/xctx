@@ -432,10 +432,45 @@ def offline_subdomain_payload(store: dict[str, Any], domain_id: str, subdomain: 
     return payload
 
 
+def agent_domain_scope_guidance(
+    store: dict[str, Any],
+    domains: list[dict[str, Any]],
+) -> tuple[list[str], dict[str, Any]]:
+    root = store.get("universe", {}).get("root", {})
+    guidance = root.get("next_move_guidance") or {}
+    template = str(guidance.get("agent_domain_scope_template") or "./xctx discover {{agent_domain_id}}::")
+    audit_cmd = str(guidance.get("audit_root_run_cmd") or "./xctx audit root")
+    requested_example_ids = [str(item) for item in guidance.get("example_agent_domains") or []]
+    domains_by_id = {str(domain.get("id")): domain for domain in domains if domain.get("id")}
+
+    examples: list[str] = []
+    for domain_id in requested_example_ids:
+        domain = domains_by_id.get(domain_id)
+        if domain and domain.get("status") == "online" and domain.get("run_cmd"):
+            examples.append(str(domain["run_cmd"]))
+    for domain in domains:
+        run_cmd = str(domain.get("run_cmd") or "")
+        if domain.get("status") == "online" and run_cmd and run_cmd not in examples:
+            examples.append(run_cmd)
+        if len(examples) >= 2:
+            break
+
+    return [template, audit_cmd, *examples[:2]], {
+        "agent_domain_id": str(
+            guidance.get("agent_domain_id_context")
+            or "Replace {{agent_domain_id}} with an id from agent_domains."
+        ),
+        "agent_domain_scope_template": template,
+        "examples": examples[:2],
+    }
+
+
 def universe_discovery_payload(store: dict[str, Any]) -> dict[str, Any]:
     universe = store.get("universe", {})
     interface = universe.get("xctx_interface", {})
     domains = store.get("agent_domains", {})
+    compact_domains = [compact_domain(store, domain) for domain in domains.values()]
+    _next_moves, next_move_context = agent_domain_scope_guidance(store, compact_domains)
     discover_domains_cmd = interface.get("discover_domains_run_cmd", "./xctx discover")
     help_cmd = interface.get("help_run_cmd", "./xctx help")
     return {
@@ -460,6 +495,7 @@ def universe_discovery_payload(store: dict[str, Any]) -> dict[str, Any]:
         "command_surface": {
             "xctx": command_map_for_group(store, "xctx", "main"),
         },
+        "next_move_context": next_move_context,
         "next_moves": [
             {
                 "desc": "Discover configured agent domains in this universe.",
@@ -480,13 +516,11 @@ def universe_discovery_payload(store: dict[str, Any]) -> dict[str, Any]:
 def root_discovery_payload(store: dict[str, Any]) -> dict[str, Any]:
     root = store.get("universe", {}).get("root", {})
     domains = [compact_domain(store, domain) for domain in store.get("agent_domains", {}).values()]
-    next_moves = [domain["run_cmd"] for domain in domains if domain.get("status") == "online"]
-    if not next_moves:
-        next_moves = ["./xctx discover <agent_domain>::"]
-    next_moves.append("./xctx audit root")
+    next_moves, next_move_context = agent_domain_scope_guidance(store, domains)
     return {
         "description": selected_description(store, root),
         "agent_domains": domains,
+        "next_move_context": next_move_context,
         "next_moves": next_moves,
     }
 

@@ -269,10 +269,16 @@ def assert_root_domain_subdomain_discovery() -> None:
     assert domains["crypto_intelligence_hub"]["status"] == "down_for_maintenance"
     assert domains["options_intelligence_hub"]["repair_cmd"] == "./xctx repair offline:options_intelligence_hub"
     assert root_results["next_moves"] == [
-        "./xctx discover file_manager::",
-        "./xctx discover stock_intelligence_hub::",
+        "./xctx discover {{agent_domain_id}}::",
         "./xctx audit root",
+        "./xctx discover stock_intelligence_hub::",
+        "./xctx discover file_manager::",
     ]
+    assert root_results["next_move_context"] == {
+        "agent_domain_id": "Replace {{agent_domain_id}} with an id from agent_domains.",
+        "agent_domain_scope_template": "./xctx discover {{agent_domain_id}}::",
+        "examples": ["./xctx discover stock_intelligence_hub::", "./xctx discover file_manager::"],
+    }
 
     rejected_alias = one(["discovery"], expected_code=1)
     assert rejected_alias["ok"] is False

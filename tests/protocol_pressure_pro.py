@@ -104,9 +104,15 @@ def main() -> int:
     assert "configured_options" not in root["results"]
     assert "root_affordances" not in root["results"]
     assert root["results"]["next_moves"] == [
-        "./xctx discover file_manager::",
-        "./xctx discover stock_intelligence_hub::",
+        "./xctx discover {{agent_domain_id}}::",
         "./xctx audit root",
+        "./xctx discover stock_intelligence_hub::",
+        "./xctx discover file_manager::",
+    ]
+    assert root["results"]["next_move_context"]["agent_domain_scope_template"] == "./xctx discover {{agent_domain_id}}::"
+    assert root["results"]["next_move_context"]["examples"] == [
+        "./xctx discover stock_intelligence_hub::",
+        "./xctx discover file_manager::",
     ]
     root_domains = {item["id"] for item in root["results"]["agent_domains"]}
     assert root_domains == {

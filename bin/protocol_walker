@@ -103,6 +103,7 @@ def protocol_surface() -> dict[str, Any]:
         "root": str(ROOT),
         "config_files": [str(path.relative_to(ROOT)) for path in store.get("config_files", [])],
         "command_surface": universe.get("command_surface", {}),
+        "next_move_context": universe.get("next_move_context", {}),
         "domain_surface": {
             "agent_domain_count": len(domains),
             "agent_domains": domains,

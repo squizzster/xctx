@@ -9,6 +9,13 @@ root:
   basic_description: xctx (executable context) is an agent-facing gateway for discovering domain capabilities, observing read-only facts, auditing availability, and following lawful repair paths.
   full_description: >-
     xctx is designed for agents that start with general world knowledge but no local domain knowledge. The root surface advertises agent domains, their statuses, trusted ID boundaries, and next commands an agent can run. The protocol separates YAML capability description from external read-only entrypoints that touch real bundled data.
+  next_move_guidance:
+    agent_domain_scope_template: "./xctx discover {{agent_domain_id}}::"
+    agent_domain_id_context: Replace {{agent_domain_id}} with an id from agent_domains.
+    audit_root_run_cmd: ./xctx audit root
+    example_agent_domains:
+      - stock_intelligence_hub
+      - file_manager
 xctx_interface:
   id: xctx
   kind: executable_context_protocol
