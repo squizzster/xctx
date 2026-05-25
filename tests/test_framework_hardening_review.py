@@ -90,14 +90,22 @@ def test_audit_status_treats_malformed_checks_as_failure(monkeypatch: pytest.Mon
     monkeypatch.setattr(
         audit_command,
         "audit_payload",
-        lambda _store, _scope: {"summary": {}, "checks": ["not-a-check"], "findings": []},
+        lambda _store, _scope: {
+            "summary": {},
+            "checks": ["not-a-check", {"id": "missing_status"}, {"id": "bad_status", "status": "unknown"}],
+            "findings": [],
+        },
     )
 
     rc, payload = run_runtime_json(["audit", "root"])
 
     assert rc == 1
     assert payload["ok"] is False
-    assert payload["results"]["checks"] == ["not-a-check"]
+    assert payload["results"]["checks"] == [
+        "not-a-check",
+        {"id": "missing_status"},
+        {"id": "bad_status", "status": "unknown"},
+    ]
 
 
 def test_connector_redaction_masks_common_secret_shapes() -> None:
@@ -113,6 +121,31 @@ def test_connector_redaction_masks_common_secret_shapes() -> None:
     assert "abc.def" not in redacted
     assert "pass123" not in redacted
     assert redacted.count("<redacted>") >= 5
+
+
+def test_connector_protocol_error_fields_are_redacted() -> None:
+    ensure_libs_path()
+    from xctx.process.redaction import redact_value  # noqa: PLC0415
+    from xctx_connectors import runtime  # noqa: PLC0415
+
+    status = runtime.command_status(
+        ok=False,
+        argv=["tool", "api_key=argv-secret"],
+        error="Authorization=Bearer status-token",
+        stderr="password = stderr-secret",
+    )
+    assert "argv-secret" not in str(status)
+    assert "status-token" not in str(status)
+    assert "stderr-secret" not in str(status)
+    assert status["argv"] == ["tool", "api_key=<redacted>"]
+    assert status["error"] == "Authorization=Bearer <redacted>"
+    assert status["stderr_preview"] == "password = <redacted>"
+
+    check = runtime.audit_failure_check(None, "secret: audit-secret")
+    assert check["message"] == "secret: <redacted>"
+
+    nested = redact_value({"error": "bearer nested-token", "items": ["password=child-secret"]})
+    assert nested == {"error": "bearer <redacted>", "items": ["password=<redacted>"]}
 
 
 def test_connector_run_external_missing_executable_returns_structured_failure() -> None:

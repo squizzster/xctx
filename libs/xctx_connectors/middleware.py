@@ -13,6 +13,7 @@ from typing import Any
 from xctx.config.loader import load_store
 from xctx.config.paths import project_root_from_module
 from xctx.process.python_subprocess import python_entrypoint_argv
+from xctx.process.redaction import redact_value
 from xctx.protocol.guidance import normalize_guidance
 from xctx_connectors import runtime
 
@@ -115,7 +116,7 @@ def _passthrough(context: runtime.ConnectorContext, args: list[str], *, compact:
             "object_type": "xctx_native_passthrough_error",
             "found": False,
             "connector": runtime.connector_meta(context),
-            "requested_args": args,
+            "requested_args": redact_value(args),
             "passthrough_target": str(target),
             "command_status": runtime.command_status(
                 ok=False,
@@ -161,9 +162,9 @@ def _passthrough(context: runtime.ConnectorContext, args: list[str], *, compact:
         "object_type": "xctx_native_passthrough_error",
         "found": False,
         "connector": runtime.connector_meta(context),
-        "requested_args": args,
+        "requested_args": redact_value(args),
         "passthrough_target": str(target),
-        "target_payload": target_payload if isinstance(target_payload, dict) else {},
+        "target_payload": redact_value(target_payload) if isinstance(target_payload, dict) else {},
         "command_status": runtime.command_status(
             ok=False,
             argv=argv if include_argv else None,

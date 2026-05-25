@@ -21,3 +21,17 @@ def redact_preview(value: Any, limit: int = 500) -> str:
     for pattern in SECRET_PATTERNS:
         preview = pattern.sub(lambda match: f"{match.group('prefix')}<redacted>", preview)
     return preview
+
+
+def redact_value(value: Any, limit: int = 500) -> Any:
+    """Recursively redact common credential shapes in protocol-facing values."""
+
+    if isinstance(value, str):
+        return redact_preview(value, limit=limit)
+    if isinstance(value, list):
+        return [redact_value(item, limit=limit) for item in value]
+    if isinstance(value, tuple):
+        return [redact_value(item, limit=limit) for item in value]
+    if isinstance(value, dict):
+        return {key: redact_value(item, limit=limit) for key, item in value.items()}
+    return value

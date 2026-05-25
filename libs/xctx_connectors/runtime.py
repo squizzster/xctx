@@ -17,7 +17,7 @@ from xctx.process.limits import (
     validated_max_output_bytes,
     validated_timeout,
 )
-from xctx.process.redaction import redact_preview
+from xctx.process.redaction import redact_preview, redact_value
 from xctx.protocol.guidance import command_hints
 
 
@@ -108,9 +108,9 @@ def command_status(
         "timed_out": timed_out,
     }
     if argv is not None:
-        payload["argv"] = argv
+        payload["argv"] = redact_value(argv)
     if error:
-        payload["error"] = error
+        payload["error"] = redact_preview(error)
     if stdout is not None:
         payload["stdout_preview"] = redact_preview(stdout)
     if stderr is not None:
@@ -139,7 +139,7 @@ def audit_failure_check(context: ConnectorContext | None, message: str) -> dict[
     return {
         "id": f"audit:{domain_id}:{subdomain_id}:middleware_connector",
         "status": "fail",
-        "message": message,
+        "message": redact_preview(message),
     }
 
 
@@ -159,7 +159,7 @@ def connector_error_payload(
         "found": False,
         "connector": connector_meta(context, connector),
         "requested_command": command,
-        "requested_args": args or [],
+        "requested_args": redact_value(args or []),
         "command_status": command_status(ok=False, error=message),
         "data_boundary": "Middleware error payload. xctx received a structured object instead of raw connector failure output.",
         "next_moves": command_hints(next_moves),

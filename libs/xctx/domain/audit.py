@@ -10,10 +10,11 @@ from xctx.domain.routing import parse_ref
 from xctx.store.fingerprints import config_fingerprint_payload
 from xctx.errors import XctxError
 from xctx.ports.external_command import call_external_command
+from xctx.process.redaction import redact_preview
 from xctx.protocol.command_policy import command_surface_check
 from xctx.protocol.option_surface import option_config_checks
 
-VALID_LIVE_CHECK_STATUSES = frozenset({"pass", "fail", "warn", "warning", "skip"})
+VALID_AUDIT_CHECK_STATUSES = frozenset({"pass", "fail", "warn", "warning", "skip"})
 
 
 ## Protocol boundary: audits prove framework/config/adapter health; repairs are
@@ -127,8 +128,17 @@ def _live_audit_failure_check(domain_id: str, subdomain_id: str, message: str) -
     return {
         "id": f"audit:{domain_id}:{subdomain_id}:live_adapter_contract",
         "status": "fail",
-        "message": message,
+        "message": redact_preview(message),
     }
+
+
+def audit_check_failed(check: Any) -> bool:
+    """Return true when an audit check is malformed or explicitly failing."""
+
+    if not isinstance(check, dict):
+        return True
+    status = str(check.get("status", "")).lower()
+    return status == "fail" or status not in VALID_AUDIT_CHECK_STATUSES
 
 
 def _normalise_live_audit_checks(
@@ -159,7 +169,7 @@ def _normalise_live_audit_checks(
             )
             continue
         status = str(check.get("status", "")).lower()
-        if status not in VALID_LIVE_CHECK_STATUSES:
+        if status not in VALID_AUDIT_CHECK_STATUSES:
             normalised.append(
                 _live_audit_failure_check(
                     domain_id,
