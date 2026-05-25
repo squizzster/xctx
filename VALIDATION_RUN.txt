@@ -1,81 +1,52 @@
-xctx v4.2 boundary-hardened validation run
+xctx 4.2.3 masterclass hardening validation
+===========================================
 
-Run metadata:
+Environment used in this sandbox:
+- Python: 3.12.13
+- PYTHONPATH=libs
+- PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 for deterministic subprocess behavior in this sandbox
+- Revalidated after removing the old xctx.domain.agent_domains and xctx.protocol.options import facades
 
-  base commit: 29d16d0
-  working tree: release-engineering changes for packaging/install smoke
-  date_utc: 2026-05-25T02:46:56Z
-  python: Python 3.12.13
+Validated commands:
 
-Commands executed from repository root:
+1. Syntax/bytecode check
+   PYTHONPATH=libs python -m compileall -q bin connector_supervisor.py examples libs tests
+   Result: PASS
 
-  make release-test
-  git diff --check
+2. Default fast suite (unit/release-safe, excludes integration and slow by pytest addopts)
+   PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=libs python -m pytest -q
+   Result: 36 passed, 1 skipped, 41 deselected
 
-Results:
+3. Discover/observe integration boundary
+   PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=libs python -m pytest -q tests/test_observe_discover_boundary.py -o addopts=''
+   Result: 4 passed
 
-  pytest: 57 passed in 27.28s
-  pytest collected: 57 tests
-  exit code: 0
-  git diff --check: ok
-  YAML validator: collected inside pytest
-  compileall: collected inside pytest
-  package install smoke: collected inside pytest
-  child-process cleanup invariant: collected inside pytest
-  protocol smoke/pressure/connector/boundary scripts: collected inside pytest
+4. Connector-supervisor integration boundary
+   PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=libs python -m pytest -q tests/test_protocol_connector_supervisor.py -o addopts=''
+   Result: 14 passed
 
-Root/universe leak guard:
+5. Broad smoke suite
+   PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=libs python -m pytest -q tests/test_smoke_protocol.py -o addopts=''
+   Result: 10 passed
 
-  ./xctx --json: clean
-  ./xctx --json help: clean
-  ./xctx --json --version: clean
-  ./xctx --json discover: clean
+6. Protocol pressure suite
+   PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=libs python -m pytest -q tests/test_protocol_pressure_pro.py -o addopts=''
+   Result: 13 passed
 
-Forbidden on those root/universe surfaces:
+7. Package install smoke
+   Disposable /tmp venv:
+     python -m pip install setuptools wheel
+     python -m pip install --no-build-isolation --no-deps --target /tmp/.../install-smoke-target-clean /tmp/.../xctx-pro-4.2.3-masterclass
+   Installed runtime checks:
+     PYTHONPATH=/tmp/.../install-smoke-target-clean python3 /tmp/.../install-smoke-target-clean/bin/xctx --json discover
+     PYTHONPATH=/tmp/.../install-smoke-target-clean python3 -m xctx --json discover
+     PYTHONPATH=/tmp/.../install-smoke-target-clean python3 /tmp/.../install-smoke-target-clean/bin/xctx --json observe stock_intelligence_hub::market_data_gateway AAPL --bars 1
+   Removed facade checks:
+     test ! -e /tmp/.../install-smoke-target-clean/xctx/domain/agent_domains.py
+     test ! -e /tmp/.../install-smoke-target-clean/xctx/protocol/options.py
+   Result: PASS
 
-  --bars
-  --calendar-days
-  --name
-  configured_options
-  search_entity_instrument
-  search_market_series
-  latest_price
-  latest-price
-
-Scoped market-data surface still advertises the market-only range options:
-
-  ./xctx --json discover stock_intelligence_hub::market_data_gateway
-
-  configured_options.observe:
-    --bars
-    --calendar-days
-    --export
-
-Representative positive probes:
-
-  ./xctx --json discover stock_intelligence_hub::search_entity_instrument Apple
-  ./xctx --json discover stock_intelligence_hub::search_entity_instrument FB
-  ./xctx --json discover stock_intelligence_hub::market_data_gateway latest_price AAPL
-  ./xctx --json observe stock_intelligence_hub::market_data_gateway instrument:aapl --bars 5
-  ./xctx --json observe stock_intelligence_hub::market_data_gateway AAPL --calendar-days 50
-  ./xctx --json discover stock_intelligence_hub::search_filing_form 10-K
-  ./xctx --json discover file_manager::home_directory list_files --limit 1
-  ./xctx --json discover file_manager::home_directory list_files --limit 1 --shape full
-  ./xctx --json discover file_manager::home_directory file:README.txt
-  ./xctx --json observe file_manager::home_directory file:README.txt
-  ./xctx --json observe file:README.txt
-  ./xctx --json audit file_manager::home_directory
-
-Middleware connector guarantee:
-
-  connector.shape_guarantee.xctx_receives = single_json_object_for_live_data
-  connector.shape_guarantee.raw_external_output = never_returned_unparsed
-  external-command contract = always_json_object
-  pass-through failure contract = pass_through_json_object
-
-Representative refusal probes:
-
-  ./xctx --json discover search_filing_family annual
-  ./xctx --json discover --name Apple
-  ./xctx --json observe form:10-K --bars 5
-  ./xctx --json observe stock_intelligence_hub::market_data_gateway market_series:aapl:daily --bars 3 --calendar-days 7
+Notes:
+- The package-install smoke remains opt-in for default local runs because repeated venv/pip subprocesses are sandbox-sensitive.
+- In this shell, the active Python interpreter had PyYAML but no pip module, so the pytest wrapper for the package-install smoke could not be run verbatim. The equivalent build/install/runtime checks above used a disposable /tmp venv for pip/build backend work and the active interpreter for installed xctx execution.
+- Integration tests are intentionally runnable file-by-file for constrained sandboxes and normal CI isolation.

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Protocol smoke checks for the hardened v4.2 xctx proof-of-concept."""
+"""Protocol smoke checks for the hardened v4.2 xctx reference implementation."""
 
 from __future__ import annotations
 
@@ -8,6 +8,7 @@ import io
 import json
 import os
 import re
+import signal
 import subprocess
 import sys
 from pathlib import Path
@@ -16,11 +17,13 @@ from typing import Iterable
 ROOT = Path(__file__).resolve().parents[1]
 LIBS = ROOT / "libs"
 XCTX = ROOT / "xctx"
+FILE_MANAGER_README = ROOT / "data" / "file_manager_home" / "README.txt"
 
 if str(LIBS) not in sys.path:
     sys.path.insert(0, str(LIBS))
 
 import yaml  # noqa: E402
+from xctx.process.capture import capture_process  # noqa: E402
 from xctx.process.runtime import main as xctx_main  # noqa: E402
 
 
@@ -122,7 +125,17 @@ def assert_modular_layout() -> None:
         "bin/xctx",
         "libs/xctx/cli.py",
         "libs/xctx/process/runtime.py",
-        "libs/xctx/domain/agent_domains.py",
+        "libs/xctx/domain/actions.py",
+        "libs/xctx/domain/audit.py",
+        "libs/xctx/domain/core.py",
+        "libs/xctx/domain/discovery.py",
+        "libs/xctx/domain/observation.py",
+        "libs/xctx/domain/planning.py",
+        "libs/xctx/domain/repair.py",
+        "libs/xctx/domain/routing.py",
+        "libs/xctx/protocol/option_encoding.py",
+        "libs/xctx/protocol/option_specs.py",
+        "libs/xctx/protocol/option_surface.py",
         "libs/xctx/ports/external_command.py",
         "examples/stock_intelligence_hub/README.md",
         "examples/stock_intelligence_hub/adapters/equity_filings.py",
@@ -153,6 +166,8 @@ def assert_modular_layout() -> None:
     ]
     for rel in expected:
         assert (ROOT / rel).exists(), rel
+    for rel in ("libs/xctx/domain/agent_domains.py", "libs/xctx/protocol/options.py"):
+        assert not (ROOT / rel).exists(), rel
     launcher = (ROOT / "bin" / "xctx").read_text(encoding="utf-8")
     assert "from xctx.cli import main" in launcher
 
@@ -194,15 +209,21 @@ def assert_protocol_is_config_driven() -> None:
     assert filing_subdomain["actions"]["list_forms"]["collection"]["cursor"] == "optional"
     assert market_subdomain["actions"]["list_instruments"]["collection"]["cursor"] == "optional"
 
-    runtime = (ROOT / "libs" / "xctx" / "domain" / "agent_domains.py").read_text(encoding="utf-8")
-    for forbidden_literal in ("stock_intelligence_hub", "market_data_gateway", "equity_filing"):
-        assert forbidden_literal not in runtime, forbidden_literal
     for core_rel in (
         "libs/xctx/process/parser.py",
         "libs/xctx/commands/observe.py",
-        "libs/xctx/domain/agent_domains.py",
+        "libs/xctx/domain/core.py",
+        "libs/xctx/domain/routing.py",
+        "libs/xctx/domain/discovery.py",
+        "libs/xctx/domain/observation.py",
+        "libs/xctx/domain/audit.py",
+        "libs/xctx/domain/repair.py",
+        "libs/xctx/domain/planning.py",
         "libs/xctx/commands/discover.py",
         "libs/xctx/protocol/command_policy.py",
+        "libs/xctx/protocol/option_encoding.py",
+        "libs/xctx/protocol/option_specs.py",
+        "libs/xctx/protocol/option_surface.py",
     ):
         text = (ROOT / core_rel).read_text(encoding="utf-8")
         for forbidden_literal in (
@@ -489,7 +510,7 @@ def assert_scoped_affordance_routing() -> None:
 
     apple_name_shortcut = one(["discover", "--name", "Apple"], expected_code=1)
     assert apple_name_shortcut["ok"] is False
-    assert "use a scoped discovery action" in apple_name_shortcut["error"]
+    assert "unrecognized arguments: --name" in apple_name_shortcut["error"]
 
     apple_full = one(["discover", "stock_intelligence_hub::market_data_gateway", "search_entity_instrument", "Apple"])
     live = apple_full["results"]["live_data"]
@@ -657,7 +678,7 @@ def assert_observe_audit_repair() -> None:
 
     audit = one(["audit", "root"])
     assert audit["record_type"] == "audit"
-    assert audit["results"]["summary"]["checks"] == 8
+    assert audit["results"]["summary"]["checks"] == 9
     root_audit_text = json.dumps(audit, sort_keys=True)
     for forbidden in (
         "aapl",
@@ -784,8 +805,9 @@ def assert_connector_supervisor_middleware() -> None:
     assert discovered_file_live["object_type"] == "external_command_filesystem_file_discovery"
     assert guarantee(discovered_file_live["connector"])["success_shape"] == "domain_object"
     assert discovered_file_live["id"] == "file:README.txt"
+    expected_readme_bytes = len(FILE_MANAGER_README.read_bytes())
     assert discovered_file_live["type"] == "ASCII text"
-    assert discovered_file_live["size_bytes"] == 237
+    assert discovered_file_live["size_bytes"] == expected_readme_bytes
     assert "file_id" not in discovered_file_live
     assert "file_type" not in discovered_file_live
     assert "external_commands" not in discovered_file_live
@@ -877,40 +899,81 @@ def assert_plan_execute_other_and_output() -> None:
     tty_yaml = run_yaml_engine(["discover"], stdout=TtyStringIO())
     assert tty_yaml[0]["domain_level"] == "root"
 
-    cli = subprocess.run([str(XCTX), "--json", "discover"], cwd=ROOT, text=True, capture_output=True, check=False, timeout=15)
-    assert cli.returncode == 0, cli.stderr + cli.stdout
+    cli = capture_process([str(XCTX), "--json", "discover"], cwd=ROOT, timeout=15, max_output_bytes=65536)
+    assert cli.returncode == 0 and not cli.timed_out, cli.stderr + cli.stdout
     assert cli.stderr == ""
     assert json.loads(cli.stdout.splitlines()[0])["domain_level"] == "root"
 
-    conflict = subprocess.run([str(XCTX), "--json", "--yaml", "discover"], cwd=ROOT, text=True, capture_output=True, check=False, timeout=15)
-    assert conflict.returncode == 1, conflict.stderr + conflict.stdout
+    conflict = capture_process([str(XCTX), "--json", "--yaml", "discover"], cwd=ROOT, timeout=15, max_output_bytes=65536)
+    assert conflict.returncode == 1 and not conflict.timed_out, conflict.stderr + conflict.stdout
     assert conflict.stderr == ""
     payload = json.loads(conflict.stdout.splitlines()[0])
     assert payload["ok"] is False
     assert "choose either --json or --yaml" in payload["error"]
 
 
+
+SMOKE_CASES = [
+    ("modular_layout", "[smoke] modular layout", assert_modular_layout),
+    ("protocol_is_config_driven", "[smoke] config-driven protocol", assert_protocol_is_config_driven),
+    ("plan_execute_other_and_output", "[smoke] plan/execute/output", assert_plan_execute_other_and_output),
+    ("root_domain_subdomain_discovery", "[smoke] root/domain/subdomain discovery", assert_root_domain_subdomain_discovery),
+    ("scoped_filing_affordance_routing", "[smoke] scoped filing affordance routing", assert_scoped_filing_affordance_routing),
+    ("scoped_market_affordance_routing", "[smoke] scoped market affordance routing", assert_scoped_market_affordance_routing),
+    ("connector_supervisor_middleware", "[smoke] connector supervisor middleware", assert_connector_supervisor_middleware),
+    ("market_observe_range", "[smoke] market observe/range", assert_market_observe_range),
+    ("filing_and_file_observe", "[smoke] filing/file observe", assert_filing_and_file_observe),
+    ("audit_repair", "[smoke] audit/repair", assert_audit_repair),
+]
+
+
+def smoke_case_map() -> dict[str, object]:
+    return {name: func for name, _label, func in SMOKE_CASES}
+
+
+def run_smoke_case(case_name: str) -> None:
+    cases = smoke_case_map()
+    if case_name not in cases:
+        raise AssertionError(f"unknown smoke case: {case_name}")
+    cases[case_name]()
+
+
+def run_smoke_case_subprocess(case_name: str, *, timeout: float = 240) -> None:
+    env = os.environ.copy()
+    pythonpath = env.get("PYTHONPATH", "")
+    env["PYTHONPATH"] = str(LIBS) if not pythonpath else str(LIBS) + os.pathsep + pythonpath
+    proc = subprocess.Popen(
+        [sys.executable, str(Path(__file__).resolve()), "--case", case_name],
+        cwd=ROOT,
+        env=env,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        start_new_session=(os.name == "posix"),
+    )
+    try:
+        stdout, stderr = proc.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired as exc:
+        if os.name == "posix":
+            try:
+                os.killpg(proc.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+        else:
+            proc.kill()
+        stdout, stderr = proc.communicate(timeout=5)
+        raise AssertionError(f"smoke case timed out: {case_name}\nSTDOUT={stdout}\nSTDERR={stderr}") from exc
+    assert proc.returncode == 0, stderr + stdout
+
+
 def main() -> int:
-    print("[smoke] modular layout", flush=True)
-    assert_modular_layout()
-    print("[smoke] config-driven protocol", flush=True)
-    assert_protocol_is_config_driven()
-    print("[smoke] root/domain/subdomain discovery", flush=True)
-    assert_root_domain_subdomain_discovery()
-    print("[smoke] scoped filing affordance routing", flush=True)
-    assert_scoped_filing_affordance_routing()
-    print("[smoke] scoped market affordance routing", flush=True)
-    assert_scoped_market_affordance_routing()
-    print("[smoke] connector supervisor middleware", flush=True)
-    assert_connector_supervisor_middleware()
-    print("[smoke] market observe/range", flush=True)
-    assert_market_observe_range()
-    print("[smoke] filing/file observe", flush=True)
-    assert_filing_and_file_observe()
-    print("[smoke] audit/repair", flush=True)
-    assert_audit_repair()
-    print("[smoke] plan/execute/output", flush=True)
-    assert_plan_execute_other_and_output()
+    if len(sys.argv) == 3 and sys.argv[1] == "--case":
+        run_smoke_case(sys.argv[2])
+        return 0
+
+    for case_name, label, _func in SMOKE_CASES:
+        print(label, flush=True)
+        run_smoke_case_subprocess(case_name)
     print("hardened xctx protocol smoke checks passed", flush=True)
     return 0
 

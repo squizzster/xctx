@@ -30,6 +30,7 @@ from xctx_connectors.domains.file_manager.external_command_adapter import _safe_
 
 DOMAIN_ADAPTER_MODULE = "xctx_connectors.domains.file_manager.external_command_adapter"
 MARKET_ADAPTER_ENTRYPOINT = "examples/stock_intelligence_hub/adapters/market_data_gateway.py"
+FILE_MANAGER_README = ROOT / "data" / "file_manager_home" / "README.txt"
 
 
 def assert_shape_guarantee(connector: dict, *, contract: str, failure_shape: str) -> None:
@@ -297,7 +298,7 @@ def test_xctx_native_passthrough_failure_hides_argv_until_full_shape() -> None:
     full_live = full["results"]["live_data"]
     assert full_live["object_type"] == "xctx_native_passthrough_error"
     assert full_live["command_status"]["ok"] is False
-    assert full_live["command_status"]["argv"][1].endswith(MARKET_ADAPTER_ENTRYPOINT)
+    assert any(part.endswith(MARKET_ADAPTER_ENTRYPOINT) for part in full_live["command_status"]["argv"])
 
 
 def test_external_command_filesystem_discovery_and_observation() -> None:
@@ -332,8 +333,9 @@ def test_external_command_filesystem_discovery_and_observation() -> None:
     assert discovered_file_live["object_type"] == "external_command_filesystem_file_discovery"
     assert_shape_guarantee(discovered_file_live["connector"], contract="always_json_object", failure_shape="xctx_connector_error")
     assert discovered_file_live["id"] == "file:README.txt"
+    expected_readme_bytes = len(FILE_MANAGER_README.read_bytes())
     assert discovered_file_live["type"] == "ASCII text"
-    assert discovered_file_live["size_bytes"] == 237
+    assert discovered_file_live["size_bytes"] == expected_readme_bytes
     assert discovered_file_live["observe_cmd"] == "./xctx observe file_manager::home_directory file:README.txt"
     assert "file_id" not in discovered_file_live
     assert "file_type" not in discovered_file_live
@@ -365,7 +367,7 @@ def test_external_command_filesystem_discovery_and_observation() -> None:
     assert observed_live["command_status"]["ok"] is True
     assert observed_live["file_type"]
     assert observed_live["content"]["available"] is True
-    assert observed_live["content"]["bytes_returned"] == 237
+    assert observed_live["content"]["bytes_returned"] == expected_readme_bytes
     assert "This is a bundled file-manager demo fixture" in observed_live["content"]["text"]
 
 

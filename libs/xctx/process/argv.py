@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import shlex
 
 
 @dataclass(frozen=True)
@@ -45,5 +46,5 @@ def extract_global_options(argv: list[str]) -> ArgvSelection:
         output_format=output_format,
         output_error=output_error,
         detail=detail,
-        cmdline_arg=" ".join(argv),
+        cmdline_arg=shlex.join(argv),
     )

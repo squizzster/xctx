@@ -68,11 +68,13 @@ def descendant_rows(root_pid: int, rows: list[ProcessRow]) -> list[ProcessRow]:
 def release_gate_process_rows(rows: list[ProcessRow] | None = None) -> list[ProcessRow]:
     rows = rows or process_rows()
     current_pid = os.getpid()
+    current_pgid = os.getpgrp() if hasattr(os, "getpgrp") else None
     return [
         row
         for row in rows
         if row.pid != current_pid
         and row.ppid != current_pid
+        and (current_pgid is None or row.pgid != current_pgid)
         and any(pattern in row.cmd for pattern in RELEASE_GATE_PATTERNS)
     ]
 
@@ -91,6 +93,8 @@ def kill_process_rows(rows: list[ProcessRow]) -> None:
             pass
     for row in rows:
         if row.pid in {0, 1, current_pid}:
+            continue
+        if current_pgid is not None and row.pgid == current_pgid:
             continue
         try:
             os.kill(row.pid, signal.SIGKILL)

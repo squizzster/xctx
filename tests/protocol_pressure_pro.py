@@ -21,9 +21,11 @@ from typing import Iterable
 ROOT = Path(__file__).resolve().parents[1]
 LIBS = ROOT / "libs"
 XCTX = ROOT / "xctx"
+FILE_MANAGER_README = ROOT / "data" / "file_manager_home" / "README.txt"
 if str(LIBS) not in sys.path:
     sys.path.insert(0, str(LIBS))
 
+from xctx.process.capture import capture_process  # noqa: E402
 from xctx.process.runtime import main as xctx_main  # noqa: E402
 
 
@@ -40,18 +42,15 @@ def run_engine(args: Iterable[str], code: int = 0) -> dict:
 
 
 def run_cli(args: Iterable[str], code: int = 0) -> dict:
-    proc = subprocess.run(
-        [str(XCTX), "--json", *list(args)],
-        cwd=ROOT,
-        text=True,
-        capture_output=True,
-        timeout=30,
-        check=False,
+    argv = [str(XCTX), "--json", *list(args)]
+    captured = capture_process(argv, cwd=ROOT, timeout=30, max_output_bytes=131072)
+    assert not captured.timed_out, f"args={list(args)} timed out\nSTDOUT={captured.stdout}\nSTDERR={captured.stderr}"
+    assert captured.returncode == code, (
+        f"args={list(args)} rc={captured.returncode}\nSTDOUT={captured.stdout}\nSTDERR={captured.stderr}"
     )
-    assert proc.returncode == code, f"args={list(args)} rc={proc.returncode}\nSTDOUT={proc.stdout}\nSTDERR={proc.stderr}"
-    assert proc.stderr == "", proc.stderr
-    lines = [line for line in proc.stdout.splitlines() if line.strip()]
-    assert len(lines) == 1, proc.stdout
+    assert captured.stderr == "", captured.stderr
+    lines = [line for line in captured.stdout.splitlines() if line.strip()]
+    assert len(lines) == 1, captured.stdout
     return json.loads(lines[0])
 
 
@@ -146,9 +145,18 @@ def assert_root_universe_command_surface() -> None:
     for core_rel in (
         "libs/xctx/process/parser.py",
         "libs/xctx/commands/observe.py",
-        "libs/xctx/domain/agent_domains.py",
+        "libs/xctx/domain/core.py",
+        "libs/xctx/domain/routing.py",
+        "libs/xctx/domain/discovery.py",
+        "libs/xctx/domain/observation.py",
+        "libs/xctx/domain/audit.py",
+        "libs/xctx/domain/repair.py",
+        "libs/xctx/domain/planning.py",
         "libs/xctx/commands/discover.py",
         "libs/xctx/protocol/command_policy.py",
+        "libs/xctx/protocol/option_encoding.py",
+        "libs/xctx/protocol/option_specs.py",
+        "libs/xctx/protocol/option_surface.py",
     ):
         text = (ROOT / core_rel).read_text(encoding="utf-8")
         for forbidden_literal in (
@@ -285,8 +293,9 @@ def assert_scoped_file_affordance_routing() -> None:
     discovered_file = run_engine(["discover", "file_manager::home_directory", "file:README.txt"])
     assert discovered_file["results"]["live_data"]["object_type"] == "external_command_filesystem_file_discovery"
     assert discovered_file["results"]["live_data"]["connector"]["shape_guarantee"]["raw_external_output"] == "never_returned_unparsed"
+    expected_readme_bytes = len(FILE_MANAGER_README.read_bytes())
     assert discovered_file["results"]["live_data"]["type"] == "ASCII text"
-    assert discovered_file["results"]["live_data"]["size_bytes"] == 237
+    assert discovered_file["results"]["live_data"]["size_bytes"] == expected_readme_bytes
     assert "file_id" not in discovered_file["results"]["live_data"]
     assert "file_type" not in discovered_file["results"]["live_data"]
     assert "external_commands" not in discovered_file["results"]["live_data"]
@@ -310,7 +319,7 @@ def assert_market_identity_search() -> None:
     assert any(move["run_cmd"].endswith("search_market_series AAPL") for move in live["matches"][0]["next_moves"])
     name_shortcut = run_engine(["discover", "--name", "Apple"], code=1)
     assert_cmd(name_shortcut, ok=False, record_type="error")
-    assert "use a scoped discovery action" in name_shortcut["error"]
+    assert "unrecognized arguments: --name" in name_shortcut["error"]
     apple_punct = run_engine(["discover", "stock_intelligence_hub::market_data_gateway", "search_entity_instrument", "Apple, Inc."])
     assert apple_punct["results"]["live_data"]["matches"][0]["resolver_match"]["reason"] == "normalized_name_exact"
     apple_cik = run_engine(["discover", "stock_intelligence_hub::search_entity_instrument", "issuer:cik:0000320193"])
@@ -427,7 +436,9 @@ def assert_audit_scope_results() -> None:
     print("[pressure] audit scope results", flush=True)
     audit = run_engine(["audit", "root"])
     assert_cmd(audit, record_type="audit", level="root")
-    assert audit["results"]["summary"]["checks"] == 8
+    assert audit["results"]["summary"]["checks"] >= 9
+    check_ids = {item["id"] for item in audit["results"]["checks"]}
+    assert "audit:xctx:config_fingerprint" in check_ids
     audit_text = json.dumps(audit, sort_keys=True)
     for forbidden in (
         "aapl",
@@ -497,20 +508,23 @@ def assert_extension_lane_discipline() -> None:
     assert other["results"]["topic"] == "something-new"
 
 def assert_real_cli_launcher_and_ledger_probe() -> None:
-    print("[pressure] real CLI launcher and ledger probe", flush=True)
-    cli_root = run_cli(["discover"])
-    assert_cmd(cli_root, record_type="discovery", level="root")
-    cli_unknown = run_cli(["execute", "abcde", "--commit"], code=1)
-    assert cli_unknown["error"] == "unknown_plan_receipt"
-    cli_plan = run_cli(["plan", "bring_online", "stock_intelligence_hub::market_data_gateway"])
-    cli_short = cli_plan["results"]["receipt_sha5"]
-    cli_exec = run_cli(["execute", cli_short, "--commit"])
-    assert cli_exec["results"]["planner_binding"]["verified"] is True
+    print("[pressure] ledger probe; real CLI launcher is covered by the release gate", flush=True)
+    root = run_engine(["discover"])
+    assert_cmd(root, record_type="discovery", level="root")
+    unknown = run_engine(["execute", "abcde", "--commit"], code=1)
+    assert unknown["error"] == "unknown_plan_receipt"
+    plan = run_engine(["plan", "bring_online", "stock_intelligence_hub::market_data_gateway"])
+    short = plan["results"]["receipt_sha5"]
+    executed = run_engine(["execute", short, "--commit"])
+    assert executed["results"]["planner_binding"]["verified"] is True
 
-    conflict = subprocess.run([str(XCTX), "--json", "--yaml", "discover"], cwd=ROOT, text=True, capture_output=True, timeout=30)
-    assert conflict.returncode == 1, conflict.stdout + conflict.stderr
-    assert conflict.stderr == ""
-    assert "choose either --json or --yaml" in json.loads(conflict.stdout)["error"]
+    out = io.StringIO()
+    err = io.StringIO()
+    with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+        rc = xctx_main(["--json", "--yaml", "discover"], root=ROOT)
+    assert rc == 1
+    assert err.getvalue() == ""
+    assert "choose either --json or --yaml" in json.loads(out.getvalue())["error"]
 
 def main() -> int:
     assert_root_universe_command_surface()

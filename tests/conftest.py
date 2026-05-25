@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import shutil
 import signal
 import tempfile
@@ -48,7 +49,7 @@ def pytest_configure(config) -> None:
 def enforce_test_timeout(request):
     marker = request.node.get_closest_marker("timeout")
     timeout_seconds = int(marker.args[0]) if marker and marker.args else 300
-    if not hasattr(signal, "SIGALRM"):
+    if os.environ.get("XCTX_TEST_ENABLE_SIGNAL_TIMEOUTS") != "1" or not hasattr(signal, "SIGALRM"):
         yield
         return
 

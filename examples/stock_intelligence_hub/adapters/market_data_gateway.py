@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Read-only market data gateway entrypoint used by xctx.
 
-This proof-of-concept exposes canonical instrument identity and bundled OHLCV
+This reference adapter exposes canonical instrument identity and bundled OHLCV
 market-series lookup. It emits one JSON object; xctx wraps it in the protocol
 envelope.
 """

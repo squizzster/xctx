@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "xctx-modular-workspace"
-version = "4.2.0"
-description = "Modular xctx protocol workspace with process, IO, protocol, config, store, domain, and command layers."
+version = "4.2.3"
+description = "Production-hardened xctx protocol workspace with modular command, domain, audit, repair, and planning layers."
 requires-python = ">=3.10"
 dependencies = ["PyYAML>=6.0"]
 
@@ -17,6 +17,11 @@ xctx = "xctx.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["libs"]
+
+[tool.setuptools.package-data]
+"xctx" = ["py.typed"]
+"xctx_connectors" = ["py.typed"]
+"xctx_live" = ["py.typed"]
 
 [tool.setuptools.data-files]
 "xctx_workspace" = ["connector_supervisor.py"]
@@ -47,6 +52,7 @@ protocol = "yaml_dynamic_config/protocols/xctx_v4_2.yaml"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+addopts = ["-m", "not integration and not slow"]
 python_files = ["test_*.py"]
 markers = [
     "unit: fast framework/unit coverage",

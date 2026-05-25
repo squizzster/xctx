@@ -12,40 +12,40 @@ pytestmark = [pytest.mark.integration, pytest.mark.release, pytest.mark.timeout(
 
 
 def test_smoke_modular_layout() -> None:
-    smoke.assert_modular_layout()
+    smoke.run_smoke_case("modular_layout")
 
 
 def test_smoke_protocol_is_config_driven() -> None:
-    smoke.assert_protocol_is_config_driven()
+    smoke.run_smoke_case("protocol_is_config_driven")
 
 
 def test_smoke_root_domain_subdomain_discovery() -> None:
-    smoke.assert_root_domain_subdomain_discovery()
+    smoke.run_smoke_case("root_domain_subdomain_discovery")
 
 
 def test_smoke_scoped_filing_affordance_routing() -> None:
-    smoke.assert_scoped_filing_affordance_routing()
+    smoke.run_smoke_case("scoped_filing_affordance_routing")
 
 
 def test_smoke_scoped_market_affordance_routing() -> None:
-    smoke.assert_scoped_market_affordance_routing()
+    smoke.run_smoke_case("scoped_market_affordance_routing")
 
 
 def test_smoke_connector_supervisor_middleware() -> None:
-    smoke.assert_connector_supervisor_middleware()
+    smoke.run_smoke_case("connector_supervisor_middleware")
 
 
 def test_smoke_market_observe_range() -> None:
-    smoke.assert_market_observe_range()
+    smoke.run_smoke_case("market_observe_range")
 
 
 def test_smoke_filing_and_file_observe() -> None:
-    smoke.assert_filing_and_file_observe()
+    smoke.run_smoke_case("filing_and_file_observe")
 
 
 def test_smoke_audit_repair() -> None:
-    smoke.assert_audit_repair()
+    smoke.run_smoke_case("audit_repair")
 
 
 def test_smoke_plan_execute_other_and_output() -> None:
-    smoke.assert_plan_execute_other_and_output()
+    smoke.run_smoke_case("plan_execute_other_and_output")

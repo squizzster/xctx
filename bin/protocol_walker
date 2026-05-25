@@ -15,16 +15,13 @@ if str(LIBS) not in sys.path:
 ## Protocol boundary: this walker reads configured xctx surfaces only.
 ## Domain-pack behavior remains in scoped YAML and adapter entrypoints.
 from xctx.config.loader import load_store  # noqa: E402
-from xctx.domain.agent_domains import (  # noqa: E402
-    compact_domain,
-    compact_subdomain,
-    iter_domain_action_configs,
-    universe_discovery_payload,
-)
+from xctx.domain.actions import iter_domain_action_configs  # noqa: E402
+from xctx.domain.core import compact_domain, compact_subdomain  # noqa: E402
+from xctx.domain.discovery import universe_discovery_payload  # noqa: E402
 from xctx.io.stdout import write_stdout_record  # noqa: E402
 from xctx.protocol.accessors import protocol_version  # noqa: E402
 from xctx.protocol.descriptions import selected_description  # noqa: E402
-from xctx.protocol.options import target_option_surface  # noqa: E402
+from xctx.protocol.option_surface import target_option_surface  # noqa: E402
 
 
 def _public_mapping(value: dict[str, Any]) -> dict[str, Any]:

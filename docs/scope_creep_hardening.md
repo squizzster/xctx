@@ -200,9 +200,9 @@ symbol
 
 Those stock-domain tokens live in stock YAML, stock adapters, docs, and tests only.
 
-`--name` is separately guarded as a root-surface publication leak: the parser can
-accept it to return an explicit protocol refusal, but root/help/version/discover
-must not advertise it as an available root move.
+`--name` is separately guarded as a removed root-surface relic: the parser no
+longer accepts it, and root/help/version/discover must not advertise it as an
+available root move.
 
 ## Middleware Boundary
 

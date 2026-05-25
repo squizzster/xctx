@@ -15,7 +15,7 @@ pytestmark = [pytest.mark.unit, pytest.mark.release, pytest.mark.timeout(60)]
 def test_audit_scope_validation_fails_closed() -> None:
     ensure_libs_path()
     from xctx.config.loader import load_store  # noqa: PLC0415
-    from xctx.domain.agent_domains import audit_domain_level, audit_payload  # noqa: PLC0415
+    from xctx.domain.audit import audit_domain_level, audit_payload  # noqa: PLC0415
     from xctx.errors import XctxError  # noqa: PLC0415
 
     store = load_store(root=ROOT)
@@ -44,7 +44,7 @@ def test_audit_scope_validation_fails_closed() -> None:
 def test_option_audit_detects_duplicates_before_dedupe() -> None:
     ensure_libs_path()
     from xctx.config.loader import load_store  # noqa: PLC0415
-    from xctx.protocol.options import option_config_checks  # noqa: PLC0415
+    from xctx.protocol.option_surface import option_config_checks  # noqa: PLC0415
 
     store = copy.deepcopy(load_store(root=ROOT))
     domain = next(iter(store["agent_domains"].values()))

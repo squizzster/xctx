@@ -2,9 +2,9 @@ id: stock_intelligence_hub
 kind: agent_domain
 status: online
 health: degraded_by_offline_subdomains
-basic_description: Equity intelligence domain. The active proof-of-concept supports market-data instrument identity/series discovery and EDGAR filing taxonomy discovery.
+basic_description: Equity intelligence domain. The active reference implementation supports market-data instrument identity/series discovery and EDGAR filing taxonomy discovery.
 full_description: >-
-  stock_intelligence_hub is the trusted namespace for equity-company intelligence. Its online proof-of-concept deliberately keeps the real surface narrow: market-data instrument identity lookup, bundled OHLCV market-series lookup, and filing taxonomy lookup. The online subdomains share canonical instrument identifiers, so an agent can safely move from a discovered company to filing questions without inventing IDs.
+  stock_intelligence_hub is the trusted namespace for equity-company intelligence. Its online reference implementation deliberately keeps the real surface narrow: market-data instrument identity lookup, bundled OHLCV market-series lookup, and filing taxonomy lookup. The online subdomains share canonical instrument identifiers, so an agent can safely move from a discovered company to filing questions without inventing IDs.
 canonical_identity_policy:
   trusted_id_scope: stock_intelligence_hub
   instrument_id_format: instrument:<lowercase_primary_ticker>

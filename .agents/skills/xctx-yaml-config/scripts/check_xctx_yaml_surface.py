@@ -183,7 +183,7 @@ def main() -> int:
     try:
         from xctx.config.loader import load_store
         from xctx.protocol.actions import action_matches
-        from xctx.protocol.options import option_config_checks, option_surface, target_option_surface
+        from xctx.protocol.option_surface import option_config_checks, option_surface, target_option_surface
     except Exception as exc:  # pragma: no cover - defensive CLI guard
         print(json.dumps({"ok": False, "error": f"import_failed: {exc}"}, indent=2))
         return 2
@@ -387,7 +387,6 @@ def main() -> int:
         "libs/xctx/process/runtime.py",
         "libs/xctx/commands/discover.py",
         "libs/xctx/commands/observe.py",
-        "libs/xctx/domain/agent_domains.py",
         "libs/xctx/protocol/command_policy.py",
     ):
         text = (ROOT / rel).read_text(encoding="utf-8")
@@ -401,6 +400,16 @@ def main() -> int:
                         token=token,
                     )
                 )
+
+    for rel in ("libs/xctx/domain/agent_domains.py", "libs/xctx/protocol/options.py"):
+        if (ROOT / rel).exists():
+            findings.append(
+                finding(
+                    "error",
+                    f"removed_facade:{rel}",
+                    "old import facade modules must stay removed",
+                )
+            )
 
     if (ROOT / "libs/xctx_connectors/profiles").exists():
         findings.append(

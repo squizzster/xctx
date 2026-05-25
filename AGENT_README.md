@@ -1,6 +1,6 @@
-# xctx v4.2 Agent-Domain Protocol PoC
+# xctx v4.2 Agent-Domain Protocol reference build
 
-This workspace is a hardened proof-of-concept for an agent-facing `xctx`
+This workspace is a hardened reference implementation for an agent-facing `xctx`
 protocol surface. The goal is not a broad feature surface; it is a correct,
 pressure-tested protocol path from:
 
@@ -204,7 +204,7 @@ it. Connector metadata exposes a `shape_guarantee` declaring that xctx receives
 `single_json_object_for_live_data`, with connector success as a domain object and
 connector failure as `xctx_connector_error`.
 
-## What is real in this PoC
+## What is real in this reference build
 
 The filing adapter reads `data/edgar_form_reference_taxonomy.sqlite`, which
 contains 412 EDGAR form lookup records, 41 canonical families, 12 priority
@@ -261,7 +261,7 @@ Plans return:
 
 - `planner_id`: full sha256 hex
 - `plan_id`: `plan:sha256:<sha256>`
-- `receipt_sha5`: short PoC/debug token accepted only when it resolves uniquely to a recorded plan
+- `receipt_sha5`: short reference build/debug token accepted only when it resolves uniquely to a recorded plan
 
 `execute` returns a `planner_binding` object proving which recorded plan was accepted, plus `accepted_read_only_noop` and `mutations_applied: 0`.
 

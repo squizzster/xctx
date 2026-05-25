@@ -74,7 +74,6 @@ def _with_discover_shortcut(store: dict, argv: list[str]) -> list[str]:
 
 def run(argv: Sequence[str] | None = None, root: Path | None = None) -> int:
     """Run an xctx command in-process. Useful for tests and the CLI launcher."""
-    configure_sigpipe()
     raw_argv = list(argv or [])
     selection = extract_global_options(raw_argv)
     store = load_store(root=root)
@@ -140,6 +139,8 @@ def run(argv: Sequence[str] | None = None, root: Path | None = None) -> int:
 
 
 def main(argv: Sequence[str] | None = None, root: Path | None = None) -> int:
+    if argv is None:
+        configure_sigpipe()
     raw_argv = list(sys.argv[1:] if argv is None else argv)
     try:
         return run(raw_argv, root=root)

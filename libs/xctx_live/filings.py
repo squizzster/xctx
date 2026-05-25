@@ -25,10 +25,6 @@ def connect(root: Path) -> sqlite3.Connection:
     return conn
 
 
-def _row_dict(row: sqlite3.Row) -> dict[str, Any]:
-    return {key: row[key] for key in row.keys()}
-
-
 def stats(root: Path) -> dict[str, Any]:
     with connect(root) as conn:
         return {
@@ -656,7 +652,7 @@ def equity_context_payload(root: Path, identifier: str) -> dict[str, Any]:
         "found": True,
         "instrument": public,
         "trusted_id_scope": "stock_intelligence_hub",
-        "data_boundary": "This proof-of-concept has the real filing-form taxonomy. Issuer-specific EDGAR submission history is marked offline_not_bundled in this build.",
+        "data_boundary": "This reference implementation has the real filing-form taxonomy. Issuer-specific EDGAR submission history is marked offline_not_bundled in this build.",
         "issuer_submission_feed_status": "offline_not_bundled",
         "useful_form_starting_points": high_impact_forms(root),
         "agent_guidance": [

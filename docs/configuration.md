@@ -1,6 +1,6 @@
 # Configuration Layout
 
-The active protocol proof-of-concept is configured under `yaml_dynamic_config/`.
+The active protocol reference implementation is configured under `yaml_dynamic_config/`.
 
 Important files:
 

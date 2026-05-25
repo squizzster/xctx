@@ -1,0 +1,87 @@
+"""Regression tests for the production-grade xctx framework refactor."""
+
+from __future__ import annotations
+
+import sys
+
+import pytest
+
+from framework_helpers import ROOT, ensure_libs_path, run_runtime_json
+
+
+pytestmark = [pytest.mark.unit, pytest.mark.release, pytest.mark.timeout(60)]
+
+
+def test_protocol_option_helpers_live_in_focused_modules() -> None:
+    ensure_libs_path()
+    from xctx.protocol import option_encoding, option_specs, option_surface  # noqa: PLC0415
+
+    assert callable(option_specs.collect_cli_option_values)
+    assert callable(option_specs.command_cli_option_specs)
+    assert callable(option_specs.target_cli_option_specs)
+    assert callable(option_encoding.encode_cli_options_for_target)
+    assert callable(option_surface.option_config_checks)
+    assert callable(option_surface.option_surface)
+
+
+def test_format_cmd_preserves_unknown_placeholders_in_guidance_templates() -> None:
+    ensure_libs_path()
+    from xctx.protocol.formatting import format_cmd  # noqa: PLC0415
+
+    assert (
+        format_cmd("./xctx discover {agent_domain}::{missing}", agent_domain="stock_intelligence_hub")
+        == "./xctx discover stock_intelligence_hub::{missing}"
+    )
+
+
+def test_repair_result_uses_agent_subdomain_domain_level_for_subdomain_targets() -> None:
+    rc, payload = run_runtime_json(["repair", "down_for_maintenance:stock_intelligence_hub::fundamentals_gateway"])
+
+    assert rc == 1
+    assert payload["ok"] is False
+    assert payload["error"] == "down_for_maintenance"
+    assert payload["domain_level"] == "agent_subdomain"
+    assert payload["results"]["target"] == "stock_intelligence_hub::fundamentals_gateway"
+
+
+def test_plan_store_rejects_malformed_receipts_before_writing(tmp_path, monkeypatch) -> None:
+    ensure_libs_path()
+    from xctx.config.loader import load_store  # noqa: PLC0415
+    from xctx.store.plans import read_plan, write_plan  # noqa: PLC0415
+
+    monkeypatch.setenv("XCTX_RUNTIME_DIR", str(tmp_path))
+    store = load_store(root=ROOT)
+
+    with pytest.raises(ValueError, match="64-character lowercase hex digest"):
+        write_plan(store, {"receipt_sha256": "not-a-receipt"})
+
+    assert read_plan(store, "../not-a-receipt") is None
+
+
+def test_connector_runtime_rejects_zero_max_output_bytes_instead_of_defaulting() -> None:
+    ensure_libs_path()
+    from xctx_connectors import runtime as connector_runtime  # noqa: PLC0415
+
+    with pytest.raises(ValueError, match="max_output_bytes must be between"):
+        connector_runtime.run_external([sys.executable, "-c", "print('ok')"], timeout=1, max_output_bytes=0)
+
+
+def test_capture_process_treats_missing_returncode_as_not_ok() -> None:
+    ensure_libs_path()
+    from xctx.process.capture import CapturedProcess  # noqa: PLC0415
+
+    assert CapturedProcess(argv=("adapter",), returncode=None, timed_out=False, stdout="", stderr="").ok is False
+
+
+def test_cmdline_arg_shell_quotes_values_with_spaces() -> None:
+    rc, payload = run_runtime_json(["observe", "form:DEF 14A"])
+
+    assert rc == 0
+    assert payload["cmdline_arg"] == "--json observe 'form:DEF 14A'"
+
+
+def test_installed_workspace_root_fallback_is_non_throwing_for_shallow_paths() -> None:
+    ensure_libs_path()
+    from xctx.config.paths import project_root_from_module  # noqa: PLC0415
+
+    assert project_root_from_module("/tmp/x.py").is_absolute()
