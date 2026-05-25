@@ -802,8 +802,41 @@ def availability_findings(store: dict[str, Any], scope: str = "root") -> list[di
     return findings
 
 
+def _known_audit_scope_guidance(store: dict[str, Any], domain_id: str | None = None) -> str:
+    if domain_id and domain_id in store.get("agent_domains", {}):
+        subdomains = sorted((store["agent_domains"][domain_id].get("_subdomains") or {}).keys())
+        examples = [f"{domain_id}::{subdomain_id}" for subdomain_id in subdomains[:5]]
+        return f"next valid move: choose a known audit scope ({', '.join(examples)})"
+    domains = sorted(store.get("agent_domains", {}).keys())
+    examples = ["root", *domains[:5]]
+    return f"next valid move: choose a known audit scope ({', '.join(examples)})"
+
+
+def audit_domain_level(store: dict[str, Any], scope: str) -> str:
+    scope = scope or "root"
+    if scope in {"root", "all", "*"}:
+        return "root"
+
+    domains = store.get("agent_domains", {})
+    if "::" in scope:
+        domain_id, subdomain_id = scope.split("::", 1)
+        if not domain_id or not subdomain_id:
+            raise XctxError(_known_audit_scope_guidance(store, domain_id or None))
+        domain = domains.get(domain_id)
+        if not domain:
+            raise XctxError(_known_audit_scope_guidance(store))
+        if subdomain_id not in (domain.get("_subdomains") or {}):
+            raise XctxError(_known_audit_scope_guidance(store, domain_id))
+        return "agent_subdomain"
+
+    if scope not in domains:
+        raise XctxError(_known_audit_scope_guidance(store))
+    return "agent_domain"
+
+
 def audit_payload(store: dict[str, Any], scope: str) -> dict[str, Any]:
     scope = scope or "root"
+    audit_domain_level(store, scope)
     findings = availability_findings(store, scope)
     checks: list[dict[str, Any]] = [
         {

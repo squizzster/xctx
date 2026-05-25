@@ -7,6 +7,7 @@ live in YAML under an action's ``cli_options`` declaration.
 
 from __future__ import annotations
 
+from collections import Counter
 from collections.abc import Iterable
 from typing import Any
 
@@ -155,8 +156,8 @@ def _normalised_specs_for_container(
     return specs
 
 
-def command_cli_option_specs(store: dict[str, Any], command: str) -> list[dict[str, Any]]:
-    """Return unique parser-level option specs configured for an xctx command."""
+def _command_cli_option_specs_raw(store: dict[str, Any], command: str) -> list[dict[str, Any]]:
+    """Return parser-level option specs before duplicate filtering."""
     specs: list[dict[str, Any]] = []
     index = 0
 
@@ -186,7 +187,12 @@ def command_cli_option_specs(store: dict[str, Any], command: str) -> list[dict[s
                     if _spec_applies_to_command(store, spec, command, action_name=action_name, action=action):
                         specs.append(spec)
 
-    return _dedupe_specs(specs)
+    return specs
+
+
+def command_cli_option_specs(store: dict[str, Any], command: str) -> list[dict[str, Any]]:
+    """Return unique parser-level option specs configured for an xctx command."""
+    return _dedupe_specs(_command_cli_option_specs_raw(store, command))
 
 
 def target_cli_option_specs(
@@ -378,18 +384,25 @@ def option_config_checks(store: dict[str, Any]) -> list[dict[str, Any]]:
     checks: list[dict[str, Any]] = []
     for command in sorted(set((store.get("protocol") or {}).get("command_groups", {}).get("main", []))):
         try:
-            specs = command_cli_option_specs(store, command)
+            raw_specs = _command_cli_option_specs_raw(store, command)
         except XctxError as exc:
             checks.append({"id": f"audit:xctx:cli_options:{command}", "status": "fail", "error": str(exc)})
             continue
-        flags = [flag for spec in specs for flag in spec.get("_flags", [])]
-        duplicate_flags = sorted({flag for flag in flags if flags.count(flag) > 1})
+        specs = _dedupe_specs(raw_specs)
+        flags = [flag for spec in raw_specs for flag in spec.get("_flags", [])]
+        dests = [str(spec.get("_dest", "")) for spec in raw_specs if spec.get("_dest")]
+        flag_counts = Counter(flags)
+        dest_counts = Counter(dests)
+        duplicate_flags = sorted(flag for flag, count in flag_counts.items() if count > 1)
+        duplicate_dests = sorted(dest for dest, count in dest_counts.items() if count > 1)
         checks.append(
             {
                 "id": f"audit:xctx:cli_options:{command}",
-                "status": "pass" if not duplicate_flags else "fail",
+                "status": "pass" if not duplicate_flags and not duplicate_dests else "fail",
                 "configured_option_count": len(specs),
+                "raw_configured_option_count": len(raw_specs),
                 "duplicate_flags": duplicate_flags,
+                "duplicate_dests": duplicate_dests,
             }
         )
     return checks

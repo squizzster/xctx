@@ -133,14 +133,13 @@ def _add_run_cmd(commands: list[str], seen: set[str], store: dict[str, Any], run
 def _root_command_surface(commands: list[str], seen: set[str], store: dict[str, Any]) -> None:
     universe = universe_discovery_payload(store)
     _add_unique(commands, seen, "./xctx")
-    for group in ("xctx", "xctx_other"):
-        for command_name, command_spec in (universe.get("command_surface", {}).get(group) or {}).items():
-            _add_unique(commands, seen, f"./xctx {command_name}")
-            if isinstance(command_spec, dict):
-                for syntax in command_spec.values():
-                    syntax = str(syntax or "").strip()
-                    if syntax:
-                        _add_unique(commands, seen, f"./xctx {command_name} {syntax}")
+    for command_name, command_spec in (universe.get("command_surface", {}).get("xctx") or {}).items():
+        _add_unique(commands, seen, f"./xctx {command_name}")
+        if isinstance(command_spec, dict):
+            for syntax in command_spec.values():
+                syntax = str(syntax or "").strip()
+                if syntax:
+                    _add_unique(commands, seen, f"./xctx {command_name} {syntax}")
 
 
 def valid_commands() -> list[str]:

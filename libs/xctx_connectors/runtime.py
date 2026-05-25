@@ -29,6 +29,7 @@ SAFE_ENV_KEYS = {
     "PYTHONPATH",
     "TMPDIR",
     "VIRTUAL_ENV",
+    "XCTX_RUNTIME_DIR",
 }
 SECRET_PATTERNS = (
     re.compile(r"(?i)(api[_-]?key|secret|token|password|passwd|authorization)(\\s*[=:]\\s*)([^\\s;&]+)"),

@@ -40,6 +40,7 @@ SAFE_ENV_KEYS = {
     "PYTHONPATH",
     "TMPDIR",
     "VIRTUAL_ENV",
+    "XCTX_RUNTIME_DIR",
 }
 
 
@@ -71,6 +72,7 @@ def _adapter_env(subdomain: dict[str, Any]) -> dict[str, str | None]:
     return {
         "XCTX_AGENT_DOMAIN": str(subdomain["_domain_id"]) if subdomain.get("_domain_id") else None,
         "XCTX_AGENT_SUBDOMAIN": str(subdomain["id"]) if subdomain.get("id") else None,
+        "XCTX_RUNTIME_DIR": os.environ.get("XCTX_RUNTIME_DIR"),
     }
 
 

@@ -97,7 +97,7 @@ def build_parser(store: dict[str, Any]) -> argparse.ArgumentParser:
         repair.add_argument("target", nargs="?")
     if "other" in hidden:
         other = subparsers.add_parser("other", add_help=False)
-        other.add_argument("--topic", default="plan")
+        other.add_argument("--topic", required=True)
         other.add_argument("--reason", default="task dynamic selected the extension lane")
 
     return parser
