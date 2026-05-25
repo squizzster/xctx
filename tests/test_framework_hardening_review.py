@@ -9,7 +9,7 @@ import pytest
 from framework_helpers import ROOT, ensure_libs_path, run_runtime_json
 
 
-pytestmark = [pytest.mark.unit, pytest.mark.release, pytest.mark.timeout(60)]
+pytestmark = [pytest.mark.unit, pytest.mark.local_gate, pytest.mark.timeout(60)]
 
 
 def test_discover_domain_scope_rejects_ignored_extra_arguments() -> None:
@@ -47,6 +47,23 @@ def test_ambiguous_domain_affordance_resolution_fails_closed() -> None:
 
     with pytest.raises(XctxError, match="ambiguous domain affordance") as raised:
         discover_payload(store, "stock_intelligence_hub::duplicate_route", ["AAPL"])
+    assert raised.value.next_moves == ["./xctx audit stock_intelligence_hub"]
+
+
+def test_domain_affordance_collision_with_subdomain_id_fails_closed() -> None:
+    ensure_libs_path()
+    from xctx.config.loader import load_store  # noqa: PLC0415
+    from xctx.domain.discovery import discover_payload  # noqa: PLC0415
+    from xctx.errors import XctxError  # noqa: PLC0415
+
+    store = copy.deepcopy(load_store(root=ROOT))
+    domain = store["agent_domains"]["stock_intelligence_hub"]
+    domain["_subdomains"]["market_data_gateway"]["actions"]["search_entity_instrument"][
+        "domain_action_name"
+    ] = "equity_filing"
+
+    with pytest.raises(XctxError, match="ambiguous scoped target") as raised:
+        discover_payload(store, "stock_intelligence_hub::equity_filing", [])
     assert raised.value.next_moves == ["./xctx audit stock_intelligence_hub"]
 
 
@@ -144,8 +161,18 @@ def test_connector_protocol_error_fields_are_redacted() -> None:
     check = runtime.audit_failure_check(None, "secret: audit-secret")
     assert check["message"] == "secret: <redacted>"
 
-    nested = redact_value({"error": "bearer nested-token", "items": ["password=child-secret"]})
-    assert nested == {"error": "bearer <redacted>", "items": ["password=<redacted>"]}
+    nested = redact_value(
+        {
+            "error": "bearer nested-token",
+            "items": ["password=child-secret"],
+            "api_key": "dict-secret",
+        }
+    )
+    assert nested == {
+        "error": "bearer <redacted>",
+        "items": ["password=<redacted>"],
+        "api_key": "<redacted>",
+    }
 
 
 def test_connector_run_external_missing_executable_returns_structured_failure() -> None:
@@ -194,6 +221,31 @@ def test_connector_run_external_empty_argv_returns_structured_failure() -> None:
     assert result["ok"] is False
     assert result["exit_code"] is None
     assert "argv" in result["error"]
+
+
+def test_framework_external_command_missing_returncode_fails_closed(monkeypatch: pytest.MonkeyPatch) -> None:
+    ensure_libs_path()
+    from xctx.config.loader import load_store  # noqa: PLC0415
+    from xctx.errors import XctxError  # noqa: PLC0415
+    from xctx.ports import external_command  # noqa: PLC0415
+
+    monkeypatch.setattr(
+        external_command,
+        "_call_python_entrypoint_subprocess",
+        lambda *_args, **_kwargs: (None, "", "missing returncode"),
+    )
+
+    store = load_store(root=ROOT)
+    subdomain = {
+        "id": "demo_subdomain",
+        "_domain_id": "demo_domain",
+        "entrypoint": {"file": "connector_supervisor.py"},
+        "connector": {"kind": "xctx_native_passthrough"},
+        "actions": {"discover": {"run_cmd": "./xctx discover demo_domain::demo_subdomain"}},
+    }
+
+    with pytest.raises(XctxError, match="live adapter failed"):
+        external_command.call_external_command(store, subdomain, ["discover"])
 
 
 def test_audit_converts_live_adapter_errors_to_failure_checks(monkeypatch: pytest.MonkeyPatch) -> None:

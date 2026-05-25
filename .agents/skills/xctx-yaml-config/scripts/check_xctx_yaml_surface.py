@@ -446,6 +446,7 @@ def main() -> int:
             findings.append(finding("warning", f"{check_prefix}:description", "domain should describe what is real and what is not"))
 
         domain_affordance_names: dict[str, str] = {}
+        reserved_subdomain_ids = {str(subdomain_id) for subdomain_id in (domain.get("_subdomains") or {})}
         for subdomain_id, subdomain in sorted((domain.get("_subdomains") or {}).items()):
             bare_root_targets_that_must_fail.add(str(subdomain_id))
             sub_prefix = f"subdomain:{domain_id}::{subdomain_id}"
@@ -589,6 +590,17 @@ def main() -> int:
                     findings.append(finding("warning", f"{action_prefix}:description", "action should describe its operational meaning"))
                 if action.get("domain_affordance"):
                     public_name = str(action.get("domain_action_name") or action_name)
+                    if public_name in reserved_subdomain_ids:
+                        findings.append(
+                            finding(
+                                "error",
+                                f"domain_affordance:{domain_id}:{public_name}:not_subdomain_id",
+                                "domain affordance names must not collide with agent_subdomain ids",
+                                agent_domain=domain_id,
+                                agent_subdomain=public_name,
+                                action=f"{subdomain_id}:{action_name}",
+                            )
+                        )
                     existing = domain_affordance_names.get(public_name)
                     if existing:
                         findings.append(

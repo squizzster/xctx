@@ -17,12 +17,12 @@ Canonical validation commands:
 
 3. Full pytest suite
    python3 -m pytest -q --durations=30
-   Expected current result: 97 passed, 1 skipped
+   Expected current result: 102 passed
 
 Notes:
 - pytest has no default deselection configured; `pytest -q` means the full collected suite.
 - `make test` runs the full pytest suite.
-- `make release-test` runs the YAML checker, compileall, and the same full pytest suite.
+- `make full-test` runs the YAML checker, compileall, and the same full pytest suite.
 - Fast/unit/integration Makefile targets are explicit subset/debug runs only.
-- The package-install smoke remains opt-in because repeated pip/venv subprocesses are sandbox-sensitive.
+- The package-install smoke is part of the default full pytest suite.
 - Local skills and reports are development aids; the current code, tests, and loaded YAML are the source of truth when they drift.

@@ -12,6 +12,7 @@ SECRET_PATTERNS = (
     ),
     re.compile(r"(?i)(?P<prefix>bearer\s+)(?P<secret>[a-z0-9._~+/=-]+)"),
 )
+SECRET_KEY_PATTERN = re.compile(r"(?i)(api[_-]?key|secret|token|password|passwd|authorization)")
 
 
 def redact_preview(value: Any, limit: int = 500) -> str:
@@ -33,5 +34,11 @@ def redact_value(value: Any, limit: int = 500) -> Any:
     if isinstance(value, tuple):
         return [redact_value(item, limit=limit) for item in value]
     if isinstance(value, dict):
-        return {key: redact_value(item, limit=limit) for key, item in value.items()}
+        redacted: dict[Any, Any] = {}
+        for key, item in value.items():
+            if isinstance(key, str) and SECRET_KEY_PATTERN.search(key):
+                redacted[key] = "<redacted>"
+            else:
+                redacted[key] = redact_value(item, limit=limit)
+        return redacted
     return value

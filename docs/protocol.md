@@ -1,238 +1,104 @@
-# xctx v4.2 Protocol Notes
+# Protocol Contract
 
-`xctx` is an executable context protocol for agents. It makes a local software
-universe discoverable without assuming the agent already knows the domain.
-
-## Core command set
-
-1. `xctx discover`
-2. `xctx observe <thing>`
-3. `xctx plan <operation>`
-4. `xctx execute <plan> --commit`
-5. `xctx audit <scope>`
-6. `xctx repair <finding>`
-
-`xctx other` is a hidden accepted extension lane, not a visible core command.
-No `discovery`, `d`, `identify`, `write`, `doctor`, or `status` command is
-advertised or accepted in the core surface.
-
-## Development And Compatibility Posture
-
-This project is in live local protocol development and is not deployed as a
-public compatibility target. It does not carry a backward-compatibility burden
-unless a specific release or migration requirement says otherwise. It is better
-to remove relic surfaces than to preserve them behind aliases, shims, wrappers,
-or undocumented fallbacks.
-
-Protocol changes should optimize for the clean current contract:
-
-- remove stale commands rather than deprecating them indefinitely;
-- rename obsolete concepts when they obscure the current model;
-- make tests assert the intended protocol, not old behavior;
-- reject aliases/shims unless an explicit release or migration requirement says
-  otherwise.
-- treat local skills, reports, and validation notes as development aids that can
-  lag current code; reconcile them against the current code, tests, and loaded
-  YAML.
-
-There is no implicit domain selector. Commands use explicit scoped domain
-references when a domain matters.
-
-## Protocol path
-
-The required path is:
-
-```text
-ROOT -> AGENT DOMAIN -> AGENT SUBDOMAIN -> SCOPED AFFORDANCE / OBSERVATION
-```
-
-Examples:
-
-```bash
-./xctx discover
-./xctx discover stock_intelligence_hub
-./xctx discover stock_intelligence_hub::
-./xctx discover stock_intelligence_hub::equity_filing
-./xctx discover stock_intelligence_hub::equity_filing::search_forms
-./xctx discover stock_intelligence_hub::search_filing_family annual
-./xctx discover stock_intelligence_hub::equity_filing search_forms 10-K
-./xctx discover stock_intelligence_hub::equity_filing list_forms
-```
-
-Bare root discovery targets are valid only when the target is a configured
-agent domain. Bare subdomains, action names, instruments, filing codes, and file
-ids are refused:
-
-```bash
-./xctx discover GOOG
-./xctx discover market_data_gateway
-./xctx discover file:README.txt
-./xctx discover search_filing_family annual
-```
-
-Error records keep the actual error in `error` and emit runnable recovery
-commands in `next_moves` when a scoped equivalent is known.
-
-## Record envelope
-
-Responses are emitted as one protocol-shaped record by default:
+## Status
 
 ```yaml
-version_xctx: v4.2
-cmdline_arg: discover
-record_type: discovery
-ok: true
-domain_level: root
-results: {}
+protocol_version: v4.2
+workspace: live_local_development
+public_compatibility_surface: false
+source_of_truth: [code, tests, loaded_yaml]
 ```
 
-The active record types are `discovery`, `result`, `observation`, `plan`,
-`execution_result`, `audit`, `repair_result`, `extension`, and `error`.
+## Commands
 
-## Domain levels
-
-- `universe`: what xctx is, the generic command surface, and which agent domains exist.
-- `root`: agent-domain overview and generic next moves.
-- `agent_domain`: a configured domain such as `stock_intelligence_hub`; domain affordances may appear here.
-- `agent_subdomain`: a configured subdomain such as `equity_filing`; subdomain actions and scoped options may appear here.
-
-## Status semantics
-
-- `online`: discoverable and callable.
-- `offline`: discoverable but not callable; may expose `repair_path`.
-- `down_for_maintenance`: terminal offline state; no repair path is exposed.
-
-## Root boundary
-
-These root discovery and identity surfaces must remain free of domain-action
-command surfaces and domain option names:
-
-```bash
-./xctx
-./xctx help
-./xctx --version
-./xctx discover
+```yaml
+visible:
+  - discover
+  - observe
+  - plan
+  - execute
+  - audit
+  - repair
+hidden:
+  - other
+removed:
+  - discovery
+  - d
+  - identify
+  - write
+  - doctor
+  - status
 ```
 
-They may expose configured agent domains and generic commands, but not scoped
-stock affordances or range flags. Domain-specific affordances appear only after a
-specific agent domain or subdomain is selected.
+## Envelope
 
-`audit root` is the broad health gate and has a different payload rule. It
-still must not advertise scoped commands/options as root affordances, but it may
-include normalized live adapter check IDs and evidence. It reports xctx/config checks, configured
-option shape, availability findings, config fingerprints, and
-framework-normalized live adapter checks for online configured subdomains.
-Malformed live audit payloads and adapter failures become explicit failing audit
-checks instead of crashing the command, and malformed check entries make audit
-fail closed. Use scoped audit to narrow the same health view:
-
-```bash
-./xctx audit stock_intelligence_hub::market_data_gateway
-./xctx audit file_manager::home_directory
+```yaml
+required_keys:
+  - version_xctx
+  - cmdline_arg
+  - record_type
+  - ok
+  - results
+error_record:
+  error: actual_error_text
+  next_moves: optional_structured_command_hints
+record_types:
+  - discovery
+  - result
+  - observation
+  - plan
+  - execution_result
+  - audit
+  - repair_result
+  - extension
+  - error
+domain_levels:
+  - universe
+  - root
+  - agent_domain
+  - agent_subdomain
 ```
 
-## AI Agent Boundary
+## Scope
 
-Future agents should treat `xctx` as the protocol/interface layer, not as a
-place for domain-pack implementation. Generic `xctx` code may parse configured
-reference shapes, emit envelopes, validate option structure, route to declared
-entrypoints, and enforce root/scoped boundaries. It must not learn what a scoped
-mode means.
-
-The meaning of a scoped operation belongs in two places:
-
-- YAML under the owning domain/subdomain/action.
-- Adapter-side code behind the connector supervisor.
-
-If a change requires business vocabulary, exact-code ranking, list payload
-shape, provider behavior, or domain-specific examples, put that logic outside
-`libs/xctx`. Add `## Protocol boundary` comments when editing generic runtime
-files so later agents do not collapse scoped behavior back into the core.
-
-## Configured option surface
-
-The protocol core can parse YAML-declared command options, but option names are
-supplied by scoped domain YAML and are emitted only on scoped surfaces. In this
-build, `--bars` and `--calendar-days` are declared by the stock market-data
-`observe` action and are visible from:
-
-```bash
-./xctx discover stock_intelligence_hub::market_data_gateway
+```yaml
+root:
+  valid_bare_targets: configured_agent_domains_only
+  invalid_bare_targets:
+    - subdomain_ids
+    - action_ids
+    - instruments
+    - filing_codes
+    - file_ids
+domain_affordance:
+  syntax: "<domain>::<affordance>"
+  source: subdomain_action_domain_affordance_true
+subdomain_action:
+  syntax:
+    - "<domain>::<subdomain>::<action>"
+    - "<domain>::<subdomain> <action>"
 ```
 
-They are not visible from root/universe/help/version output. The core rejects a
-configured option when it is used against a target whose resolved subdomain/action
-does not declare that option.
+## Audit
 
-This preserves the protocol invariant:
-
-```text
-option names are domain-pack semantics; option parsing, target validation, and
-adapter argv encoding are framework semantics.
+```yaml
+root_audit:
+  purpose: broad_framework_config_availability_live_adapter_health
+  may_include_domain_check_ids: true
+  must_not_advertise_root_domain_commands: true
+malformed_checks: fail_closed
+adapter_failures: failing_audit_checks
+redaction: required
 ```
 
-## Plan/execute boundary
+## Plan Execute
 
-`plan` returns a deterministic sha256 planner receipt and records the plan in
-`.xctx_runtime/plans/`. `execute` requires `--commit` and accepts
-`plan:sha256:<64-hex>`, the raw 64-character sha256, or the five-character
-reference build/debug `receipt_sha5` only when that value resolves to a recorded plan. Shape
-alone is not enough. This build performs no domain mutation and returns
-`accepted_read_only_noop` with a `planner_binding` proof.
-
-## Protocol/config split
-
-`yaml_dynamic_config/` describes protocol, domains, subdomains, actions, and
-routes. Live data access sits behind the configured connector supervisor, which
-subprocesses adapter-side code and returns one JSON object for `xctx` to
-envelope. This keeps `xctx` as the bootloader and avoids mixing business/domain
-logic into the protocol runtime.
-
-## Middleware Shape Guarantee
-
-Connector supervisor middleware sits behind scoped YAML entrypoints. Its job is to
-call an application adapter or external command behind the supervisor boundary and
-return one JSON-compatible object for xctx to envelope. When a connector returns
-connector metadata, it declares a `shape_guarantee` such as:
-
-```json
-{
-  "contract": "always_json_object",
-  "xctx_receives": "single_json_object_for_live_data",
-  "success_shape": "domain_object",
-  "failure_shape": "xctx_connector_error",
-  "raw_external_output": "never_returned_unparsed"
-}
+```yaml
+plan_id: plan:sha256:<sha256>
+receipt_sha5: debug_prefix_only_if_unique_recorded_plan
+execute_requires:
+  - one_plan_token
+  - --commit
+  - matching_config_fingerprint
+reference_workspace_mutates_domain_state: false
 ```
-
-This is visible protocol evidence, not extra domain logic in `libs/xctx`. The
-generic runtime still only routes to the configured entrypoint and envelopes the
-returned object. The connector owns the guarantee that raw stdout/stderr and
-connector failures are transformed or summarized before xctx sees them.
-Protocol-facing connector errors, argv/request previews, target payload previews,
-and command-status text are redacted by the shared `xctx.process.redaction`
-helper.
-
-## Action Discovery
-
-Subdomain actions are discoverable without executing a query:
-
-```bash
-./xctx discover <agent_domain>::<agent_subdomain>::<action>
-./xctx discover <agent_domain>::<agent_subdomain> <action>
-```
-
-If an action requires a query, the no-query form returns interface metadata from
-YAML: argument shapes, examples, related commands, and return type. If an action
-does not require a query, such as a list action, the action may execute directly.
-
-Domain-specific grammar remains scoped. The generic runtime parses the
-`domain::subdomain::action` shape but does not hardcode filing forms, tickers,
-range flags, or other domain nouns.
-
-Collection controls are optional scoped action metadata. If an action declares a
-`collection` block, xctx may validate generic `--limit`, `--cursor`, and
-`--shape` syntax before forwarding the request. Cursor values remain opaque and
-adapter-owned. Default list payloads should be compact indexes; full bulk rows
-require explicit `--shape full`, targeted search, or observe.

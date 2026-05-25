@@ -9,7 +9,7 @@ import pytest
 from framework_helpers import ROOT, ensure_libs_path, run_runtime_json
 
 
-pytestmark = [pytest.mark.unit, pytest.mark.release, pytest.mark.timeout(60)]
+pytestmark = [pytest.mark.unit, pytest.mark.local_gate, pytest.mark.timeout(60)]
 
 
 def test_audit_scope_validation_fails_closed() -> None:
@@ -144,3 +144,27 @@ def test_duplicate_domain_affordances_fail_audit_check() -> None:
             ],
         }
     ]
+
+
+def test_domain_affordance_collision_with_subdomain_id_fails_audit_check() -> None:
+    ensure_libs_path()
+    from xctx.config.loader import load_store  # noqa: PLC0415
+    from xctx.domain.actions import domain_affordance_config_check  # noqa: PLC0415
+
+    store = copy.deepcopy(load_store(root=ROOT))
+    domain = store["agent_domains"]["stock_intelligence_hub"]
+    domain["_subdomains"]["market_data_gateway"]["actions"]["search_entity_instrument"][
+        "domain_action_name"
+    ] = "equity_filing"
+
+    check = domain_affordance_config_check(store)
+
+    assert check["status"] == "fail"
+    assert {
+        "agent_domain": "stock_intelligence_hub",
+        "token": "equity_filing",
+        "sources": [
+            "stock_intelligence_hub::equity_filing",
+            "stock_intelligence_hub::market_data_gateway::search_entity_instrument",
+        ],
+    } in check["duplicate_affordances"]

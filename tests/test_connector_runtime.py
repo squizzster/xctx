@@ -9,7 +9,7 @@ import pytest
 from framework_helpers import ensure_libs_path
 
 
-pytestmark = [pytest.mark.unit, pytest.mark.release, pytest.mark.timeout(60)]
+pytestmark = [pytest.mark.unit, pytest.mark.local_gate, pytest.mark.timeout(60)]
 
 
 def test_runtime_env_is_propagated_through_framework_connector_layers(monkeypatch) -> None:

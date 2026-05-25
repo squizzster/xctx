@@ -1,4 +1,4 @@
-"""Framework command-surface and legacy-removal tests."""
+"""Framework command-surface and obsolete-command removal tests."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ import pytest
 from framework_helpers import ROOT, ensure_libs_path, run_runtime_json
 
 
-pytestmark = [pytest.mark.unit, pytest.mark.release, pytest.mark.timeout(60)]
+pytestmark = [pytest.mark.unit, pytest.mark.local_gate, pytest.mark.timeout(60)]
 
 
 ROOT_NEXT_MOVES = [

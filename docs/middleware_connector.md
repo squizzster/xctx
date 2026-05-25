@@ -1,92 +1,64 @@
 # Middleware Connector Contract
 
-`xctx` stays generic: it reads YAML, subprocesses the scoped connector
-supervisor entrypoint, receives one JSON object, and envelopes that object.
-Middleware connectors live on the adapter side of that boundary.
+## Boundary
+
+```yaml
+xctx_core:
+  owns:
+    - load_yaml
+    - call_connector_supervisor
+    - envelope_one_json_object
+  forbids:
+    - external_command_semantics
+    - domain_adapter_imports
+middleware:
+  owns:
+    - connector_metadata
+    - pass_through_failure_normalization
+    - external_command_adapter_dispatch
+    - structured_failure_payloads
+```
 
 ## Shape Guarantee
 
-Connector metadata includes a `shape_guarantee` when middleware returns a
-connector object:
-
-```json
-{
-  "connector": {
-    "version": "xctx_connector.v1",
-    "kind": "external_command",
-    "adapter_ref": "file_manager::home_directory",
-    "shape_guarantee": {
-      "contract": "always_json_object",
-      "xctx_receives": "single_json_object_for_live_data",
-      "success_shape": "domain_object",
-      "failure_shape": "xctx_connector_error",
-      "raw_external_output": "never_returned_unparsed",
-      "stdout_stderr": "summarized_in_command_status_when_useful"
-    }
-  }
-}
+```yaml
+external_command:
+  contract: always_json_object
+  xctx_receives: single_json_object_for_live_data
+  success_shape: domain_object
+  failure_shape: xctx_connector_error
+  raw_external_output: never_returned_unparsed
+  stdout_stderr: summarized_in_command_status_when_useful
+xctx_native_passthrough:
+  contract: pass_through_json_object
+  xctx_receives: single_json_object_for_live_data
+  success_shape: target_adapter_object
+  failure_shape: xctx_native_passthrough_error
 ```
 
-The guarantee means the adapter boundary normalizes both success and failure.
-External commands may return arbitrary stdout/stderr, be missing, time out, or
-receive an empty argv, but xctx receives a shaped object. Raw external output is
-not passed through as protocol payload.
+## Failure Rules
 
-Protocol-facing connector failure previews are redacted through
-`xctx.process.redaction`. This applies to command-status errors, requested
-arguments, argv previews, target payload previews, and external-command stderr or
-stdout snippets before they enter an xctx envelope.
-
-For xctx-native pass-through adapters, successful calls preserve the target
-adapter payload. Unknown or missing target exit codes remain `null` instead of
-being coerced to success. Normalized pass-through failures return connector
-metadata with:
-
-```json
-{
-  "contract": "pass_through_json_object",
-  "xctx_receives": "single_json_object_for_live_data",
-  "success_shape": "target_adapter_object",
-  "failure_shape": "xctx_native_passthrough_error"
-}
+```yaml
+missing_executable: structured_failure_object
+empty_argv: structured_failure_object
+timeout: structured_failure_object
+unknown_exit_code: null_not_zero
+redaction:
+  helper: xctx.process.redaction
+  applies_to:
+    - command_status.error
+    - requested_args
+    - argv
+    - target_payload
+    - stdout_preview
+    - stderr_preview
 ```
 
-Pass-through `target_entrypoint` values are scoped YAML executable references
-owned by the connector, not direct `xctx` entrypoints. They must be
-workspace-relative and resolve inside the repository workspace.
+## Adapter Paths
 
-## File Manager Demo
-
-The file-manager demo uses:
-
-```text
-file_manager::home_directory
+```yaml
+domain_adapter: libs/xctx_connectors/domains/<domain>/external_command_adapter.py
+subdomain_adapter: libs/xctx_connectors/domains/<domain>/subdomains/<subdomain>/external_command_adapter.py
+yaml_import_paths: forbidden
+flat_profiles: forbidden
 ```
-
-Discovery lists observable objects or classifies a concrete object:
-
-```bash
-./xctx discover file_manager::home_directory list_files --limit 2
-./xctx discover file_manager::home_directory file:README.txt
-```
-
-Observation materializes the selected object:
-
-```bash
-./xctx observe file_manager::home_directory file:README.txt
-./xctx observe directory:docs
-```
-
-Compact discovery omits low-value diagnostics such as argv arrays and trivial
-one-item pagination. `--shape full` keeps those diagnostics for inspection.
-
-## Boundary
-
-Do not implement connector profiles in `libs/xctx` or generic connector
-middleware. Add external-command behavior under
-`libs/xctx_connectors/domains/<domain>/external_command_adapter.py` when the domain owns
-reusable behavior, or under
-`libs/xctx_connectors/domains/<domain>/subdomains/<subdomain>/external_command_adapter.py`
-when the behavior is truly subdomain-specific. Declare only connector
-kind/options in scoped YAML, and prove with tests that generic code contains no
-domain or external-command semantics.

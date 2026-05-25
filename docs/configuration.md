@@ -1,263 +1,101 @@
-# Configuration Layout
+# YAML Configuration Contract
 
-The active protocol reference implementation is configured under `yaml_dynamic_config/`.
-This workspace is in live local development, so current code, tests, and loaded
-YAML are authoritative when older notes or skills drift.
-
-Important files:
-
-- `universe.yaml`: root universe and domain routing. It must not contain
-  domain-action shortcuts, implicit domain selectors, removed system
-  registries, universe identity fields, or domain option names.
-- `protocols/xctx_v4_2.yaml`: envelope keys, exact command groups, record types,
-  and output policy. Root command aliases are intentionally not supported.
-- `shared/command_sets/core_commands.yaml`: the core xctx command surface.
-- `agent_domains/*/domain.yaml`: agent-domain status and descriptions.
-- `agent_domains/*/subdomains/*/subdomain.yaml`: subdomain actions,
-  entrypoints, and scoped CLI options.
-
-The root/universe protocol surface stays generic. Domain affordances are declared
-inside subdomain YAML and can opt into an agent-domain shortcut with
-`domain_affordance: true`.
-
-## AI Agent Boundary
-
-`xctx` is the interface contract. It answers: which commands exist, which
-references are valid, which subdomain/action is in scope, which options are
-syntactically valid, and which adapter should receive the request.
-
-Scoped YAML and adapters answer: what the request means. Put domain nouns,
-ranking rules, list payloads, exact-match policy, data-source behavior, and
-examples here, not in `libs/xctx`.
-
-When editing generic runtime files, keep comments generic and explicit:
-
-```python
-## Protocol boundary: this code routes configured refs only.
-## Scoped domain-pack semantics belong in YAML and adapters.
-```
-
-Do not include concrete domain nouns in generic runtime comments; the guardrail
-checker scans selected core files for known scoped tokens.
-
-Example from the stock market-data subdomain:
+## Source Truth
 
 ```yaml
-actions:
-  latest_price:
-    domain_affordance: true
-    entrypoint_command: latest-price
-    run_cmd: ./xctx discover stock_intelligence_hub::market_data_gateway latest_price <ticker|instrument_id|CIK|market_series:ticker:daily>
+status: live_local_development
+authoritative: loaded_yaml_plus_code_plus_tests
+skill_docs_authoritative_when_stale: false
 ```
 
-Example from the filing subdomain, where the subdomain-local action name differs
-from the domain-level affordance name:
+## Files
 
 ```yaml
-actions:
-  search_forms:
-    domain_affordance: true
-    domain_action_name: search_filing_form
-    entrypoint_command: search-forms
-    query_required: true
-    argument_shapes:
-      - "<form code>"
-      - "<descriptive text>"
-    examples:
-      - run_cmd: ./xctx discover stock_intelligence_hub::equity_filing search_forms 10-K
-    run_cmd: ./xctx discover stock_intelligence_hub::equity_filing search_forms <form code|name|family|priority|text>
-  list_forms:
-    entrypoint_command: list-forms
-    query_required: false
-    mode_kind: list
-    collection:
-      result_path: forms
-      default_limit: 25
-      max_limit: 100
-      cursor: optional
-      cursor_type: opaque
-      default_shape: compact
-      item_shapes: [compact, full]
-    run_cmd: ./xctx discover stock_intelligence_hub::equity_filing list_forms [--limit N] [--cursor CURSOR] [--shape compact|full]
+universe: yaml_dynamic_config/universe.yaml
+protocol: yaml_dynamic_config/protocols/xctx_v4_2.yaml
+commands: yaml_dynamic_config/shared/command_sets/core_commands.yaml
+domains: yaml_dynamic_config/agent_domains/*/domain.yaml
+subdomains: yaml_dynamic_config/agent_domains/*/subdomains/*/subdomain.yaml
 ```
 
-That means the following is scoped and legal:
+## Forbidden In Universe
+
+```yaml
+forbidden:
+  - active_agent_domain
+  - active_system
+  - systems
+  - identity_resolution
+  - root_affordances
+  - command_shortcuts
+  - agent_routing.discovery_fallback
+  - agent_routing.default_observe_route
+```
+
+## Domain Affordances
+
+```yaml
+declaration_location: subdomain.actions.<action_id>
+required_flag: domain_affordance: true
+optional_public_name: domain_action_name
+constraints:
+  - unique_within_domain
+  - must_not_equal_subdomain_id
+  - unscoped_equivalent_must_fail_or_guidance_to_scoped_command
+```
+
+## Actions
+
+```yaml
+action_required_fields:
+  - run_cmd
+  - desc
+query_required_true:
+  no_query_discovery: returns_interface_metadata
+query_required_false:
+  no_query_discovery: may_execute_bounded_discovery_or_list
+collection_controls:
+  optional:
+    - --limit
+    - --cursor
+    - --shape
+  owner: action.collection
+  cursor_meaning: adapter_owned
+```
+
+## CLI Options
+
+```yaml
+location: owning_action.cli_options
+supported_types: [str, int, float, bool]
+root_publication: forbidden
+scoped_publication: owning_subdomain_or_action_only
+wrong_target: refused_before_wrong_adapter_call
+```
+
+## Connectors
+
+```yaml
+entrypoint_file: connector_supervisor.py
+allowed_connector_kinds:
+  - xctx_native_passthrough
+  - external_command
+path_rules:
+  - workspace_relative
+  - resolves_inside_workspace
+forbidden_connector_keys:
+  - profile
+  - module
+  - adapter_module
+  - python_module
+  - import_path
+external_command_adapter_path:
+  domain: libs/xctx_connectors/domains/<domain>/external_command_adapter.py
+  subdomain: libs/xctx_connectors/domains/<domain>/subdomains/<subdomain>/external_command_adapter.py
+```
+
+## Gate
 
 ```bash
-./xctx discover stock_intelligence_hub::equity_filing::search_forms
-./xctx discover stock_intelligence_hub::search_filing_form 10-K
-./xctx discover stock_intelligence_hub::equity_filing list_forms
+python3 .agents/skills/xctx-yaml-config/scripts/check_xctx_yaml_surface.py
 ```
-
-List modes are discovery indexes by default. Use compact rows for fast scanning,
-declare optional cursor support in `collection`, and reserve full nested records
-for `--shape full`, targeted search, or observe payloads.
-
-But the root remains clean:
-
-```bash
-./xctx discover
-```
-
-returns agent domains and generic next moves only. It does not advertise
-`latest_price`, `search_entity_instrument`, `--bars`, or `--calendar-days`.
-Bare root targets are legal only for configured agent domains. Do not configure
-`agent_routing.discovery_fallback`, and do not rely on implicit domain state to
-resolve bare subdomain/action/object tokens such as `market_data_gateway`,
-`GOOG`, `10-K`, or `file:README.txt`.
-
-Root audit is broad but still protocol-shaped. `./xctx audit root` reports
-framework/config checks, availability findings, configured option checks,
-config fingerprints, and framework-normalized live adapter checks for online
-configured subdomains. Malformed live audit payloads and adapter failures become
-explicit failing audit checks, and protocol-facing error previews are redacted.
-
-Use explicit scoped audits such as `./xctx audit <domain_id>::<subdomain_id>`
-when you want to narrow that health view to one domain or subdomain.
-
-## Entrypoints
-
-Subdomains declare the connector supervisor entrypoint that xctx calls. Online
-live execution routes through this middleware first, then passes through to an
-xctx-native application adapter or external command adapter:
-
-```yaml
-entrypoint:
-  file: connector_supervisor.py
-  protocol: json_stdout
-connector:
-  kind: xctx_native_passthrough
-  target_entrypoint: examples/stock_intelligence_hub/adapters/market_data_gateway.py
-```
-
-and:
-
-```yaml
-entrypoint:
-  file: connector_supervisor.py
-  protocol: json_stdout
-connector:
-  kind: xctx_native_passthrough
-  target_entrypoint: examples/stock_intelligence_hub/adapters/equity_filings.py
-```
-
-The protocol runtime loads YAML declarations and subprocesses the connector
-supervisor only when an online action requires live bundled data. Direct adapter
-entrypoints are not valid scoped YAML entrypoints. The xctx core therefore knows
-how to route a declared domain, subdomain, and action, but it does not need to
-know what a ticker, CIK, latest price, filing form, bar, or calendar day means.
-Pass-through `target_entrypoint` values are workspace-relative executable files;
-absolute paths and paths that resolve outside the workspace are rejected.
-
-External-command integrations use the same xctx surface. The subdomain still declares a
-single JSON entrypoint, but the generic connector middleware derives a
-deterministic adapter from the resolved scope and normalizes success and failure
-into one object for xctx to envelope. The default adapter scope is the concrete
-subdomain; domains that own reusable semantics can opt a subdomain into a
-domain-owned adapter without declaring an arbitrary Python import path:
-
-```yaml
-entrypoint:
-  file: connector_supervisor.py
-  protocol: json_stdout
-connector:
-  kind: external_command
-  adapter_scope: domain
-  safe_root: data/file_manager_home
-```
-
-The file-manager demo proves this with ordinary filesystem commands. Discovery
-returns `file:<relative_path>` and `directory:<relative_path>` identities;
-observation inspects the selected object. The generic `libs/xctx` runtime still
-contains no file-manager, stock, or filing semantics. The file-manager external-command
-behavior lives under
-`libs/xctx_connectors/domains/file_manager/external_command_adapter.py`; the
-`home_directory` subdomain only configures one bounded safe-root scope.
-
-Middleware payloads that return connector metadata also declare a
-`shape_guarantee`. This is not parsed by `libs/xctx`; it is an adapter-side
-contract made visible in the live data object:
-
-```json
-{
-  "connector": {
-    "version": "xctx_connector.v1",
-    "kind": "external_command",
-    "adapter_ref": "file_manager::home_directory",
-    "shape_guarantee": {
-      "contract": "always_json_object",
-      "xctx_receives": "single_json_object_for_live_data",
-      "success_shape": "domain_object",
-      "failure_shape": "xctx_connector_error",
-      "raw_external_output": "never_returned_unparsed",
-      "stdout_stderr": "summarized_in_command_status_when_useful"
-    }
-  }
-}
-```
-
-The guarantee means the external command may fail, time out, be missing, or emit
-terminal text, but xctx still receives one JSON object to envelope. Successful
-xctx-native pass-through calls can preserve the target adapter payload
-unchanged; normalized pass-through failures use
-`failure_shape: xctx_native_passthrough_error`.
-
-Connector failure previews, command-status text, requested arguments, argv
-previews, and target payload previews are redacted through the shared
-`xctx.process.redaction` helper before they become protocol output.
-
-## Scoped command options
-
-Subdomain actions can expose command-specific CLI options through `cli_options`.
-The generic parser may register these options so it can parse a command line,
-but the public option surface is only emitted after a concrete subdomain/action
-is in scope.
-
-Example from `market_data_gateway`:
-
-```yaml
-actions:
-  observe:
-    run_cmd: ./xctx observe stock_intelligence_hub::market_data_gateway <id> [--bars N|--calendar-days N]
-    cli_options:
-      - flags: [--bars]
-        dest: bars
-        type: int
-        min: 0
-        adapter_arg: --bars
-        mutex_group: market_series_range_window
-        conflict_message: choose either --bars or --calendar-days
-      - flags: [--calendar-days]
-        dest: calendar_days
-        type: int
-        min: 0
-        adapter_arg: --calendar-days
-        mutex_group: market_series_range_window
-        conflict_message: choose either --bars or --calendar-days
-```
-
-These options are visible at the scoped surface:
-
-```bash
-./xctx discover stock_intelligence_hub::market_data_gateway
-```
-
-They are not visible at:
-
-```bash
-./xctx
-./xctx help
-./xctx --version
-./xctx discover
-```
-
-Unsupported target/option combinations, such as `form:10-K --bars 5`, are
-refused after target resolution and before the filing adapter is called.
-
-## Identity Semantics
-
-Universe-level identity search has been removed. Ticker, symbol, issuer CIK,
-punctuation-normalized company names, aliases, and former-symbol handling are
-stock-domain behavior implemented in
-`examples/stock_intelligence_hub/adapters/market_data_gateway.py` and
-`libs/xctx_live/instruments.py`.

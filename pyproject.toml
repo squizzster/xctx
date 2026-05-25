@@ -56,7 +56,7 @@ python_files = ["test_*.py"]
 markers = [
     "unit: fast framework/unit coverage",
     "integration: connector/subprocess integration coverage",
-    "release: required release-gate coverage",
+    "local_gate: required local development gate coverage",
     "slow: slow protocol matrix coverage",
     "timeout(seconds): per-test timeout in seconds",
 ]

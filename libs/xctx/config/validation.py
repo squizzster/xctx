@@ -2,7 +2,7 @@
 
 The loader validates structural invariants that would make the framework unsafe
 or impossible to operate. Dynamic protocol policy, such as extra command names in
-YAML, is still reported by audit so operators can see all release-surface leaks.
+YAML, is still reported by audit so operators can see all local-development leaks.
 """
 
 from __future__ import annotations

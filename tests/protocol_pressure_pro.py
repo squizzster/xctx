@@ -511,7 +511,7 @@ def assert_extension_lane_discipline() -> None:
     assert other["results"]["topic"] == "something-new"
 
 def assert_real_cli_launcher_and_ledger_probe() -> None:
-    print("[pressure] ledger probe; real CLI launcher is covered by the release gate", flush=True)
+    print("[pressure] ledger probe; real CLI launcher is covered by the local gate", flush=True)
     root = run_engine(["discover"])
     assert_cmd(root, record_type="discovery", level="root")
     unknown = run_engine(["execute", "abcde", "--commit"], code=1)

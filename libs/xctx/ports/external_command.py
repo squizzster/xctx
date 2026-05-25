@@ -34,7 +34,7 @@ from xctx.protocol.actions import action_matches
 
 CONNECTOR_SUPERVISOR_ENTRYPOINT = "connector_supervisor.py"
 
-def _adapter_error_message_from_text(returncode: int, stdout: str, stderr: str, executable: str) -> str:
+def _adapter_error_message_from_text(returncode: int | None, stdout: str, stderr: str, executable: str) -> str:
     for text in (stdout.strip(), stderr.strip()):
         if not text:
             continue
@@ -109,7 +109,7 @@ def _call_python_entrypoint_subprocess(
     subdomain: dict[str, Any],
     timeout: float,
     max_output_bytes: int,
-) -> tuple[int, str, str]:
+) -> tuple[int | None, str, str]:
     try:
         captured = capture_process(
             python_entrypoint_argv(command_path, args),
@@ -125,7 +125,7 @@ def _call_python_entrypoint_subprocess(
         message = f"live connector timed out after {timeout:g} seconds"
         stderr = f"{stderr.rstrip()}\n{message}" if stderr else message
         return 124, captured.stdout, stderr
-    return captured.returncode or 0, captured.stdout, stderr
+    return captured.returncode, captured.stdout, stderr
 
 
 def call_external_command(

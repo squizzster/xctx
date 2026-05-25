@@ -57,12 +57,24 @@ def iter_domain_action_configs(store: dict[str, Any], domain_id: str) -> list[tu
 
 def domain_action_config(store: dict[str, Any], domain_id: str, action_name: str) -> dict[str, Any] | None:
     """Resolve a named affordance inside an explicit agent-domain scope."""
+    domain = store.get("agent_domains", {}).get(domain_id) or {}
+    subdomains = domain.get("_subdomains") or {}
     matches: list[tuple[str, dict[str, Any]]] = []
     for name, action in iter_domain_action_configs(store, domain_id):
         if action_matches(name, action, action_name):
             matches.append((name, action))
     if not matches:
         return None
+    if action_name in subdomains:
+        sources = sorted(
+            f"{domain_id}::{action.get('agent_subdomain')}::{action.get('_source_action_name') or name}"
+            for name, action in matches
+        )
+        sources.insert(0, f"{domain_id}::{action_name}")
+        raise XctxError(
+            f"ambiguous scoped target: {domain_id}::{action_name} ({', '.join(sources)})",
+            next_moves=[f"./xctx audit {domain_id}"],
+        )
     if len(matches) > 1:
         sources = sorted(
             f"{domain_id}::{action.get('agent_subdomain')}::{action.get('_source_action_name') or name}"
@@ -82,6 +94,9 @@ def domain_affordance_config_check(store: dict[str, Any]) -> dict[str, Any]:
     affordance_count = 0
     for domain_id in sorted((store.get("agent_domains") or {}).keys()):
         sources_by_token: dict[str, list[str]] = {}
+        domain = store.get("agent_domains", {}).get(domain_id) or {}
+        for subdomain_id in sorted((domain.get("_subdomains") or {}).keys()):
+            sources_by_token.setdefault(str(subdomain_id), []).append(f"{domain_id}::{subdomain_id}")
         for public_name, action in iter_domain_action_configs(store, domain_id):
             affordance_count += 1
             subdomain_id = str(action.get("agent_subdomain", ""))

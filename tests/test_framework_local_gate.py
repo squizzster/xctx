@@ -1,9 +1,10 @@
-"""Release-gate mechanics that must stay fast and framework-only."""
+"""Local development gate mechanics for framework validation."""
 
 from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tomllib
@@ -16,17 +17,17 @@ from framework_helpers import (
     TEST_OWNER_PID_ENV,
     TEST_RUN_ID_ENV,
     ProcessRow,
-    assert_no_release_gate_runaways,
+    assert_no_local_gate_runaways,
     kill_process_rows,
-    release_gate_process_rows,
+    local_gate_process_rows,
     run_checked,
 )
 
 
-pytestmark = [pytest.mark.release, pytest.mark.timeout(180)]
+pytestmark = [pytest.mark.local_gate, pytest.mark.timeout(180)]
 
 
-def test_release_gate_process_detection_is_scoped_to_current_pytest_run(monkeypatch) -> None:
+def test_local_gate_process_detection_is_scoped_to_current_pytest_run(monkeypatch) -> None:
     monkeypatch.setenv(TEST_RUN_ID_ENV, "run-a")
     monkeypatch.setenv(TEST_OWNER_PID_ENV, "100")
     rows = [
@@ -40,10 +41,10 @@ def test_release_gate_process_detection_is_scoped_to_current_pytest_run(monkeypa
     }
     monkeypatch.setattr("framework_helpers.process_environ", lambda pid: env_by_pid.get(pid, {}))
 
-    assert release_gate_process_rows(rows) == [rows[0]]
+    assert local_gate_process_rows(rows) == [rows[0]]
 
 
-def test_release_gate_cleanup_can_kill_owned_same_group_process(monkeypatch) -> None:
+def test_local_gate_cleanup_can_kill_owned_same_group_process(monkeypatch) -> None:
     killed_groups: list[int] = []
     killed_pids: list[int] = []
     monkeypatch.setattr("framework_helpers.os.getpid", lambda: 100)
@@ -66,7 +67,7 @@ def test_yaml_surface_validator() -> None:
     run_checked([sys.executable, ".agents/skills/xctx-yaml-config/scripts/check_xctx_yaml_surface.py"])
 
 
-def test_compileall_release_paths() -> None:
+def test_compileall_local_gate_paths() -> None:
     run_checked(
         [
             sys.executable,
@@ -105,13 +106,23 @@ def _assert_installed_json_smoke(
     expected_record_type: str,
     expected_cmdline_arg: str,
 ) -> dict:
-    from xctx.process.capture import capture_process  # noqa: PLC0415
-
-    captured = capture_process(args, cwd=cwd, env=env, timeout=60, max_output_bytes=262144)
-    assert not captured.timed_out, (
-        "installed xctx smoke timed out\n"
-        f"args={args}\nSTDOUT={captured.stdout}\nSTDERR={captured.stderr}"
-    )
+    try:
+        captured = subprocess.run(
+            args,
+            cwd=cwd,
+            env=env,
+            text=True,
+            capture_output=True,
+            timeout=60,
+            check=False,
+        )
+    except subprocess.TimeoutExpired as exc:
+        stdout = exc.stdout if isinstance(exc.stdout, str) else ""
+        stderr = exc.stderr if isinstance(exc.stderr, str) else ""
+        raise AssertionError(
+            "installed xctx smoke timed out\n"
+            f"args={args}\nSTDOUT={stdout}\nSTDERR={stderr}"
+        ) from exc
     assert captured.returncode == 0, (
         "installed xctx smoke failed\n"
         f"args={args}\nreturncode={captured.returncode}\nSTDOUT={captured.stdout}\nSTDERR={captured.stderr}"
@@ -130,18 +141,54 @@ def _runtime_snapshot(runtime_dir: Path) -> list[Path]:
     return sorted(path.relative_to(runtime_dir) for path in runtime_dir.rglob("*"))
 
 
-@pytest.mark.skipif(
-    os.environ.get("XCTX_RUN_PACKAGE_INSTALL_SMOKE") != "1",
-    reason="set XCTX_RUN_PACKAGE_INSTALL_SMOKE=1 to run the sandbox-sensitive package install smoke",
-)
 def test_package_install_entrypoint_smoke(tmp_path: Path) -> None:
+    source_dir = tmp_path / "source"
+    shutil.copytree(
+        ROOT,
+        source_dir,
+        ignore=shutil.ignore_patterns(
+            ".git",
+            ".pytest_cache",
+            ".xctx_runtime",
+            "__pycache__",
+            "*.pyc",
+            "build",
+            "*.egg-info",
+        ),
+    )
+    venv_dir = tmp_path / "venv"
+    venv_proc = subprocess.run(
+        [sys.executable, "-m", "venv", "--system-site-packages", str(venv_dir)],
+        cwd=source_dir,
+        text=True,
+        capture_output=True,
+        timeout=120,
+        check=False,
+    )
+    assert venv_proc.returncode == 0, (
+        "test venv creation failed\n"
+        f"returncode={venv_proc.returncode}\nSTDOUT={venv_proc.stdout}\nSTDERR={venv_proc.stderr}"
+    )
+    package_python = _venv_python(venv_dir)
+    build_deps_proc = subprocess.run(
+        [str(package_python), "-m", "pip", "install", "setuptools>=68", "wheel", "PyYAML>=6.0"],
+        cwd=source_dir,
+        text=True,
+        capture_output=True,
+        timeout=180,
+        check=False,
+    )
+    assert build_deps_proc.returncode == 0, (
+        "package smoke build dependency install failed\n"
+        f"returncode={build_deps_proc.returncode}\nSTDOUT={build_deps_proc.stdout}\nSTDERR={build_deps_proc.stderr}"
+    )
     install_dir = tmp_path / "installed"
     runtime_dir = tmp_path / "runtime"
     source_runtime = ROOT / ".xctx_runtime"
     source_runtime_before = _runtime_snapshot(source_runtime)
     install_proc = subprocess.run(
         [
-            sys.executable,
+            str(package_python),
             "-m",
             "pip",
             "install",
@@ -149,9 +196,9 @@ def test_package_install_entrypoint_smoke(tmp_path: Path) -> None:
             "--no-deps",
             "--target",
             str(install_dir),
-            str(ROOT),
+            str(source_dir),
         ],
-        cwd=ROOT,
+        cwd=source_dir,
         text=True,
         capture_output=True,
         timeout=180,
@@ -166,14 +213,14 @@ def test_package_install_entrypoint_smoke(tmp_path: Path) -> None:
     assert entrypoint.exists(), f"installed xctx entrypoint missing: {entrypoint}"
     env = {**os.environ, "PYTHONPATH": str(install_dir), "XCTX_RUNTIME_DIR": str(runtime_dir)}
     _assert_installed_json_smoke(
-        [sys.executable, str(entrypoint), "--json", "discover"],
+        [str(package_python), str(entrypoint), "--json", "discover"],
         cwd=tmp_path,
         env=env,
         expected_record_type="discovery",
         expected_cmdline_arg="--json discover",
     )
     _assert_installed_json_smoke(
-        [sys.executable, "-m", "xctx", "--json", "discover"],
+        [str(package_python), "-m", "xctx", "--json", "discover"],
         cwd=tmp_path,
         env=env,
         expected_record_type="discovery",
@@ -181,7 +228,7 @@ def test_package_install_entrypoint_smoke(tmp_path: Path) -> None:
     )
     market_observation = _assert_installed_json_smoke(
         [
-            sys.executable,
+            str(package_python),
             str(entrypoint),
             "--json",
             "observe",
@@ -202,20 +249,20 @@ def test_package_install_entrypoint_smoke(tmp_path: Path) -> None:
     source_runtime_after = _runtime_snapshot(source_runtime)
     assert source_runtime_after == source_runtime_before
     assert not (tmp_path / ".xctx_runtime").exists()
-    assert_no_release_gate_runaways()
+    assert_no_local_gate_runaways()
 
 
-def test_release_gate_timeout_cleans_detached_children() -> None:
+def test_local_gate_timeout_cleans_detached_children() -> None:
     child_code = (
         "import subprocess, sys, time; "
         "subprocess.Popen([sys.executable, '-c', "
-        "\"import time; print('xctx_release_gate_detached_child', flush=True); time.sleep(60)\"], "
+        "\"import time; print('xctx_local_gate_detached_child', flush=True); time.sleep(60)\"], "
         "start_new_session=True); "
         "time.sleep(60)"
     )
     with pytest.raises(AssertionError, match="command timed out"):
         run_checked([sys.executable, "-c", child_code], timeout=1)
-    assert_no_release_gate_runaways()
+    assert_no_local_gate_runaways()
 
 
 def test_package_version_matches_project_metadata() -> None:

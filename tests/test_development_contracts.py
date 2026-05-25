@@ -10,7 +10,7 @@ import pytest
 from framework_helpers import ROOT, ensure_libs_path, run_runtime_json
 
 
-pytestmark = [pytest.mark.unit, pytest.mark.release, pytest.mark.timeout(60)]
+pytestmark = [pytest.mark.unit, pytest.mark.local_gate, pytest.mark.timeout(60)]
 
 
 def test_execute_accepts_exactly_one_plan_identifier() -> None:

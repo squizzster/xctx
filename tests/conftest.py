@@ -9,7 +9,7 @@ import tempfile
 
 import pytest
 
-from framework_helpers import ensure_test_process_scope, kill_process_rows, release_gate_process_rows
+from framework_helpers import ensure_test_process_scope, kill_process_rows, local_gate_process_rows
 
 
 @pytest.fixture(autouse=True)
@@ -25,7 +25,7 @@ def isolate_xctx_runtime_dir(monkeypatch):
 @pytest.fixture(autouse=True)
 def assert_no_xctx_child_process_leaks():
     yield
-    runaways = release_gate_process_rows()
+    runaways = local_gate_process_rows()
     if not runaways:
         return
     kill_process_rows(runaways)
@@ -41,7 +41,7 @@ def pytest_configure(config) -> None:
     ensure_test_process_scope()
     config.addinivalue_line("markers", "unit: fast framework/unit coverage")
     config.addinivalue_line("markers", "integration: connector/subprocess integration coverage")
-    config.addinivalue_line("markers", "release: required release-gate coverage")
+    config.addinivalue_line("markers", "local_gate: required local development gate coverage")
     config.addinivalue_line("markers", "slow: slow protocol matrix coverage")
     config.addinivalue_line("markers", "timeout(seconds): per-test timeout in seconds")
 

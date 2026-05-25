@@ -11,7 +11,7 @@ from framework_helpers import load_script_module
 
 
 connector = load_script_module("protocol_connector_supervisor")
-pytestmark = [pytest.mark.integration, pytest.mark.release, pytest.mark.timeout(120)]
+pytestmark = [pytest.mark.integration, pytest.mark.local_gate, pytest.mark.timeout(120)]
 
 
 def test_middleware_returns_json_without_xctx_env() -> None:

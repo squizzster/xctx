@@ -1,4 +1,4 @@
-"""Additional release-gate tests for the hardened xctx protocol surface."""
+"""Additional local-gate tests for the hardened xctx protocol surface."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ import pytest
 from framework_helpers import ROOT, ensure_libs_path, run_runtime_json
 
 
-pytestmark = [pytest.mark.unit, pytest.mark.release, pytest.mark.timeout(60)]
+pytestmark = [pytest.mark.unit, pytest.mark.local_gate, pytest.mark.timeout(60)]
 
 
 def test_removed_facade_modules_do_not_reappear() -> None:

@@ -253,7 +253,7 @@ def run_external(
     return {
         "ok": captured.ok,
         "argv": argv,
-        "exit_code": captured.returncode or 0,
+        "exit_code": captured.returncode,
         "timed_out": False,
         "stdout": captured.stdout,
         "stderr": captured.stderr,

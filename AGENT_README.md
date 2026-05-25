@@ -1,313 +1,130 @@
-# xctx v4.2 Agent-Domain Protocol reference build
+# Agent Contract
 
-This workspace is a hardened reference implementation for an agent-facing `xctx`
-protocol surface. The goal is not a broad feature surface; it is a correct,
-pressure-tested protocol path from:
+## Source Truth
+
+```yaml
+status: live_local_development
+public_compatibility_target: false
+authoritative:
+  - current_code
+  - current_tests
+  - loaded_yaml
+non_authoritative_when_stale:
+  - markdown_docs
+  - local_skills
+  - reports
+compatibility_policy:
+  default: remove_obsolete_paths
+  preserve_old_behavior_only_if: explicit_release_or_migration_requirement
+```
+
+## Command Surface
+
+```yaml
+visible:
+  - discover
+  - observe
+  - plan
+  - execute
+  - audit
+  - repair
+hidden:
+  - other
+removed:
+  - discovery
+  - d
+  - identify
+  - status
+  - doctor
+  - write
+```
+
+## Scope Rule
+
+```yaml
+root:
+  may_show:
+    - agent_domains
+    - generic_commands
+    - generic_next_moves
+  must_not_show:
+    - scoped_action_names
+    - scoped_option_names
+    - adapter_vocabulary
+    - implicit_domain_selector
+domain:
+  path: "<domain>"
+subdomain:
+  path: "<domain>::<subdomain>"
+action:
+  path: "<domain>::<subdomain>::<action>"
+domain_affordance:
+  path: "<domain>::<affordance>"
+  declared_by: subdomain_action_domain_affordance_true
+```
+
+## Framework Boundary
+
+```yaml
+libs/xctx:
+  owns:
+    - argv_parsing
+    - command_admission
+    - envelopes
+    - generic_reference_shapes
+    - option_syntax
+    - audit_shape
+    - plan_receipts
+    - repair_shape
+  forbids:
+    - provider_semantics
+    - ticker_semantics
+    - filing_semantics
+    - filesystem_semantics
+    - adapter_imports
+yaml_and_adapters:
+  own:
+    - domain_nouns
+    - action_meaning
+    - result_ranking
+    - data_source_behavior
+    - observe_payload_materialization
+```
+
+## Pressure Questions
+
+Ask these before accepting any framework, YAML, adapter, or docs change:
+
+```yaml
+checks:
+  - id: source_truth
+    question: Does this match current code, tests, and loaded YAML?
+  - id: root_surface
+    question: Does root/help/version/discover stay generic?
+  - id: explicit_scope
+    question: Does every domain operation require explicit domain or subdomain scope?
+  - id: core_purity
+    question: Did domain vocabulary avoid libs/xctx generic runtime?
+  - id: error_shape
+    question: Is error text in error and recovery guidance in next_moves?
+  - id: audit_fail_closed
+    question: Do malformed checks and adapter failures become failing audit checks?
+  - id: redaction
+    question: Are protocol-facing errors, argv, args, and payload previews redacted?
+  - id: no_compat_shim
+    question: Did we remove obsolete paths instead of preserving old behavior?
+  - id: full_tests
+    question: Did validation run the full collected pytest suite, not a subset?
+```
+
+## Local Gate
+
+```bash
+make full-test
+```
+
+Expected:
 
 ```text
-ROOT -> AGENT DOMAIN -> AGENT SUBDOMAIN -> SCOPED AFFORDANCE / OBSERVATION
+102 passed
 ```
-
-This is a live local development workspace, not a deployed public compatibility
-surface. The current code, tests, and loaded YAML are the source of truth. Local
-skills, reports, and validation notes are development aids that may lag and
-should be updated when the implementation changes.
-
-The protocol/configuration layer is separated from live read-only data adapters:
-
-- `./xctx` is the protocol bootloader.
-- `yaml_dynamic_config/` describes the universe, agent domains, subdomains,
-  statuses, commands, routing, and lawful next moves.
-- `connector_supervisor.py` and `libs/xctx_connectors/` provide adapter-side
-  middleware for xctx-native pass-through and external command transforms.
-- `examples/stock_intelligence_hub/adapters/market_data_gateway.py` is the
-  read-only market-data example adapter behind the connector supervisor.
-- `examples/stock_intelligence_hub/adapters/equity_filings.py` is the read-only
-  EDGAR filing taxonomy example adapter behind the connector supervisor.
-
-Boundary for future agents: keep `xctx`, `bin/xctx`, and `libs/xctx` as the
-generic interface/protocol layer. Domain/subdomain/mode meaning belongs in
-scoped YAML and adapter code. Generic runtime comments use `## Protocol
-boundary` markers to make that separation explicit.
-
-The active online domains/subdomains include:
-
-- `stock_intelligence_hub::market_data_gateway`
-- `stock_intelligence_hub::equity_filing`
-- `file_manager::home_directory` as an external-command middleware demonstration domain
-
-Other domains/subdomains are deliberately offline or down for maintenance so an
-agent can test audit and repair behavior without guessing.
-
-## Core command set
-
-The exposed command set is deliberately small:
-
-```bash
-./xctx discover
-./xctx observe <thing>
-./xctx plan <operation>
-./xctx execute <plan-or-receipt> --commit
-./xctx audit <scope>
-./xctx repair <finding>
-```
-
-No command aliases are accepted. `discover` is the command; `discovery`, `d`,
-and other shorthand forms are intentionally rejected so the protocol surface
-stays exact.
-
-## Quick start
-
-```bash
-./xctx
-./xctx help
-./xctx discover
-./xctx discover stock_intelligence_hub::
-./xctx discover stock_intelligence_hub
-./xctx discover stock_intelligence_hub::market_data_gateway
-./xctx discover stock_intelligence_hub::equity_filing
-```
-
-`./xctx` discovers the xctx universe. `./xctx discover` discovers the root
-agent-domain surface.
-
-## Scoped affordances
-
-Root discovery is domain-only. These are valid bare discovery targets because
-they are configured agent domains:
-
-```bash
-./xctx discover file_manager
-./xctx discover stock_intelligence_hub
-./xctx discover macro_intelligence_hub
-./xctx discover crypto_intelligence_hub
-./xctx discover options_intelligence_hub
-```
-
-Bare subdomains, action names, instruments, filing codes, and file ids are
-intentionally refused. These are invalid:
-
-```bash
-./xctx discover GOOG
-./xctx discover market_data_gateway
-./xctx discover file:README.txt
-./xctx discover search_filing_family annual
-```
-
-Use a scoped domain affordance instead:
-
-```bash
-./xctx discover stock_intelligence_hub::search_filing_family annual
-./xctx discover stock_intelligence_hub::search_priority_bucket critical
-./xctx discover stock_intelligence_hub::search_entity_instrument Apple
-./xctx discover stock_intelligence_hub::market_data_gateway latest_price AAPL
-```
-
-A safe shorthand is also supported when the first token is already a scoped xctx
-reference:
-
-```bash
-./xctx stock_intelligence_hub::search_priority_bucket critical
-```
-
-Full subdomain action form also works:
-
-```bash
-./xctx discover stock_intelligence_hub::market_data_gateway::search_entity_instrument
-./xctx discover stock_intelligence_hub::market_data_gateway search_entity_instrument Apple
-./xctx discover stock_intelligence_hub::market_data_gateway list_instruments --limit 25 --cursor 25
-./xctx discover stock_intelligence_hub::market_data_gateway list_instruments --shape full
-./xctx discover stock_intelligence_hub::equity_filing::search_forms
-./xctx discover stock_intelligence_hub::equity_filing search_forms 10-K
-./xctx discover stock_intelligence_hub::equity_filing list_forms --limit 25 --cursor 25
-./xctx discover stock_intelligence_hub::equity_filing list_forms --shape full
-```
-
-## Working read-only data paths
-
-Instrument identity:
-
-```bash
-./xctx discover stock_intelligence_hub::market_data_gateway search_entity_instrument Apple
-./xctx discover stock_intelligence_hub::market_data_gateway search_entity_instrument Apple, Inc.
-./xctx discover stock_intelligence_hub::market_data_gateway search_entity_instrument issuer:cik:0000320193
-./xctx discover stock_intelligence_hub::market_data_gateway search_entity_instrument FB
-./xctx discover stock_intelligence_hub::market_data_gateway search_entity_instrument A
-./xctx observe stock_intelligence_hub::market_data_gateway instrument:aapl
-```
-
-The resolver is ticker/CIK/alias/name aware: exact tickers and CIKs rank first,
-former-symbol aliases such as `FB` can resolve to curated canonical records such as
-`META`, and punctuation-normalized legal names such as `Apple, Inc.` resolve to
-`AAPL`. Instrument search does not inline market-series payloads; it emits next
-moves so the agent explicitly discovers latest price or market series when needed.
-
-Bundled OHLCV market series:
-
-```bash
-./xctx discover stock_intelligence_hub::market_data_gateway search_market_series AAPL
-./xctx discover stock_intelligence_hub::market_data_gateway search_market_series issuer:cik:0000320193
-./xctx discover stock_intelligence_hub::market_data_gateway latest_price AAPL
-./xctx observe stock_intelligence_hub::market_data_gateway market_series:aapl:daily
-./xctx observe stock_intelligence_hub::market_data_gateway AAPL --calendar-days 50
-./xctx observe stock_intelligence_hub::market_data_gateway instrument:aapl --bars 5
-```
-
-`latest_price` discovers the latest available bundled price point; observe returns
-the price data. Range observations include a `price_summary`
-(first/last close, change, percent change, highest high, and lowest low) plus an
-export hint. A CSV file is written only when `--export csv` is explicitly supplied.
-
-Those range options are not hardcoded in the generic parser. They are declared on
-the market-data `observe` action in YAML under `cli_options`, advertised only
-after the market-data subdomain is in scope (`./xctx discover
-stock_intelligence_hub::market_data_gateway`), validated after target routing,
-and then passed through to the market adapter. Unsupported target/option
-combinations, such as `form:10-K --bars 5`, are refused by the protocol layer
-before the filing adapter is called.
-
-Filing taxonomy:
-
-```bash
-./xctx discover stock_intelligence_hub::equity_filing
-./xctx discover stock_intelligence_hub::equity_filing::search_forms
-./xctx discover stock_intelligence_hub::equity_filing list_forms
-./xctx discover stock_intelligence_hub::equity_filing list_families
-./xctx discover stock_intelligence_hub::equity_filing list_priority_buckets
-./xctx discover stock_intelligence_hub::search_filing_form 10-K
-./xctx discover stock_intelligence_hub::search_filing_family annual
-./xctx discover stock_intelligence_hub::search_priority_bucket critical
-./xctx observe stock_intelligence_hub::equity_filing form:10-K
-./xctx observe stock_intelligence_hub::equity_filing instrument:aapl
-```
-
-`equity_filing` base discovery advertises its modes directly. `search_forms`,
-`search_families`, and `search_priority_buckets` with no query return interface
-metadata; with a query they execute the search. Exact code queries such as
-`10-K`, `8-K`, `ANNUAL_REPORT`, or `critical_always` are resolved exactly before
-broad descriptive text search is used.
-
-List modes return compact index rows by default. Use `--shape full` only when
-bulk detail is needed; use `observe` for one full object. Cursor support is
-declared per scoped list action and cursor values are adapter-owned.
-
-Middleware demo:
-
-```bash
-./xctx discover file_manager::
-./xctx discover file_manager::home_directory
-./xctx discover file_manager::home_directory list_files --limit 2
-./xctx discover file_manager::home_directory file:README.txt
-./xctx observe file_manager::home_directory file:README.txt
-./xctx audit file_manager::home_directory
-```
-
-The file-manager connector demonstrates the enterprise middleware contract:
-external command output is transformed into a stable object before xctx envelopes
-it. Connector metadata exposes a `shape_guarantee` declaring that xctx receives
-`single_json_object_for_live_data`, with connector success as a domain object and
-connector failure as `xctx_connector_error`.
-
-## What is real in this reference build
-
-The filing adapter reads `data/edgar_form_reference_taxonomy.sqlite`, which
-contains 412 EDGAR form lookup records, 41 canonical families, 12 priority
-buckets, 51 category labels, and 176 amendment forms.
-
-The market adapter reads:
-
-- `yaml_dynamic_config/agent_domains/stock_intelligence_hub/subdomains/market_data_gateway/instruments.yaml`
-  for curated canonical cross-subdomain instrument seed records.
-- `data/mini_stocks.sqlite` for a read-only market fixture with 100 reference
-  universe rows, 100 OHLCV series, and 122,828 bars.
-
-The adapter deduplicates these into 106 canonical instrument identities for
-search/observe/audit, including the bundled market fixture and curated YAML-only
-handoff records such as `META` for former-symbol alias testing.
-
-## Audit and repair protocol
-
-```bash
-./xctx audit root
-./xctx repair offline:macro_intelligence_hub
-./xctx repair down_for_maintenance:stock_intelligence_hub::fundamentals_gateway
-```
-
-Root audit is the broad protocol/config/live-adapter health surface. It includes
-framework checks, availability findings, configured option checks, config
-fingerprints, and normalized live adapter checks for online configured
-subdomains. Live adapter failures become failing audit checks instead of
-aborting the whole command, and protocol-facing error previews are redacted.
-
-Use scoped audit when you want to narrow that adapter-health view:
-
-```bash
-./xctx audit stock_intelligence_hub::market_data_gateway
-./xctx audit file_manager::home_directory
-```
-
-Offline targets expose a repair path. Down-for-maintenance targets are terminal:
-`repair_path: null`, `final: true`, and the response cites that the target is
-`down for maintenance`.
-
-## Plan and execute receipts
-
-This build does not mutate domain state, but it does produce deterministic plan
-receipts and writes them to a protocol-local runtime ledger. By default that is
-`.xctx_runtime/plans/`; set `XCTX_RUNTIME_DIR` to isolate or relocate artifacts.
-`execute` accepts only receipts that resolve to a recorded plan, so a random
-five-character hex string is not enough:
-
-```bash
-PLAN_ID=$(./xctx plan bring_online stock_intelligence_hub::market_data_gateway \
-  | python3 -c 'import sys,json; print(json.load(sys.stdin)["results"]["plan_id"])')
-./xctx execute "$PLAN_ID" --commit
-```
-
-Plans return:
-
-- `planner_id`: full sha256 hex
-- `plan_id`: `plan:sha256:<sha256>`
-- `receipt_sha5`: short reference build/debug token accepted only when it resolves uniquely to a recorded plan
-
-`execute` returns a `planner_binding` object proving which recorded plan was accepted, plus `accepted_read_only_noop` and `mutations_applied: 0`.
-
-## Output formats
-
-Machine default is JSONL:
-
-```bash
-./xctx discover
-```
-
-YAML is explicit or selected automatically for a TTY:
-
-```bash
-./xctx --yaml discover
-./xctx --json discover
-```
-
-## Test gate
-
-```bash
-make test
-```
-
-`make test` runs `python3 -m pytest -q`. Pytest collects the framework tests plus
-the protocol smoke, pressure, connector supervisor, and observe/discover
-boundary checks. A green pytest run is therefore the canonical local release
-gate, not a partial subset gate. `make release-test` runs the YAML checker,
-compileall, and the same full pytest suite.
-
-## Development hardening notes
-
-This build intentionally tightens several edges that were easy to get almost right:
-
-- Unscoped affordance names are refused; scoped ROOT → DOMAIN → SUBDOMAIN paths are required.
-- Domain-specific command options are declared in YAML `cli_options`; the core parser does not name market-series flags.
-- `discover --name` is intentionally refused; root no longer chooses a stock action from a bare name.
-- Unknown command names are refused; they are not silently treated as protocol commands.
-- `receipt_sha5` is short debug sugar, not authority. It must bind to a recorded plan in the configured runtime ledger.
-- Instrument search emits minimal identity results and next moves; latest_price discovers the latest available bundled price point, and observe returns the price data.
-- List actions emit compact index rows by default; full bulk rows require `--shape full`, and cursor support is scoped/optional.
-- latest_price is not a live quote; it discovers the latest available bundled price point before observe materializes the data.

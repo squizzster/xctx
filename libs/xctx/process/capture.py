@@ -3,7 +3,7 @@
 The protocol runtime and connector middleware both need the same subprocess
 contract: bounded stdout/stderr previews, hard timeouts, and process-tree cleanup.
 Output is captured through temporary files rather than pipes so adapters cannot
-block on a full pipe and long release tests do not accumulate reader threads.
+block on a full pipe and long local-gate tests do not accumulate reader threads.
 """
 
 from __future__ import annotations

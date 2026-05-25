@@ -9,7 +9,7 @@ import pytest
 from framework_helpers import ROOT, ensure_libs_path, run_runtime_json
 
 
-pytestmark = [pytest.mark.unit, pytest.mark.release, pytest.mark.timeout(60)]
+pytestmark = [pytest.mark.unit, pytest.mark.local_gate, pytest.mark.timeout(60)]
 
 
 def test_protocol_option_helpers_live_in_focused_modules() -> None:
@@ -71,6 +71,30 @@ def test_capture_process_treats_missing_returncode_as_not_ok() -> None:
     from xctx.process.capture import CapturedProcess  # noqa: PLC0415
 
     assert CapturedProcess(argv=("adapter",), returncode=None, timed_out=False, stdout="", stderr="").ok is False
+
+
+def test_connector_runtime_preserves_missing_returncode(monkeypatch: pytest.MonkeyPatch) -> None:
+    ensure_libs_path()
+    from xctx.process.capture import CapturedProcess  # noqa: PLC0415
+    from xctx_connectors import runtime as connector_runtime  # noqa: PLC0415
+
+    monkeypatch.setattr(
+        connector_runtime,
+        "capture_process",
+        lambda *_args, **_kwargs: CapturedProcess(
+            argv=("adapter",),
+            returncode=None,
+            timed_out=False,
+            stdout="",
+            stderr="missing returncode",
+        ),
+    )
+
+    result = connector_runtime.run_external(["adapter"], timeout=1, max_output_bytes=1024)
+
+    assert result["ok"] is False
+    assert result["exit_code"] is None
+    assert result["error"] == "missing returncode"
 
 
 def test_cmdline_arg_shell_quotes_values_with_spaces() -> None:

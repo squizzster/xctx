@@ -8,7 +8,7 @@ from framework_helpers import load_script_module
 
 
 pressure = load_script_module("protocol_pressure_pro")
-pytestmark = [pytest.mark.integration, pytest.mark.release, pytest.mark.slow, pytest.mark.timeout(240)]
+pytestmark = [pytest.mark.integration, pytest.mark.local_gate, pytest.mark.slow, pytest.mark.timeout(240)]
 
 
 def test_pressure_root_universe_command_surface() -> None:

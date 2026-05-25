@@ -8,7 +8,7 @@ from framework_helpers import load_script_module
 
 
 smoke = load_script_module("smoke_protocol")
-pytestmark = [pytest.mark.integration, pytest.mark.release, pytest.mark.timeout(180)]
+pytestmark = [pytest.mark.integration, pytest.mark.local_gate, pytest.mark.timeout(180)]
 
 
 def test_smoke_modular_layout() -> None:

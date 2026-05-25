@@ -19,12 +19,11 @@ from typing import NamedTuple
 ROOT = Path(__file__).resolve().parents[1]
 TEST_RUN_ID_ENV = "XCTX_TEST_RUN_ID"
 TEST_OWNER_PID_ENV = "XCTX_TEST_OWNER_PID"
-RELEASE_GATE_PATTERNS = (
+LOCAL_GATE_PATTERNS = (
     "connector_supervisor.py",
     "market_data_gateway.py",
     "equity_filings.py",
-    "legacy_connector.py",
-    "xctx_release_gate_detached_child",
+    "xctx_local_gate_detached_child",
 )
 
 
@@ -106,7 +105,7 @@ def _row_matches_test_scope(row: ProcessRow, scope: tuple[str, str]) -> bool:
     return env.get(TEST_RUN_ID_ENV) == run_id and env.get(TEST_OWNER_PID_ENV) == owner_pid
 
 
-def release_gate_process_rows(rows: list[ProcessRow] | None = None) -> list[ProcessRow]:
+def local_gate_process_rows(rows: list[ProcessRow] | None = None) -> list[ProcessRow]:
     rows = rows or process_rows()
     current_pid = os.getpid()
     current_pgid = os.getpgrp() if hasattr(os, "getpgrp") else None
@@ -116,7 +115,7 @@ def release_gate_process_rows(rows: list[ProcessRow] | None = None) -> list[Proc
     for row in rows:
         if row.pid == current_pid:
             continue
-        if not any(pattern in row.cmd for pattern in RELEASE_GATE_PATTERNS):
+        if not any(pattern in row.cmd for pattern in LOCAL_GATE_PATTERNS):
             continue
         if scope is not None:
             if row.pid in current_descendants or _row_matches_test_scope(row, scope):
@@ -150,15 +149,15 @@ def kill_process_rows(rows: list[ProcessRow]) -> None:
             pass
 
 
-def assert_no_release_gate_runaways() -> None:
-    runaways = release_gate_process_rows()
-    assert not runaways, "release gate left subprocesses running:\n" + "\n".join(
+def assert_no_local_gate_runaways() -> None:
+    runaways = local_gate_process_rows()
+    assert not runaways, "local gate left subprocesses running:\n" + "\n".join(
         f"pid={row.pid} ppid={row.ppid} pgid={row.pgid} cmd={row.cmd}" for row in runaways
     )
 
 
 def run_checked(args: list[str], timeout: int = 120) -> None:
-    with tempfile.TemporaryDirectory(prefix="xctx_release_gate_") as runtime_dir:
+    with tempfile.TemporaryDirectory(prefix="xctx_local_gate_") as runtime_dir:
         env = {**os.environ, "XCTX_RUNTIME_DIR": runtime_dir}
         stdout_path = Path(runtime_dir) / "stdout.txt"
         stderr_path = Path(runtime_dir) / "stderr.txt"
@@ -180,7 +179,7 @@ def run_checked(args: list[str], timeout: int = 120) -> None:
             except subprocess.TimeoutExpired as exc:
                 rows = process_rows()
                 kill_process_rows([row for row in rows if row.pid == proc.pid] + descendant_rows(proc.pid, rows))
-                kill_process_rows(release_gate_process_rows(process_rows()))
+                kill_process_rows(local_gate_process_rows(process_rows()))
                 try:
                     proc.wait(timeout=5)
                 except subprocess.TimeoutExpired:
@@ -202,7 +201,7 @@ def run_checked(args: list[str], timeout: int = 120) -> None:
         f"command failed: {' '.join(args)}\n"
         f"returncode={proc.returncode}\nSTDOUT={stdout}\nSTDERR={stderr}"
     )
-    assert_no_release_gate_runaways()
+    assert_no_local_gate_runaways()
 
 
 def ensure_libs_path() -> None:

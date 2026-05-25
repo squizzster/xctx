@@ -1,8 +1,12 @@
-# Stock Intelligence Hub Example Adapters
+# Stock Intelligence Hub Adapters
 
-This directory contains bundled example/domain adapter entrypoints for the
-`stock_intelligence_hub` YAML domain.
-
-These files are not the generic xctx framework. The framework routes to
-`connector_supervisor.py`, and the supervisor invokes these adapters only after
-a scoped YAML subdomain selects them with `connector.target_entrypoint`.
+```yaml
+scope: stock_intelligence_hub
+framework_core: false
+entrypoint_owner: scoped_yaml_connector_target_entrypoint
+called_by: connector_supervisor.py
+adapters:
+  - adapters/market_data_gateway.py
+  - adapters/equity_filings.py
+generic_runtime_must_not_import: true
+```
