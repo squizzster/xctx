@@ -4,7 +4,12 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from framework_helpers import ROOT, ensure_libs_path, run_runtime_json
+
+
+pytestmark = [pytest.mark.unit, pytest.mark.release, pytest.mark.timeout(60)]
 
 
 def test_no_stale_status_or_identify_guidance() -> None:

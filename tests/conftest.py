@@ -3,22 +3,45 @@
 from __future__ import annotations
 
 import shutil
+import signal
 import tempfile
-from pathlib import Path
 
 import pytest
 
 
-ROOT = Path(__file__).resolve().parents[1]
-
-
 @pytest.fixture(autouse=True)
 def isolate_xctx_runtime_dir(monkeypatch):
-    runtime_parent = ROOT / "experiments_tmp"
-    runtime_parent.mkdir(exist_ok=True)
-    runtime_dir = Path(tempfile.mkdtemp(prefix="pytest_runtime_", dir=runtime_parent))
+    runtime_dir = tempfile.mkdtemp(prefix="xctx_pytest_runtime_")
     monkeypatch.setenv("XCTX_RUNTIME_DIR", str(runtime_dir))
     try:
         yield runtime_dir
     finally:
         shutil.rmtree(runtime_dir, ignore_errors=True)
+
+
+def pytest_configure(config) -> None:
+    config.addinivalue_line("markers", "unit: fast framework/unit coverage")
+    config.addinivalue_line("markers", "integration: connector/subprocess integration coverage")
+    config.addinivalue_line("markers", "release: required release-gate coverage")
+    config.addinivalue_line("markers", "slow: slow protocol matrix coverage")
+    config.addinivalue_line("markers", "timeout(seconds): per-test timeout in seconds")
+
+
+@pytest.fixture(autouse=True)
+def enforce_test_timeout(request):
+    marker = request.node.get_closest_marker("timeout")
+    timeout_seconds = int(marker.args[0]) if marker and marker.args else 300
+    if not hasattr(signal, "SIGALRM"):
+        yield
+        return
+
+    def timeout_handler(_signum, _frame) -> None:
+        pytest.fail(f"test timed out after {timeout_seconds} seconds")
+
+    previous_handler = signal.signal(signal.SIGALRM, timeout_handler)
+    signal.setitimer(signal.ITIMER_REAL, timeout_seconds)
+    try:
+        yield
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, 0)
+        signal.signal(signal.SIGALRM, previous_handler)

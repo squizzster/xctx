@@ -81,7 +81,7 @@ def assert_root_surface_clean(payload: object) -> None:
         assert forbidden not in text, forbidden
 
 
-def main() -> int:
+def assert_root_universe_command_surface() -> None:
     print("[pressure] root/universe command surface", flush=True)
     universe = run_engine([])
     assert_cmd(universe, record_type="discovery", level="universe")
@@ -169,7 +169,9 @@ def main() -> int:
         ):
             assert forbidden_literal not in text, (core_rel, forbidden_literal)
 
+def assert_domain_subdomain_discovery() -> None:
     print("[pressure] domain/subdomain discovery", flush=True)
+    root = run_engine(["discover"])
     root_domains = {item["id"]: item for item in root["results"]["agent_domains"]}
     assert root_domains["file_manager"]["status"] == "online"
     domain = run_engine(["discover", "stock_intelligence_hub::"])
@@ -223,7 +225,8 @@ def main() -> int:
     assert file_full["results"]["shape"] == "full"
     assert file_full["results"]["live_data"]["external_commands"]["list"] == "ls -lt"
 
-    print("[pressure] scoped affordance routing", flush=True)
+def assert_scoped_filing_affordance_routing() -> None:
+    print("[pressure] scoped filing affordance routing", flush=True)
     invalid_unscoped = run_engine(["discover", "search_filing_family", "annual"], code=1)
     assert_cmd(invalid_unscoped, ok=False, record_type="error")
     assert "./xctx discover stock_intelligence_hub::search_filing_family" in invalid_unscoped["error"]
@@ -247,10 +250,25 @@ def main() -> int:
     list_forms_full = run_engine(["discover", "stock_intelligence_hub::equity_filing", "list_forms", "--limit", "2", "--shape", "full"])
     assert list_forms_full["results"]["live_data"]["pagination"]["returned_count"] == 2
     assert "run_cmd" in list_forms_full["results"]["live_data"]["forms"][0]
+    exact_10k = run_engine(["discover", "stock_intelligence_hub::equity_filing", "search_forms", "10-K"])
+    exact_10k_ids = [item["id"] for item in exact_10k["results"]["live_data"]["matches"]]
+    assert exact_10k_ids == ["form:10-K", "form:10-K/A"]
+    exact_8k = run_engine(["discover", "stock_intelligence_hub::search_filing_form", "8-K"])
+    exact_8k_ids = [item["id"] for item in exact_8k["results"]["live_data"]["matches"]]
+    assert exact_8k_ids == ["form:8-K", "form:8-K/A"]
+    exact_family = run_engine(["discover", "stock_intelligence_hub::equity_filing", "search_families", "ANNUAL_REPORT"])
+    assert [item["id"] for item in exact_family["results"]["live_data"]["matches"]] == ["family:ANNUAL_REPORT"]
+
+
+def assert_scoped_market_list_affordance() -> None:
+    print("[pressure] scoped market list affordance", flush=True)
     instruments = run_engine(["discover", "stock_intelligence_hub::market_data_gateway", "list_instruments", "--limit", "2"])
     assert instruments["results"]["live_data"]["shape"] == "compact"
     assert instruments["results"]["live_data"]["pagination"]["next_cursor"] == "2"
 
+
+def assert_scoped_file_affordance_routing() -> None:
+    print("[pressure] scoped file affordance routing", flush=True)
     file_list = run_engine(["discover", "file_manager::home_directory", "list_files", "--limit", "2"])
     assert file_list["results"]["live_data"]["object_type"] == "external_command_filesystem_file_list"
     assert file_list["results"]["live_data"]["connector"]["shape_guarantee"]["contract"] == "always_json_object"
@@ -279,15 +297,8 @@ def main() -> int:
     directory_list = run_engine(["discover", "file_manager::home_directory", "list_directories"])
     assert "directory:docs" in {item["id"] for item in directory_list["results"]["live_data"]["directories"]}
 
-    exact_10k = run_engine(["discover", "stock_intelligence_hub::equity_filing", "search_forms", "10-K"])
-    exact_10k_ids = [item["id"] for item in exact_10k["results"]["live_data"]["matches"]]
-    assert exact_10k_ids == ["form:10-K", "form:10-K/A"]
-    exact_8k = run_engine(["discover", "stock_intelligence_hub::search_filing_form", "8-K"])
-    exact_8k_ids = [item["id"] for item in exact_8k["results"]["live_data"]["matches"]]
-    assert exact_8k_ids == ["form:8-K", "form:8-K/A"]
-    exact_family = run_engine(["discover", "stock_intelligence_hub::equity_filing", "search_families", "ANNUAL_REPORT"])
-    assert [item["id"] for item in exact_family["results"]["live_data"]["matches"]] == ["family:ANNUAL_REPORT"]
 
+def assert_market_identity_search() -> None:
     print("[pressure] market identity search", flush=True)
     market_mode = run_engine(["discover", "stock_intelligence_hub::market_data_gateway::search_entity_instrument"])
     assert market_mode["results"]["object_type"] == "xctx_action_discovery_interface"
@@ -335,7 +346,8 @@ def main() -> int:
     broad_ids = [item["market_series_id"] for item in broad_series["results"]["live_data"]["matches"]]
     assert len(broad_ids) == len(set(broad_ids)), broad_ids
 
-    print("[pressure] observe/audit/repair", flush=True)
+def assert_market_observe_range_semantics() -> None:
+    print("[pressure] market observe/range semantics", flush=True)
     observed = run_engine(["observe", "instrument:aapl"])
     assert_cmd(observed, record_type="observation", level="agent_subdomain")
     assert observed["results"]["live_data"]["instrument_id"] == "instrument:aapl"
@@ -376,6 +388,10 @@ def main() -> int:
     assert all_calendar["results"]["live_data"]["returned_bars"] >= 1000
     calendar_50 = run_engine(["observe", "stock_intelligence_hub::market_data_gateway", "AAPL", "--calendar-days", "50"])
     assert calendar_50["results"]["live_data"]["request"] == {"unit": "calendar_days", "value": 50, "all_available": False}
+
+
+def assert_observe_error_and_cross_domain_routes() -> None:
+    print("[pressure] observe error and cross-domain routes", flush=True)
     unsupported_range = run_engine(["observe", "form:10-K", "--bars", "5"], code=1)
     assert "remove unsupported option --bars for stock_intelligence_hub::equity_filing observe" in unsupported_range["error"]
     missing_range_target = run_engine(["observe", "stock_intelligence_hub::market_data_gateway", "--bars", "5"], code=1)
@@ -406,6 +422,9 @@ def main() -> int:
     assert escaped_file["results"]["live_data"]["found"] is False
     assert escaped_file["results"]["live_data"]["connector"]["shape_guarantee"]["failure_shape"] == "xctx_connector_error"
 
+
+def assert_audit_scope_results() -> None:
+    print("[pressure] audit scope results", flush=True)
     audit = run_engine(["audit", "root"])
     assert_cmd(audit, record_type="audit", level="root")
     assert audit["results"]["summary"]["checks"] == 8
@@ -431,12 +450,18 @@ def main() -> int:
     assert_cmd(file_audit, record_type="audit", level="agent_subdomain")
     file_check_ids = {item["id"] for item in file_audit["results"]["checks"]}
     assert "audit:file_manager:home_directory:external_command:ls" in file_check_ids
+
+
+def assert_repair_results() -> None:
+    print("[pressure] repair results", flush=True)
     repaired = run_engine(["repair", "offline:macro_intelligence_hub"])
     assert_cmd(repaired, record_type="repair_result", level="agent_domain")
     terminal = run_engine(["repair", "down_for_maintenance:stock_intelligence_hub::fundamentals_gateway"], code=1)
     assert terminal["error"] == "down_for_maintenance"
     assert terminal["results"]["repair_path"] is None
 
+
+def assert_plan_execute_binding() -> None:
     print("[pressure] plan/execute binding", flush=True)
     random_short = run_engine(["execute", "abcde", "--commit"], code=1)
     assert random_short["error"] == "unknown_plan_receipt"
@@ -456,6 +481,7 @@ def main() -> int:
     execute_short = run_engine(["execute", results["receipt_sha5"], "--commit"])
     assert execute_short["results"]["planner_binding"]["receipt_sha256"] == results["receipt_sha256"]
 
+def assert_extension_lane_discipline() -> None:
     print("[pressure] extension lane discipline", flush=True)
     for rejected_command in ("d", "identify", "status", "write", "doctor"):
         payload = run_engine([rejected_command], code=1)
@@ -470,6 +496,7 @@ def main() -> int:
     assert_cmd(other, record_type="extension")
     assert other["results"]["topic"] == "something-new"
 
+def assert_real_cli_launcher_and_ledger_probe() -> None:
     print("[pressure] real CLI launcher and ledger probe", flush=True)
     cli_root = run_cli(["discover"])
     assert_cmd(cli_root, record_type="discovery", level="root")
@@ -485,7 +512,21 @@ def main() -> int:
     assert conflict.stderr == ""
     assert "choose either --json or --yaml" in json.loads(conflict.stdout)["error"]
 
-    print("PRO xctx protocol pressure checks passed")
+def main() -> int:
+    assert_root_universe_command_surface()
+    assert_domain_subdomain_discovery()
+    assert_scoped_filing_affordance_routing()
+    assert_scoped_market_list_affordance()
+    assert_scoped_file_affordance_routing()
+    assert_market_identity_search()
+    assert_market_observe_range_semantics()
+    assert_observe_error_and_cross_domain_routes()
+    assert_audit_scope_results()
+    assert_repair_results()
+    assert_plan_execute_binding()
+    assert_extension_lane_discipline()
+    assert_real_cli_launcher_and_ledger_probe()
+    print("PRO xctx protocol pressure checks passed", flush=True)
     return 0
 
 

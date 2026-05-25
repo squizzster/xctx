@@ -106,9 +106,7 @@ def assert_no_release_gate_runaways() -> None:
 
 
 def run_checked(args: list[str], timeout: int = 120) -> None:
-    runtime_parent = ROOT / "experiments_tmp"
-    runtime_parent.mkdir(exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix="xctx_release_gate_", dir=runtime_parent) as runtime_dir:
+    with tempfile.TemporaryDirectory(prefix="xctx_release_gate_") as runtime_dir:
         env = {**os.environ, "XCTX_RUNTIME_DIR": runtime_dir}
         stdout_path = Path(runtime_dir) / "stdout.txt"
         stderr_path = Path(runtime_dir) / "stderr.txt"

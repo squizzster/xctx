@@ -13,3 +13,10 @@ protocol = "yaml_dynamic_config/protocols/xctx_v4_2.yaml"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
+markers = [
+    "unit: fast framework/unit coverage",
+    "integration: connector/subprocess integration coverage",
+    "release: required release-gate coverage",
+    "slow: slow protocol matrix coverage",
+    "timeout(seconds): per-test timeout in seconds",
+]

@@ -696,6 +696,65 @@ def assert_observe_audit_repair() -> None:
     assert "down for maintenance" in maintenance["results"]["message"]
 
 
+def assert_scoped_filing_affordance_routing() -> None:
+    priority = one(["stock_intelligence_hub::search_priority_bucket", "critical"])
+    assert priority["results"]["agent_subdomain"] == "equity_filing"
+    assert priority["results"]["live_data"]["matches"][0]["id"] == "priority:critical_always"
+
+    form = one(["discover", "stock_intelligence_hub::equity_filing", "search_forms", "10-K"])
+    assert form["results"]["action"] == "search_forms"
+    form_ids = [item["id"] for item in form["results"]["live_data"]["matches"]]
+    assert form_ids == ["form:10-K", "form:10-K/A"]
+
+    list_forms = one(["discover", "stock_intelligence_hub::equity_filing", "list_forms"])
+    assert list_forms["results"]["live_data"]["object_type"] == "equity_filing_form_list"
+    assert list_forms["results"]["live_data"]["shape"] == "compact"
+
+
+def assert_scoped_market_affordance_routing() -> None:
+    apple = one(["discover", "stock_intelligence_hub::market_data_gateway", "search_entity_instrument", "Apple"])
+    assert apple["results"]["live_data"]["matches"][0]["instrument_id"] == "instrument:aapl"
+
+    latest = one(["discover", "stock_intelligence_hub::latest_price", "AAPL"])
+    latest_live = latest["results"]["live_data"]
+    assert latest_live["object_type"] == "market_data_gateway_latest_price_discovery"
+    assert latest_live["found"] is True
+    assert "latest_available_price" not in latest_live
+
+    instruments = one(["discover", "stock_intelligence_hub::market_data_gateway", "list_instruments", "--limit", "2"])
+    assert instruments["results"]["live_data"]["pagination"]["returned_count"] == 2
+
+
+def assert_market_observe_range() -> None:
+    observed = one(["observe", "instrument:aapl"])
+    assert observed["record_type"] == "observation"
+    assert observed["results"]["agent_subdomain"] == "market_data_gateway"
+
+    ranged_small = one(["observe", "stock_intelligence_hub::market_data_gateway", "market_series:aapl:daily", "--bars", "5"])
+    small_live = ranged_small["results"]["live_data"]
+    assert small_live["returned_bars"] == 5
+    assert small_live["export"]["csv_written"] is False
+
+
+def assert_filing_and_file_observe() -> None:
+    filing_context = one(["observe", "stock_intelligence_hub::equity_filing", "instrument:aapl"])
+    assert filing_context["results"]["live_data"]["context_state"] == "with_equity"
+
+    observed_file = one(["observe", "file:README.txt"])
+    assert observed_file["results"]["agent_domain"] == "file_manager"
+    assert observed_file["results"]["live_data"]["object_type"] == "external_command_filesystem_file_observation"
+
+
+def assert_audit_repair() -> None:
+    audit = one(["audit", "root"])
+    assert audit["record_type"] == "audit"
+    assert audit["domain_level"] == "root"
+
+    repaired = one(["repair", "offline:macro_intelligence_hub"])
+    assert repaired["record_type"] == "repair_result"
+    assert repaired["domain_level"] == "agent_domain"
+
+
 def assert_connector_supervisor_middleware() -> None:
     def guarantee(connector: dict) -> dict:
         value = connector["shape_guarantee"]
@@ -838,12 +897,18 @@ def main() -> int:
     assert_protocol_is_config_driven()
     print("[smoke] root/domain/subdomain discovery", flush=True)
     assert_root_domain_subdomain_discovery()
-    print("[smoke] scoped affordance routing", flush=True)
-    assert_scoped_affordance_routing()
+    print("[smoke] scoped filing affordance routing", flush=True)
+    assert_scoped_filing_affordance_routing()
+    print("[smoke] scoped market affordance routing", flush=True)
+    assert_scoped_market_affordance_routing()
     print("[smoke] connector supervisor middleware", flush=True)
     assert_connector_supervisor_middleware()
-    print("[smoke] observe/audit/repair", flush=True)
-    assert_observe_audit_repair()
+    print("[smoke] market observe/range", flush=True)
+    assert_market_observe_range()
+    print("[smoke] filing/file observe", flush=True)
+    assert_filing_and_file_observe()
+    print("[smoke] audit/repair", flush=True)
+    assert_audit_repair()
     print("[smoke] plan/execute/output", flush=True)
     assert_plan_execute_other_and_output()
     print("hardened xctx protocol smoke checks passed", flush=True)

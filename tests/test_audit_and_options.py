@@ -9,6 +9,9 @@ import pytest
 from framework_helpers import ROOT, ensure_libs_path, run_runtime_json
 
 
+pytestmark = [pytest.mark.unit, pytest.mark.release, pytest.mark.timeout(60)]
+
+
 def test_audit_scope_validation_fails_closed() -> None:
     ensure_libs_path()
     from xctx.config.loader import load_store  # noqa: PLC0415

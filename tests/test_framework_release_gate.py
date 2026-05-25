@@ -9,6 +9,9 @@ import pytest
 from framework_helpers import ROOT, assert_no_release_gate_runaways, run_checked
 
 
+pytestmark = [pytest.mark.release, pytest.mark.timeout(180)]
+
+
 def test_yaml_surface_validator() -> None:
     run_checked([sys.executable, ".agents/skills/xctx-yaml-config/scripts/check_xctx_yaml_surface.py"])
 
