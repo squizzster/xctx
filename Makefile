@@ -1,4 +1,4 @@
-.PHONY: test test-fast test-unit test-integration release-test
+.PHONY: test test-fast test-unit test-integration package-install-smoke release-test
 
 test-fast:
 	python3 -m pytest -q -m "not slow" --durations=20
@@ -11,6 +11,9 @@ test-integration:
 
 test:
 	python3 -m pytest -q --durations=30
+
+package-install-smoke:
+	python3 -m pytest -q tests/test_framework_release_gate.py::test_package_install_entrypoint_smoke --durations=10
 
 release-test:
 	python3 -m pytest -q -m release --durations=30

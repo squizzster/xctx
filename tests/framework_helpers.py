@@ -18,6 +18,8 @@ from typing import NamedTuple
 ROOT = Path(__file__).resolve().parents[1]
 RELEASE_GATE_PATTERNS = (
     "connector_supervisor.py",
+    "market_data_gateway.py",
+    "equity_filings.py",
     "legacy_connector.py",
     "xctx_release_gate_detached_child",
 )

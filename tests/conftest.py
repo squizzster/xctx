@@ -8,6 +8,8 @@ import tempfile
 
 import pytest
 
+from framework_helpers import kill_process_rows, release_gate_process_rows
+
 
 @pytest.fixture(autouse=True)
 def isolate_xctx_runtime_dir(monkeypatch):
@@ -17,6 +19,21 @@ def isolate_xctx_runtime_dir(monkeypatch):
         yield runtime_dir
     finally:
         shutil.rmtree(runtime_dir, ignore_errors=True)
+
+
+@pytest.fixture(autouse=True)
+def assert_no_xctx_child_process_leaks():
+    yield
+    runaways = release_gate_process_rows()
+    if not runaways:
+        return
+    kill_process_rows(runaways)
+    pytest.fail(
+        "test left xctx subprocesses running:\n"
+        + "\n".join(
+            f"pid={row.pid} ppid={row.ppid} pgid={row.pgid} cmd={row.cmd}" for row in runaways
+        )
+    )
 
 
 def pytest_configure(config) -> None:

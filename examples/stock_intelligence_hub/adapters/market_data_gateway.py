@@ -11,9 +11,20 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-ROOT = next(parent for parent in Path(__file__).resolve().parents if (parent / "libs").is_dir())
+
+def _workspace_root() -> Path:
+    for parent in Path(__file__).resolve().parents:
+        if (parent / "yaml_dynamic_config").is_dir() and (parent / "data").is_dir():
+            return parent
+    for parent in Path(__file__).resolve().parents:
+        if (parent / "libs").is_dir():
+            return parent
+    raise RuntimeError("could not locate xctx workspace root")
+
+
+ROOT = _workspace_root()
 LIBS = ROOT / "libs"
-if str(LIBS) not in sys.path:
+if LIBS.is_dir() and str(LIBS) not in sys.path:
     sys.path.insert(0, str(LIBS))
 
 from xctx_live.common import emit_json, joined_query, take_flag, usage_error  # noqa: E402

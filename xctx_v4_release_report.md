@@ -130,15 +130,24 @@ root surface.
 ## Validation performed
 
 ```bash
-make test
+make release-test
 ```
 
 Result:
 
 ```text
-python3 -m pytest -q
-41 passed
+base commit: 29d16d0
+date_utc: 2026-05-25T02:46:56Z
+python: Python 3.12.13
+python3 -m pytest -q -m release --durations=30
+57 tests collected
+57 passed in 27.28s
+exit code: 0
 ```
+
+The release gate includes YAML validation, compileall, package install plus
+installed-entrypoint smoke, child-process cleanup checks, and the protocol
+smoke/connector/boundary/pressure matrix.
 
 The checker also reports parser option inventory separately from scoped published
 option surfaces:

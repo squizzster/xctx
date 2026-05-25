@@ -1,0 +1,4 @@
+include connector_supervisor.py
+recursive-include yaml_dynamic_config *.yaml
+recursive-include data *.sqlite *.txt .keep
+recursive-include examples *.py *.md

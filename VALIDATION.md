@@ -1,17 +1,32 @@
 # Validation Summary
 
-Validated on the packaged workspace with the canonical release gate:
+Validated on the packaged workspace with the canonical release gate.
+
+```text
+base commit: 29d16d0
+working tree: release-engineering changes for packaging/install smoke
+date_utc: 2026-05-25T02:46:56Z
+python: Python 3.12.13
+command: make release-test
+pytest_collection: 57 tests
+elapsed: 27.28s
+exit_code: 0
+```
 
 ```bash
-make test
+make release-test
 ```
 
 Result:
 
 ```text
-python3 -m pytest -q
-41 passed
+python3 -m pytest -q -m release --durations=30
+57 passed in 27.28s
 ```
+
+The release gate now includes YAML validation, compileall, an installed-package
+entrypoint smoke, child-process cleanup invariants, and the protocol
+smoke/connector/boundary/pressure matrix.
 
 ## Release-blocker regression guard
 

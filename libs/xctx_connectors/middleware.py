@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from xctx.config.loader import load_store
+from xctx.config.paths import project_root_from_module
 from xctx_connectors import runtime
 
 
@@ -30,11 +31,7 @@ def _take_flag(argv: list[str], flag: str) -> tuple[bool, list[str]]:
 
 
 def _project_root() -> Path:
-    path = Path(__file__).resolve()
-    for candidate in path.parents:
-        if (candidate / "yaml_dynamic_config").exists() and (candidate / "data").exists():
-            return candidate
-    return path.parents[2]
+    return project_root_from_module(__file__)
 
 
 def _subdomain_from_env(root: Path) -> dict[str, Any]:

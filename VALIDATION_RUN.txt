@@ -1,16 +1,27 @@
 xctx v4.2 boundary-hardened validation run
 
+Run metadata:
+
+  base commit: 29d16d0
+  working tree: release-engineering changes for packaging/install smoke
+  date_utc: 2026-05-25T02:46:56Z
+  python: Python 3.12.13
+
 Commands executed from repository root:
 
-  make test
+  make release-test
   git diff --check
 
 Results:
 
-  pytest: 41 passed
+  pytest: 57 passed in 27.28s
+  pytest collected: 57 tests
+  exit code: 0
   git diff --check: ok
   YAML validator: collected inside pytest
   compileall: collected inside pytest
+  package install smoke: collected inside pytest
+  child-process cleanup invariant: collected inside pytest
   protocol smoke/pressure/connector/boundary scripts: collected inside pytest
 
 Root/universe leak guard:
