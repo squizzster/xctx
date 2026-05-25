@@ -11,10 +11,55 @@ from pathlib import Path
 
 import pytest
 
-from framework_helpers import ROOT, assert_no_release_gate_runaways, run_checked
+from framework_helpers import (
+    ROOT,
+    TEST_OWNER_PID_ENV,
+    TEST_RUN_ID_ENV,
+    ProcessRow,
+    assert_no_release_gate_runaways,
+    kill_process_rows,
+    release_gate_process_rows,
+    run_checked,
+)
 
 
 pytestmark = [pytest.mark.release, pytest.mark.timeout(180)]
+
+
+def test_release_gate_process_detection_is_scoped_to_current_pytest_run(monkeypatch) -> None:
+    monkeypatch.setenv(TEST_RUN_ID_ENV, "run-a")
+    monkeypatch.setenv(TEST_OWNER_PID_ENV, "100")
+    rows = [
+        ProcessRow(200, 1, 200, "python connector_supervisor.py observe AAPL"),
+        ProcessRow(201, 1, 201, "python connector_supervisor.py observe MSFT"),
+        ProcessRow(202, 1, 202, "python unrelated.py"),
+    ]
+    env_by_pid = {
+        200: {TEST_RUN_ID_ENV: "run-a", TEST_OWNER_PID_ENV: "100"},
+        201: {TEST_RUN_ID_ENV: "run-b", TEST_OWNER_PID_ENV: "999"},
+    }
+    monkeypatch.setattr("framework_helpers.process_environ", lambda pid: env_by_pid.get(pid, {}))
+
+    assert release_gate_process_rows(rows) == [rows[0]]
+
+
+def test_release_gate_cleanup_can_kill_owned_same_group_process(monkeypatch) -> None:
+    killed_groups: list[int] = []
+    killed_pids: list[int] = []
+    monkeypatch.setattr("framework_helpers.os.getpid", lambda: 100)
+    monkeypatch.setattr("framework_helpers.os.getpgrp", lambda: 50)
+    monkeypatch.setattr("framework_helpers.os.killpg", lambda pgid, _signal: killed_groups.append(pgid))
+    monkeypatch.setattr("framework_helpers.os.kill", lambda pid, _signal: killed_pids.append(pid))
+
+    kill_process_rows(
+        [
+            ProcessRow(200, 100, 50, "python connector_supervisor.py observe AAPL"),
+            ProcessRow(201, 100, 201, "python connector_supervisor.py observe MSFT"),
+        ]
+    )
+
+    assert killed_groups == [201]
+    assert killed_pids == [200, 201]
 
 
 def test_yaml_surface_validator() -> None:

@@ -9,7 +9,7 @@ import tempfile
 
 import pytest
 
-from framework_helpers import kill_process_rows, release_gate_process_rows
+from framework_helpers import ensure_test_process_scope, kill_process_rows, release_gate_process_rows
 
 
 @pytest.fixture(autouse=True)
@@ -38,6 +38,7 @@ def assert_no_xctx_child_process_leaks():
 
 
 def pytest_configure(config) -> None:
+    ensure_test_process_scope()
     config.addinivalue_line("markers", "unit: fast framework/unit coverage")
     config.addinivalue_line("markers", "integration: connector/subprocess integration coverage")
     config.addinivalue_line("markers", "release: required release-gate coverage")
