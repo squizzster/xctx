@@ -1,38 +1,33 @@
 # Validation Summary
 
-Validated on the packaged workspace with the canonical release gate.
+This workspace is in live local development. It is not deployed as a public
+compatibility target, so validation follows the current code, tests, and loaded
+YAML contract rather than older release notes or stale skill guidance.
 
-```text
-base commit: 29d16d0
-working tree: release-engineering changes for packaging/install smoke
-date_utc: 2026-05-25T02:46:56Z
-python: Python 3.12.13
-command: make release-test
-pytest_collection: 57 tests
-elapsed: 27.28s
-exit_code: 0
-```
+## Canonical Local Gate
+
+`pytest` means the full collected suite by default:
 
 ```bash
-make release-test
+python3 .agents/skills/xctx-yaml-config/scripts/check_xctx_yaml_surface.py
+python3 -m compileall -q bin connector_supervisor.py examples libs tests
+python3 -m pytest -q --durations=30
 ```
 
-Result:
+Expected current pytest result:
 
 ```text
-python3 -m pytest -q -m release --durations=30
-57 passed in 27.28s
+97 passed, 1 skipped
 ```
 
-The release gate now includes YAML validation, compileall, an installed-package
-entrypoint smoke, child-process cleanup invariants, and the protocol
-smoke/connector/boundary/pressure matrix.
+`make test` runs the full pytest suite. `make release-test` runs the YAML
+surface checker, compileall, and the same full pytest suite. Explicit marker or
+file selections are subset/debug runs only.
 
-## Release-blocker regression guard
+## Root Boundary Guard
 
-The corrected bundle includes an explicit root-boundary guard. These commands must
-remain free of domain-specific command options, scoped stock affordance names, and
-adapter vocabulary:
+These commands must remain free of domain-specific command options, scoped stock
+affordance names, and adapter vocabulary:
 
 ```bash
 ./xctx --json
@@ -54,17 +49,8 @@ latest_price
 latest-price
 ```
 
-Result:
-
-```text
-./xctx --json: clean
-./xctx --json help: clean
-./xctx --json --version: clean
-./xctx --json discover: clean
-```
-
-The stock range options are still available, but only after selecting the scoped
-market-data subdomain:
+The stock range options are still available, but only after selecting the
+scoped market-data subdomain:
 
 ```bash
 ./xctx --json discover stock_intelligence_hub::market_data_gateway
@@ -73,7 +59,25 @@ market-data subdomain:
 That scoped surface advertises `configured_options.observe` with `--bars`,
 `--calendar-days`, and explicit `--export`.
 
-## Representative command checks
+## Audit Contract
+
+`./xctx audit root` is the broad protocol/config/live-adapter health gate. It
+may include framework checks, config fingerprints, configured option checks,
+availability findings, and framework-normalized live adapter checks for online
+configured subdomains.
+
+Live adapter failures and malformed live audit payloads become failing audit
+checks instead of raw crashes. Protocol-facing error previews are redacted.
+Malformed audit check entries make audit fail closed.
+
+Use scoped audit to narrow that health view:
+
+```bash
+./xctx audit stock_intelligence_hub::market_data_gateway
+./xctx audit file_manager::home_directory
+```
+
+## Representative Command Checks
 
 ```bash
 ./xctx discover
@@ -97,7 +101,7 @@ That scoped surface advertises `configured_options.observe` with `--bars`,
 ./xctx audit root
 ```
 
-## Refusal checks
+## Refusal Checks
 
 ```bash
 ./xctx discover search_filing_family annual
@@ -108,15 +112,16 @@ That scoped surface advertises `configured_options.observe` with `--bars`,
 
 Expected behavior:
 
-- unscoped domain affordance is refused with a scoped next move.
-- `discover --name Apple` is refused; root no longer chooses a stock action.
-- market-only range options are refused on a filing target.
+- unscoped domain affordance is refused with structured `next_moves`;
+- `discover --name Apple` is refused; root no longer chooses a stock action;
+- market-only range options are refused on a filing target;
 - mutually exclusive range windows are refused before adapter call.
 
-## Boundary conclusions
+## Boundary Conclusions
 
-- `./xctx`, `./xctx help`, `./xctx --version`, and `./xctx discover` expose only the generic xctx protocol surface.
+- Root/universe/help/version expose only the generic xctx protocol surface.
 - Domain affordances are declared under scoped subdomain actions with `domain_affordance: true`.
 - Domain-specific CLI options are declared on the owning YAML action and published only after the target subdomain/action is in scope.
 - Ticker, symbol, CIK, former-symbol, latest-price, and OHLCV semantics live in the stock adapter/configuration layer, not in the generic xctx command surface.
-- Scoped connector adapters live outside `libs/xctx` under `libs/xctx_connectors/domains/<domain>` or a concrete subdomain package; connector metadata exposes `shape_guarantee` so agents can verify xctx receives one shaped JSON object for success and failure.
+- Scoped connector adapters live outside `libs/xctx` under `libs/xctx_connectors/domains/<domain>` or a concrete subdomain package.
+- Connector metadata exposes `shape_guarantee` so agents can verify xctx receives one shaped JSON object for success and failure.

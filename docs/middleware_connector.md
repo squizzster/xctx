@@ -28,11 +28,19 @@ connector object:
 ```
 
 The guarantee means the adapter boundary normalizes both success and failure.
-External commands may return arbitrary stdout/stderr, but xctx receives a shaped
-object. Raw external output is not passed through as protocol payload.
+External commands may return arbitrary stdout/stderr, be missing, time out, or
+receive an empty argv, but xctx receives a shaped object. Raw external output is
+not passed through as protocol payload.
+
+Protocol-facing connector failure previews are redacted through
+`xctx.process.redaction`. This applies to command-status errors, requested
+arguments, argv previews, target payload previews, and external-command stderr or
+stdout snippets before they enter an xctx envelope.
 
 For xctx-native pass-through adapters, successful calls preserve the target
-adapter payload. Normalized pass-through failures return connector metadata with:
+adapter payload. Unknown or missing target exit codes remain `null` instead of
+being coerced to success. Normalized pass-through failures return connector
+metadata with:
 
 ```json
 {

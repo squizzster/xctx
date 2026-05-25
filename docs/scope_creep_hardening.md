@@ -1,6 +1,6 @@
 # Scope-Creep Hardening: Boundary-Clean Protocol Surface
 
-This pass fixes the release-blocking mistake where root/universe/help output
+This pass fixes the boundary-blocking mistake where root/universe/help output
 advertised stock-specific range options. The rule is now explicit and tested:
 
 ```text
@@ -53,11 +53,12 @@ Subdomains, actions, tickers, form codes, and file ids must be scoped first:
 
 Those examples must fail rather than route through a configured fallback.
 
-Root audit follows the same no-bubbling rule. `./xctx audit root` may summarize
-configuration health and availability findings, but it must not inline scoped
-adapter checks such as ticker sentinels, filing-table counts, filesystem
-external-command probes, or scoped connector diagnostics. Use scoped audit for
-those:
+Root audit follows the same root-surface cleanliness rule, but it is also the
+broad health gate. `./xctx audit root` may aggregate framework-normalized live
+adapter checks from online configured subdomains, along with configuration
+health and availability findings. Those checks are protocol-shaped, redacted,
+and fail-closed; they must not turn root/help/version/discover into domain
+command surfaces. Use scoped audit when you want to inspect one adapter scope:
 
 ```bash
 ./xctx audit stock_intelligence_hub::market_data_gateway

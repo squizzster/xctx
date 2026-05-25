@@ -1,4 +1,4 @@
-"""Regression tests for the production-grade xctx framework refactor."""
+"""Regression tests for the hardened xctx framework refactor."""
 
 from __future__ import annotations
 

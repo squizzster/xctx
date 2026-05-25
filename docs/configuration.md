@@ -1,6 +1,8 @@
 # Configuration Layout
 
 The active protocol reference implementation is configured under `yaml_dynamic_config/`.
+This workspace is in live local development, so current code, tests, and loaded
+YAML are authoritative when older notes or skills drift.
 
 Important files:
 
@@ -104,11 +106,14 @@ Bare root targets are legal only for configured agent domains. Do not configure
 resolve bare subdomain/action/object tokens such as `market_data_gateway`,
 `GOOG`, `10-K`, or `file:README.txt`.
 
-Root audit is generic too. `./xctx audit root` must not call subdomain adapters
-or bubble application-specific health probes. Adapter checks such as fixture
-tickers, database counts, filing tables, scoped connector adapters, or external
-command availability belong behind explicit scoped audits such as
-`./xctx audit <domain_id>::<subdomain_id>`.
+Root audit is broad but still protocol-shaped. `./xctx audit root` reports
+framework/config checks, availability findings, configured option checks,
+config fingerprints, and framework-normalized live adapter checks for online
+configured subdomains. Malformed live audit payloads and adapter failures become
+explicit failing audit checks, and protocol-facing error previews are redacted.
+
+Use explicit scoped audits such as `./xctx audit <domain_id>::<subdomain_id>`
+when you want to narrow that health view to one domain or subdomain.
 
 ## Entrypoints
 
@@ -191,11 +196,15 @@ contract made visible in the live data object:
 }
 ```
 
-The guarantee means the external command may fail, time out, or emit terminal
-text, but xctx still receives one JSON object to envelope. Successful
+The guarantee means the external command may fail, time out, be missing, or emit
+terminal text, but xctx still receives one JSON object to envelope. Successful
 xctx-native pass-through calls can preserve the target adapter payload
 unchanged; normalized pass-through failures use
 `failure_shape: xctx_native_passthrough_error`.
+
+Connector failure previews, command-status text, requested arguments, argv
+previews, and target payload previews are redacted through the shared
+`xctx.process.redaction` helper before they become protocol output.
 
 ## Scoped command options
 

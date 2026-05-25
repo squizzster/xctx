@@ -133,7 +133,7 @@ def run(argv: Sequence[str] | None = None, root: Path | None = None) -> int:
         raise XctxError(f"unrecognized arguments: {' '.join(unknown_args)}")
     handler = handlers.get(canonical)
     if handler is None:
-        raise XctxError(f"configured command has no production handler: {canonical}")
+        raise XctxError(f"configured command has no handler: {canonical}")
     return handler(store, args)
 
 

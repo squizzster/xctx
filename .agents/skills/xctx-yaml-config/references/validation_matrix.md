@@ -6,18 +6,23 @@ Use this matrix to choose probes after a YAML surface change.
 
 ```bash
 python3 .agents/skills/xctx-yaml-config/scripts/check_xctx_yaml_surface.py
+python3 -m compileall -q bin connector_supervisor.py examples libs tests
 ./xctx --json discover >/tmp/xctx-discover-root.json
 ./xctx --json audit root >/tmp/xctx-audit-root.json
-python3 tests/smoke_protocol.py
+python3 -m pytest -q tests/test_smoke_protocol.py
+python3 -m pytest -q --durations=30
 ```
 
 Expected proof:
 
 - root discovery exposes configured agent domains only.
-- root audit exposes protocol/config/availability checks only.
-- root audit does not bubble scoped adapter health checks such as fixture
-  tickers, database counts, filing tables, external command probes, or middleware
-  profile details.
+- root audit exposes protocol/config/availability checks and
+  framework-normalized live adapter checks for online configured subdomains.
+- live adapter failures and malformed live audit payloads become failing audit
+  checks instead of raw crashes.
+- root/help/version/discover stay free of scoped domain command surfaces.
+- the full default pytest suite passes; targeted marker/file commands are
+  subset diagnostics only.
 
 ## Domain or subdomain additions
 
@@ -47,7 +52,7 @@ Expected proof:
 Expected proof:
 
 - scoped action works.
-- unscoped action is refused with a next valid move.
+- unscoped action is refused with structured `next_moves`.
 
 ## Mode/action discovery additions
 
@@ -106,7 +111,7 @@ Expected proof:
 - configured option is absent from root/universe/help/version and advertised only on the owning scoped target surface.
 - valid target succeeds.
 - wrong target fails before adapter call.
-- bounds/conflicts fail with useful `next valid move` messages.
+- bounds/conflicts fail with useful structured `next_moves`.
 
 ## Routing changes
 
@@ -127,7 +132,7 @@ Expected proof:
 ./xctx --json discover <domain_id>::<subdomain_id> <list_mode> --limit 2
 ./xctx --json observe <trusted_prefix>:<known_id>
 ./xctx --json observe <trusted_prefix>:<invalid_or_blocked_id>
-python3 tests/protocol_connector_supervisor.py
+python3 -m pytest -q tests/test_protocol_connector_supervisor.py
 ```
 
 Expected proof:
@@ -151,7 +156,8 @@ grep -RIn '<removed_id_or_flag>' yaml_dynamic_config docs tests README.md || tru
 Expected proof:
 
 - no stale YAML/docs/tests references.
-- old command shape fails with guidance.
+- old command shape fails with structured guidance such as `next_moves` when a
+  recovery command is known.
 
 ## Core leak check
 

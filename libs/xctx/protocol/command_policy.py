@@ -1,4 +1,4 @@
-"""Command admission policy for the production xctx surface.
+"""Command admission policy for the current xctx surface.
 
 The public protocol has a deliberately small command set. YAML can declare the
 surface, but this module is the fail-closed guardrail: only the six core xctx

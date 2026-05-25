@@ -371,8 +371,8 @@ def main() -> int:
                 findings.append(
                     finding(
                         "error",
-                        f"root_audit:live_adapter_check:{token}",
-                        "root audit must expose scoped live adapter checks",
+                        f"root_audit:framework_normalized_live_adapter_check:{token}",
+                        "root audit must expose framework-normalized live adapter checks through the connector boundary",
                         token=token,
                     )
                 )

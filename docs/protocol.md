@@ -16,12 +16,13 @@ universe discoverable without assuming the agent already knows the domain.
 No `discovery`, `d`, `identify`, `write`, `doctor`, or `status` command is
 advertised or accepted in the core surface.
 
-## Backward-Compatibility Posture
+## Development And Compatibility Posture
 
-This project does not carry a backward-compatibility burden unless a specific
-release or migration requirement says otherwise. It is better to remove relic
-surfaces than to preserve them behind aliases, shims, wrappers, or undocumented
-fallbacks.
+This project is in live local protocol development and is not deployed as a
+public compatibility target. It does not carry a backward-compatibility burden
+unless a specific release or migration requirement says otherwise. It is better
+to remove relic surfaces than to preserve them behind aliases, shims, wrappers,
+or undocumented fallbacks.
 
 Protocol changes should optimize for the clean current contract:
 
@@ -30,6 +31,9 @@ Protocol changes should optimize for the clean current contract:
 - make tests assert the intended protocol, not old behavior;
 - reject aliases/shims unless an explicit release or migration requirement says
   otherwise.
+- treat local skills, reports, and validation notes as development aids that can
+  lag current code; reconcile them against the current code, tests, and loaded
+  YAML.
 
 There is no implicit domain selector. Commands use explicit scoped domain
 references when a domain matters.
@@ -100,25 +104,28 @@ The active record types are `discovery`, `result`, `observation`, `plan`,
 
 ## Root boundary
 
-These surfaces must remain free of domain-action command surfaces and domain
-option names:
+These root discovery and identity surfaces must remain free of domain-action
+command surfaces and domain option names:
 
 ```bash
 ./xctx
 ./xctx help
 ./xctx --version
 ./xctx discover
-./xctx audit root
 ```
 
 They may expose configured agent domains and generic commands, but not scoped
 stock affordances or range flags. Domain-specific affordances appear only after a
 specific agent domain or subdomain is selected.
 
-`audit root` is also generic. It reports xctx/config checks, configured option
-shape, and availability findings for domains/subdomains. It does not call scoped
-adapters or inline application checks such as fixture tickers, database row
-counts, filing tables, or external command probes. Use a scoped audit for those:
+`audit root` is the broad health gate and has a different payload rule. It
+still must not advertise scoped commands/options as root affordances, but it may
+include normalized live adapter check IDs and evidence. It reports xctx/config checks, configured
+option shape, availability findings, config fingerprints, and
+framework-normalized live adapter checks for online configured subdomains.
+Malformed live audit payloads and adapter failures become explicit failing audit
+checks instead of crashing the command, and malformed check entries make audit
+fail closed. Use scoped audit to narrow the same health view:
 
 ```bash
 ./xctx audit stock_intelligence_hub::market_data_gateway
@@ -203,6 +210,9 @@ This is visible protocol evidence, not extra domain logic in `libs/xctx`. The
 generic runtime still only routes to the configured entrypoint and envelopes the
 returned object. The connector owns the guarantee that raw stdout/stderr and
 connector failures are transformed or summarized before xctx sees them.
+Protocol-facing connector errors, argv/request previews, target payload previews,
+and command-status text are redacted by the shared `xctx.process.redaction`
+helper.
 
 ## Action Discovery
 

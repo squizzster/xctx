@@ -2,6 +2,10 @@
 
 These are copy-start templates. Replace ids and descriptions with the user's domain language. Do not ship placeholder semantics.
 
+This repository is in live local protocol development. These templates are
+guidance; current code, tests, and loaded YAML are authoritative when behavior
+changes.
+
 Core discovery rule:
 
 ```text
@@ -168,6 +172,10 @@ The connector should always emit one JSON object for xctx to envelope, including
 structured failures. Discovery actions still discover observable object
 identities and lawful next moves; observation actions still materialize the
 selected object.
+
+Connector failure previews, command-status text, requested arguments, argv
+previews, and target payload previews should be redacted through
+`xctx.process.redaction` before they become protocol output.
 
 Connector metadata returned by adapter-side middleware should include a
 `shape_guarantee` object so agents can see the contract being enforced:

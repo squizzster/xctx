@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "xctx-modular-workspace"
 version = "4.2.3"
-description = "Production-hardened xctx protocol workspace with modular command, domain, audit, repair, and planning layers."
+description = "Hardened xctx protocol development workspace with modular command, domain, audit, repair, and planning layers."
 requires-python = ">=3.10"
 dependencies = ["PyYAML>=6.0"]
 
@@ -52,7 +52,6 @@ protocol = "yaml_dynamic_config/protocols/xctx_v4_2.yaml"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = ["-m", "not integration and not slow"]
 python_files = ["test_*.py"]
 markers = [
     "unit: fast framework/unit coverage",

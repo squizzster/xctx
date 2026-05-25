@@ -189,4 +189,4 @@ def test_configured_command_without_handler_fails_closed(monkeypatch) -> None:
     assert rc == 1
     assert payload["ok"] is False
     assert payload["record_type"] == "error"
-    assert payload["error"] == "configured command has no production handler: repair"
+    assert payload["error"] == "configured command has no handler: repair"

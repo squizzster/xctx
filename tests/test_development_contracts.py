@@ -1,4 +1,4 @@
-"""Production-hardening contracts for the xctx framework core."""
+"""Development-hardening contracts for the xctx framework core."""
 
 from __future__ import annotations
 

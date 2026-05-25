@@ -1,7 +1,11 @@
-# xctx 4.2.3 masterclass hardening release
+# xctx 4.2.3 masterclass hardening notes
 
 This drop hardens the xctx framework surface around the six visible core commands:
 `discover`, `observe`, `plan`, `execute`, `audit`, and `repair`. The `other` extension lane remains accepted by the parser but hidden from the visible agent-domain command surface.
+
+This workspace is still live local protocol development, not a deployed public
+compatibility surface. Stale docs, skills, aliases, and compatibility remnants
+should be corrected against the current code, tests, and YAML.
 
 
 ## 4.2.3 hardening additions
@@ -13,8 +17,8 @@ This drop hardens the xctx framework surface around the six visible core command
 - Made repair finding IDs state-aware so stale audit findings are refused.
 - Added loader-level config validation for domain/subdomain identity and availability state invariants.
 - Hardened configured CLI options by normalizing typed choices and validating numeric bounds.
-- Removed unused internal helper relics and cleaned remaining release wording.
-- Added production contract tests for stale plans, stale findings, config fingerprints, option bounds, and config ID validation.
+- Removed unused internal helper relics and cleaned remaining stale wording.
+- Added development contract tests for stale plans, stale findings, config fingerprints, option bounds, and config ID validation.
 
 ## Framework changes
 
@@ -32,11 +36,14 @@ This drop hardens the xctx framework surface around the six visible core command
 - Made protocol command-template formatting tolerant: known placeholders render, unknown placeholders remain visible instead of crashing discovery/observation.
 - Shell-quoted recorded command lines with `shlex.join`, so evidence remains faithful when arguments contain spaces.
 - Tightened process-capture semantics so missing return codes are never treated as successful execution.
-- Removed visible “proof-of-concept” wording from the protocol/docs/reference pack in favor of release-ready reference-implementation language.
+- Removed visible prototype wording from the protocol/docs/reference pack in favor of hardened reference-implementation language.
+- Kept protocol errors cleanly separated from structured `next_moves`.
+- Centralized protocol-facing redaction in `xctx.process.redaction`.
+- Made live audit payload normalization fail closed and adapter failures become audit checks.
 
-## Test/release changes
+## Test/local-gate changes
 
 - Added `tests/test_masterclass_regressions.py` covering the refactor contract, repair domain level, safe formatting, plan receipt validation, output limit validation, process-capture correctness, and command-line evidence quoting.
-- Made the default pytest suite fast and deterministic by excluding integration/slow tests through `addopts`; integration and pressure suites remain explicit and runnable by file.
+- Removed default pytest marker filtering. `python3 -m pytest -q` now means the full collected test suite; targeted marker/file runs are for debugging subsets.
 - Kept the package-install smoke available behind `XCTX_RUN_PACKAGE_INSTALL_SMOKE=1` because repeated pip/venv subprocesses are sandbox-sensitive.
-- Hardened release-gate process cleanup to avoid killing the current pytest/container command group when test command lines contain release-gate sentinel strings.
+- Hardened local-gate process cleanup to avoid killing the current pytest/container command group when test command lines contain gate sentinel strings.

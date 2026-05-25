@@ -1,6 +1,6 @@
 # Executable Context / `xctx`
 
-xctx is not another agent framework. It is an agent-operability layer. It makes software expose its live domain semantics — identity, state, lawful transitions, effects, rehearsals, commits, receipts, audits, and repairs — so every model, cheap or frontier, can spend intelligence on judgment rather than reconstructing the operating environment.Most agent software has a quiet mistake at its centre: it keeps trying to make the model know more while the software says almost nothing.
+xctx is not another agent framework. It is an agent-operability layer. It makes software expose its live domain semantics — identity, state, lawful transitions, effects, rehearsals, commits, receipts, audits, and repairs — so every model, cheap or frontier, can spend intelligence on judgment rather than reconstructing the operating environment. Most agent software has a quiet mistake at its centre: it keeps trying to make the model know more while the software says almost nothing.
 
 So we add prompts, schemas, tools, warnings, docs, sandboxes, and approval gates. Then we ask the agent to reconstruct operational reality from fragments: which object is canonical, which state is fresh, which move is legal, which write is dangerous, which dry run is real, which result proves completion, which failure can be repaired.
 
@@ -207,8 +207,18 @@ That is the big idea. Not “cheap model magic.”
 
 ---
 
-## Release-oriented package layout
+## Workspace Layout
 
 This 4.2.3 masterclass workspace keeps the xctx protocol surface intentionally small: `discover`, `observe`, `plan`, `execute`, `audit`, and `repair` are the visible core commands. The YAML-defined `other` lane remains available as a hidden extension command, but it is not advertised by help, version, or root discovery.
 
-The generic protocol engine lives under `libs/xctx`; connector middleware and demo adapters live outside that core. The former monolithic agent-domain implementation has been split into focused modules for core lookup, routing, actions, discovery, observation, audit, repair, and planning. Old import facades such as `xctx.domain.agent_domains` and `xctx.protocol.options` are intentionally removed. See `docs/architecture.md` and `RELEASE_NOTES_PRO.md` for the release hardening notes.
+The generic protocol engine lives under `libs/xctx`; connector middleware and demo adapters live outside that core. The former monolithic agent-domain implementation has been split into focused modules for core lookup, routing, actions, discovery, observation, audit, repair, and planning. Old import facades such as `xctx.domain.agent_domains` and `xctx.protocol.options` are intentionally removed. See `docs/architecture.md` and `DEVELOPMENT_REFACTOR_NOTES.md` for the current hardening notes.
+
+This is a live local development workspace, not a deployed public compatibility
+surface. The current code, tests, and loaded YAML are the source of truth; local
+skills and reports are development aids that should be updated when they drift.
+There is no backward-compatibility burden unless an explicit release or
+migration requirement is introduced.
+
+The default local test contract is literal: `python3 -m pytest -q` and
+`make test` run the full collected suite. Fast/unit/integration subsets are
+available only through explicitly named Makefile targets.

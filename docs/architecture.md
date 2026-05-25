@@ -1,6 +1,15 @@
-# xctx Production Architecture
+# xctx Development Architecture
 
 This workspace is organized around one rule: `libs/xctx` owns the executable-context protocol, while domain packs own domain meaning.
+
+## Development status
+
+This workspace is in live local protocol development and is not deployed as a
+public compatibility target. The source of truth is the current code, tests, and
+loaded YAML. Local skills, reports, and validation notes are development aids
+that can lag current code; update them when they drift. Prefer clean rewrites
+and deletion of obsolete paths over compatibility shims unless an explicit
+release or migration requirement is introduced.
 
 ## Public command contract
 
@@ -21,7 +30,7 @@ The YAML-defined `other` command remains as a hidden extension lane. It is accep
 
 ### `libs/xctx/process`
 
-Process-facing mechanics only: argv normalization, parser construction, runtime dispatch, signal handling, subprocess capture, and Python-subprocess helpers. This layer must not learn domain vocabulary such as tickers, filing forms, filesystem object types, or stock range semantics.
+Process-facing mechanics only: argv normalization, parser construction, runtime dispatch, signal handling, subprocess capture, Python-subprocess helpers, and shared protocol-facing redaction. This layer must not learn domain vocabulary such as tickers, filing forms, filesystem object types, or stock range semantics.
 
 ### `libs/xctx/commands`
 
@@ -37,7 +46,7 @@ Protocol-domain composition. The former large `agent_domains.py` module is now s
 - `interfaces.py`: action-interface payloads when an affordance requires more input.
 - `discovery.py`: root/domain/subdomain/action discovery payloads.
 - `observation.py`: read-only observation routing.
-- `audit.py`: root/scoped audit payloads and findings.
+- `audit.py`: root/scoped audit payloads, availability findings, live adapter check normalization, and fail-closed audit status handling.
 - `repair.py`: repair guidance for offline/maintenance states.
 - `planning.py`: plan and execute receipt behavior.
 
@@ -57,22 +66,25 @@ Connector middleware and demo domain adapters. This is where file-manager and pa
 
 `libs/xctx/process/python_subprocess.py` builds fast Python entrypoint argv (`python -S`) and supplies an isolated `PYTHONPATH` that still exposes installed dependencies such as PyYAML. This keeps adapter startup from paying unrelated ambient sitecustomize costs.
 
+`libs/xctx/process/redaction.py` centralizes bounded redaction for process and
+connector error previews. Protocol-facing errors, command-status text, requested
+arguments, argv previews, and target payload previews should pass through that
+helper before they are emitted.
+
 ## Extension rules
 
 A new domain capability should normally be added in YAML plus an adapter behind `connector_supervisor.py`.
 
 Add generic xctx code only when the concept is protocol-wide, such as command admission, envelope shape, option validation, reference parsing, receipts, audit shape, or repair shape. Domain nouns and provider behavior belong outside `libs/xctx`.
 
-## Release gate checklist
+## Local Gate Checklist
 
-Before release, run:
+For full local validation, run:
 
 ```bash
 python3 -m compileall -q bin connector_supervisor.py examples libs tests
 python3 .agents/skills/xctx-yaml-config/scripts/check_xctx_yaml_surface.py
-pytest -q tests/test_command_contract.py tests/test_audit_and_options.py tests/test_protocol_surface_hardening.py tests/test_connector_runtime.py
-python3 tests/protocol_observe_discover_boundary.py
-pytest -q tests/test_observe_discover_boundary.py
+python3 -m pytest -q --durations=30
 ```
 
-The broad smoke/pressure suites are intentionally split into callable cases so expensive connector subprocess paths can be isolated when a CI/runtime environment is sensitive to long in-process subprocess matrices.
+`pytest -q` is the canonical full local gate. Targeted marker/file runs are for debugging a failing area, not for claiming that all tests passed.

@@ -26,6 +26,21 @@ configured references are routed. Domain::subdomain::mode specifics define what
 those operations mean, and belong in scoped YAML plus adapter code.
 ```
 
+## Development source of truth
+
+This repository is in live local protocol development, not deployed as a public
+compatibility target. During development, this skill is guidance, not the source
+of truth. The current source of truth is the running code, tests, and loaded
+YAML contract in this workspace.
+
+If this skill, its references, or its checker contradict the current
+implementation, inspect the code and tests, decide whether the implementation or
+the skill is wrong, and update the stale side explicitly. Prefer clean rewrites,
+renames, and deletion of obsolete paths over shims, aliases, compatibility
+wrappers, or layered checks for old behavior. Keep negative checks only when
+they protect the current desired contract, such as preventing removed root
+commands from reappearing.
+
 ## Boundary rules
 
 1. Do not add domain/action flags to the root command surface.
@@ -33,7 +48,7 @@ those operations mean, and belong in scoped YAML plus adapter code.
    business noun such as a company name.
    Do not use `agent_routing.discovery_fallback`; a bare target such as
    `./xctx discover GOOG` is not a domain/subdomain reference and must fail with
-   a next valid move instead of guessing a scoped adapter.
+   structured `next_moves` instead of guessing a scoped adapter.
    Bare subdomain or action names such as `market_data_gateway`,
    `latest_price`, or `list_files` must also fail at root. Use an explicit
    scoped reference such as `<domain>::<subdomain>` or
@@ -45,7 +60,7 @@ those operations mean, and belong in scoped YAML plus adapter code.
 5. Put domain shortcuts on subdomain actions with `domain_affordance: true`.
 6. Put CLI options on the most specific owning action with `cli_options`.
 7. Put list/discovery/search semantics in scoped subdomain YAML and adapters.
-8. Make stale or unscoped commands fail with a useful `next valid move`.
+8. Make stale or unscoped commands fail with useful structured `next_moves`.
 9. Keep read-only, plan, execute, audit, repair, and data-boundary claims honest.
 10. If touching generic runtime files, add/keep `## Protocol boundary` comments
     that say the core routes configured refs only; do not include domain nouns
@@ -53,22 +68,30 @@ those operations mean, and belong in scoped YAML plus adapter code.
 
 ## Audit boundary
 
-`audit root` is a protocol/configuration health surface. It may report generic
-xctx checks, loaded configuration, configured command-option shape, domain and
-subdomain availability findings, and repairability summaries. It must not call
-online subdomain adapters or inline domain-specific adapter checks.
+`audit root` is the broad protocol/configuration/live-adapter health surface. It
+may report generic xctx checks, loaded configuration, configured command-option
+shape, config fingerprints, domain/subdomain availability findings,
+repairability summaries, and framework-normalized live adapter checks for online
+configured subdomains.
 
-Scoped adapter health belongs behind explicit audit scope:
+Live adapter checks must stay protocol-shaped: adapter failures become failing
+audit checks, malformed live audit payloads fail closed, and protocol-facing
+error previews are redacted. Root audit may invoke configured connector
+boundaries for health evidence, but generic `libs/xctx` must not import scoped
+adapter implementation modules or advertise scoped commands/options on
+root/help/version/discover surfaces.
+
+Explicit scoped audit narrows the same health view:
 
 ```bash
 ./xctx audit <domain_id>
 ./xctx audit <domain_id>::<subdomain_id>
 ```
 
-For example, root audit must not bubble stock sentinel checks, filesystem
-external-command checks, database row counts, ticker probes, form-taxonomy table
-checks, or middleware profile details. Those are valid only after the relevant
-domain/subdomain is in scope.
+For example, root audit may contain normalized check IDs for stock fixtures,
+filing tables, or filesystem external-command availability. That evidence must
+arrive through the configured connector boundary and remain an audit check, not
+a root command surface or generic runtime domain implementation.
 
 ## Discover/observe data boundary
 
@@ -146,6 +169,9 @@ metadata, and dispatch to a deterministic adapter path derived from the
 already-resolved domain/subdomain scope. The adapter may translate external
 command output, enforce a safe root or allowlist, and build the domain payload.
 It must still be declared through subdomain YAML like any other entrypoint.
+Protocol-facing connector failure previews, command-status text, requested
+arguments, argv previews, and target payload previews must be redacted through
+the shared `xctx.process.redaction` helper before they enter an xctx envelope.
 
 Do not let YAML declare arbitrary Python import paths. Do not use flat connector
 profiles. The source of truth for external-command adapter dispatch is the resolved scope
@@ -513,7 +539,7 @@ semantics belong in scoped YAML and adapter-side data.
 7. Prove `./xctx discover <domain>::<subdomain>::<action>` works.
 8. Prove `./xctx discover <domain>::<subdomain> <action>` works.
 9. Prove stale/unscoped equivalents either route to the scoped command or fail
-   with a useful `next valid move`.
+   with useful structured `next_moves`.
 10. If the mode searches exact codes and broad text, exact code matches should be
    resolved before broad descriptive matching so nearby concepts do not bleed in.
 
@@ -528,7 +554,7 @@ semantics belong in scoped YAML and adapter-side data.
 
 1. Remove the primary YAML declaration.
 2. Remove all references: routes, status checks, docs, and tests.
-3. Ensure stale commands fail with a helpful `next valid move`.
+3. Ensure stale commands fail with helpful structured `next_moves`.
 4. Run `grep -R` for the removed id.
 
 ## Validation sequence
@@ -547,15 +573,25 @@ Then run protocol probes from the repo root:
 ./xctx --json --version >/tmp/xctx-version.json
 ./xctx --json discover >/tmp/xctx-discover-root.json
 ./xctx --json audit root >/tmp/xctx-audit-root.json
-python3 tests/smoke_protocol.py
+python3 -m pytest -q tests/test_smoke_protocol.py
 ```
 
 Run the pressure suite when the change touches routing, options, identity,
 mode discovery, plan/execute, or core protocol behavior:
 
 ```bash
-python3 tests/protocol_pressure_pro.py
+python3 -m pytest -q tests/test_protocol_pressure_pro.py
 ```
+
+Before claiming the workspace is fully validated, run the full default suite:
+
+```bash
+python3 -m compileall -q bin connector_supervisor.py examples libs tests
+python3 -m pytest -q --durations=30
+```
+
+`pytest -q` means the full collected suite in this repository. Marker or file
+selections are subset/debug runs only.
 
 Finish with a root leak check for any new domain-specific literal:
 

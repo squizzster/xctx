@@ -8,6 +8,11 @@ pressure-tested protocol path from:
 ROOT -> AGENT DOMAIN -> AGENT SUBDOMAIN -> SCOPED AFFORDANCE / OBSERVATION
 ```
 
+This is a live local development workspace, not a deployed public compatibility
+surface. The current code, tests, and loaded YAML are the source of truth. Local
+skills, reports, and validation notes are development aids that may lag and
+should be updated when the implementation changes.
+
 The protocol/configuration layer is separated from live read-only data adapters:
 
 - `./xctx` is the protocol bootloader.
@@ -25,12 +30,11 @@ generic interface/protocol layer. Domain/subdomain/mode meaning belongs in
 scoped YAML and adapter code. Generic runtime comments use `## Protocol
 boundary` markers to make that separation explicit.
 
-The active online agent domain is `stock_intelligence_hub`. Its online
-subdomains are:
+The active online domains/subdomains include:
 
 - `stock_intelligence_hub::market_data_gateway`
 - `stock_intelligence_hub::equity_filing`
-- `file_manager::home_directory` as a external-command middleware demonstration domain
+- `file_manager::home_directory` as an external-command middleware demonstration domain
 
 Other domains/subdomains are deliberately offline or down for maintenance so an
 agent can test audit and repair behavior without guessing.
@@ -187,7 +191,7 @@ List modes return compact index rows by default. Use `--shape full` only when
 bulk detail is needed; use `observe` for one full object. Cursor support is
 declared per scoped list action and cursor values are adapter-owned.
 
-Legacy middleware demo:
+Middleware demo:
 
 ```bash
 ./xctx discover file_manager::
@@ -229,10 +233,13 @@ handoff records such as `META` for former-symbol alias testing.
 ./xctx repair down_for_maintenance:stock_intelligence_hub::fundamentals_gateway
 ```
 
-Root audit stays at the protocol/config/domain-availability layer. It does not
-call scoped adapters or bubble fixture checks such as ticker probes, database
-counts, filing table checks, or filesystem external-command probes. Use scoped
-audit for adapter health:
+Root audit is the broad protocol/config/live-adapter health surface. It includes
+framework checks, availability findings, configured option checks, config
+fingerprints, and normalized live adapter checks for online configured
+subdomains. Live adapter failures become failing audit checks instead of
+aborting the whole command, and protocol-facing error previews are redacted.
+
+Use scoped audit when you want to narrow that adapter-health view:
 
 ```bash
 ./xctx audit stock_intelligence_hub::market_data_gateway
@@ -289,9 +296,10 @@ make test
 `make test` runs `python3 -m pytest -q`. Pytest collects the framework tests plus
 the protocol smoke, pressure, connector supervisor, and observe/discover
 boundary checks. A green pytest run is therefore the canonical local release
-gate, not a partial fast-only gate.
+gate, not a partial subset gate. `make release-test` runs the YAML checker,
+compileall, and the same full pytest suite.
 
-## PRO hardening notes
+## Development hardening notes
 
 This build intentionally tightens several edges that were easy to get almost right:
 

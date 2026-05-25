@@ -1,4 +1,9 @@
-# xctx v4.2 Boundary-Hardened Release Report
+# xctx v4.2 Boundary-Hardened Development Report
+
+Current status: this workspace is live local protocol development, not a
+deployed public compatibility surface. Treat this report as development
+evidence; current code, tests, and loaded YAML take precedence when behavior
+changes.
 
 ## Why this correction exists
 
@@ -7,7 +12,7 @@ The prior v4 artifact leaked stock-domain range options (`--bars` and
 real protocol-boundary failure: root should expose the generic xctx bootloader and
 agent-domain map only, not command details from a specific stock adapter.
 
-This v4.2 correction treats that as a release blocker and fixes the boundary at
+This v4.2 correction treats that as a development boundary blocker and fixes the boundary at
 source instead of hiding it in formatting.
 
 ## Boundary rule now enforced
@@ -130,24 +135,17 @@ root surface.
 ## Validation performed
 
 ```bash
-make release-test
+python3 .agents/skills/xctx-yaml-config/scripts/check_xctx_yaml_surface.py
+python3 -m compileall -q bin connector_supervisor.py examples libs tests
+python3 -m pytest -q --durations=30
 ```
 
-Result:
+`pytest -q` is now the full local test contract, not a filtered fast subset.
+At the time of this documentation refresh, the full pytest suite reports:
 
 ```text
-base commit: 29d16d0
-date_utc: 2026-05-25T02:46:56Z
-python: Python 3.12.13
-python3 -m pytest -q -m release --durations=30
-57 tests collected
-57 passed in 27.28s
-exit code: 0
+97 passed, 1 skipped
 ```
-
-The release gate includes YAML validation, compileall, package install plus
-installed-entrypoint smoke, child-process cleanup checks, and the protocol
-smoke/connector/boundary/pressure matrix.
 
 The checker also reports parser option inventory separately from scoped published
 option surfaces:
@@ -184,8 +182,8 @@ command_shortcuts
 ```
 
 `--name` is deliberately not advertised anywhere on root/universe/help/version.
-The parser still accepts it only so the protocol can return a shaped refusal
-instead of a raw argparse failure.
+The runtime returns a shaped refusal for that unknown root argument instead of a
+raw argparse failure.
 
 ## Representative proof commands
 
@@ -235,3 +233,5 @@ raw_external_output = never_returned_unparsed
 
 This is adapter-side contract evidence. It does not change the root protocol
 surface; it makes the middleware boundary inspectable for agents and operators.
+Protocol-facing connector errors, argv/request previews, target payload
+previews, and command-status text are redacted by `xctx.process.redaction`.

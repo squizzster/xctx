@@ -1,52 +1,28 @@
-xctx 4.2.3 masterclass hardening validation
-===========================================
+xctx 4.2.3 development validation
+=================================
 
 Environment used in this sandbox:
 - Python: 3.12.13
-- PYTHONPATH=libs
-- PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 for deterministic subprocess behavior in this sandbox
-- Revalidated after removing the old xctx.domain.agent_domains and xctx.protocol.options import facades
+- Workspace status: live local development, not a deployed public compatibility surface
 
-Validated commands:
+Canonical validation commands:
 
-1. Syntax/bytecode check
-   PYTHONPATH=libs python -m compileall -q bin connector_supervisor.py examples libs tests
+1. YAML surface guard
+   python3 .agents/skills/xctx-yaml-config/scripts/check_xctx_yaml_surface.py
    Result: PASS
 
-2. Default fast suite (unit/release-safe, excludes integration and slow by pytest addopts)
-   PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=libs python -m pytest -q
-   Result: 36 passed, 1 skipped, 41 deselected
-
-3. Discover/observe integration boundary
-   PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=libs python -m pytest -q tests/test_observe_discover_boundary.py -o addopts=''
-   Result: 4 passed
-
-4. Connector-supervisor integration boundary
-   PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=libs python -m pytest -q tests/test_protocol_connector_supervisor.py -o addopts=''
-   Result: 14 passed
-
-5. Broad smoke suite
-   PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=libs python -m pytest -q tests/test_smoke_protocol.py -o addopts=''
-   Result: 10 passed
-
-6. Protocol pressure suite
-   PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=libs python -m pytest -q tests/test_protocol_pressure_pro.py -o addopts=''
-   Result: 13 passed
-
-7. Package install smoke
-   Disposable /tmp venv:
-     python -m pip install setuptools wheel
-     python -m pip install --no-build-isolation --no-deps --target /tmp/.../install-smoke-target-clean /tmp/.../xctx-pro-4.2.3-masterclass
-   Installed runtime checks:
-     PYTHONPATH=/tmp/.../install-smoke-target-clean python3 /tmp/.../install-smoke-target-clean/bin/xctx --json discover
-     PYTHONPATH=/tmp/.../install-smoke-target-clean python3 -m xctx --json discover
-     PYTHONPATH=/tmp/.../install-smoke-target-clean python3 /tmp/.../install-smoke-target-clean/bin/xctx --json observe stock_intelligence_hub::market_data_gateway AAPL --bars 1
-   Removed facade checks:
-     test ! -e /tmp/.../install-smoke-target-clean/xctx/domain/agent_domains.py
-     test ! -e /tmp/.../install-smoke-target-clean/xctx/protocol/options.py
+2. Syntax/bytecode check
+   python3 -m compileall -q bin connector_supervisor.py examples libs tests
    Result: PASS
+
+3. Full pytest suite
+   python3 -m pytest -q --durations=30
+   Expected current result: 97 passed, 1 skipped
 
 Notes:
-- The package-install smoke remains opt-in for default local runs because repeated venv/pip subprocesses are sandbox-sensitive.
-- In this shell, the active Python interpreter had PyYAML but no pip module, so the pytest wrapper for the package-install smoke could not be run verbatim. The equivalent build/install/runtime checks above used a disposable /tmp venv for pip/build backend work and the active interpreter for installed xctx execution.
-- Integration tests are intentionally runnable file-by-file for constrained sandboxes and normal CI isolation.
+- pytest has no default deselection configured; `pytest -q` means the full collected suite.
+- `make test` runs the full pytest suite.
+- `make release-test` runs the YAML checker, compileall, and the same full pytest suite.
+- Fast/unit/integration Makefile targets are explicit subset/debug runs only.
+- The package-install smoke remains opt-in because repeated pip/venv subprocesses are sandbox-sensitive.
+- Local skills and reports are development aids; the current code, tests, and loaded YAML are the source of truth when they drift.

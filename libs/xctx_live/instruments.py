@@ -1142,8 +1142,8 @@ def latest_price_observation(root: Path, identifier: str) -> dict[str, Any]:
     """Return the latest available daily OHLCV close for an instrument/series.
 
     This is deliberately a bundled-data observation, not a live quote. The payload
-    states that boundary explicitly so agents do not confuse freshness with a
-    production market-data feed.
+    states that boundary explicitly so agents do not confuse freshness with an
+    external market-data feed.
     """
     found = find_market_series(root, identifier)
     record = find_instrument(root, identifier)

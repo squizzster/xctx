@@ -1,6 +1,6 @@
-# xctx 4.2.3 production hardening report
+# xctx 4.2.3 development hardening report
 
-This package keeps the public protocol identity at **xctx v4.2** and hardens the implementation into a cleaner release-oriented Python workspace. The visible command surface remains exactly:
+This workspace keeps the protocol identity at **xctx v4.2** and hardens the implementation into a cleaner development Python workspace. It is not deployed as a public compatibility surface; current code, tests, and loaded YAML are the source of truth. The visible command surface remains exactly:
 
 1. `discover`
 2. `observe`
@@ -25,6 +25,10 @@ The main hardening pass moved xctx from “working modular demo” toward a stri
 - CLI option declarations now normalize numeric bounds and typed choices safely.
 - Root audit now exposes a deterministic config fingerprint for evidence and stale-plan debugging.
 - Tests now cover the added enforcement points and avoid brittle fixture byte-size constants.
+- Error records keep the actual error in `error` and emit runnable recovery commands in structured `next_moves`.
+- Protocol-facing redaction is centralized in `xctx.process.redaction`.
+- Live audit payloads are normalized, malformed checks fail closed, and live adapter failures become audit checks.
+- Default pytest now runs the full collected suite; explicit marker/file commands are subset debugging tools.
 
 ## Code-quality restructuring performed
 
@@ -124,16 +128,16 @@ This makes bad config fail near the loader instead of much later in routing, dis
 `libs/xctx/domain/audit.py`
 
 - Root/domain/subdomain audit now includes `audit:xctx:config_fingerprint`.
-- The fingerprint check provides evidence for plan binding and release diagnostics.
+- The fingerprint check provides evidence for plan binding and development diagnostics.
 
-## Relic and release-polish cleanup
+## Relic and development-polish cleanup
 
 - Removed unused internal helpers discovered during the scan:
   - `_group_names()` in command policy.
   - `_collection_shapes()` in action utilities.
   - `_row_dict()` in filings demo helpers.
-- Reworded remaining demo/reference text away from “proof-of-concept” language.
-- Reworded the file-manager fixture away from “legacy connector” language.
+- Reworded remaining demo/reference text away from prototype language.
+- Reworded the file-manager fixture away from obsolete connector language.
 - Updated package metadata to `4.2.3` while preserving protocol identity `v4.2`.
 - Removed brittle test assumptions around fixture byte length by deriving expected size from the fixture itself.
 
@@ -151,23 +155,21 @@ New or strengthened tests cover:
 - integer CLI choices are parsed as integers rather than strings;
 - integration tests derive fixture sizes from the file on disk rather than hardcoding byte counts.
 
-The default release-safe suite now reports:
+The current full local gate is:
 
 ```text
-36 passed, 1 skipped, 41 deselected
+python3 .agents/skills/xctx-yaml-config/scripts/check_xctx_yaml_surface.py
+python3 -m compileall -q bin connector_supervisor.py examples libs tests
+python3 -m pytest -q --durations=30
 ```
 
-The focused integration suites validated in this package report:
+At the time of this documentation refresh, the full pytest suite reports:
 
 ```text
-tests/test_observe_discover_boundary.py: 4 passed
-tests/test_protocol_connector_supervisor.py: 14 passed
-tests/test_smoke_protocol.py: 10 passed
-tests/test_protocol_pressure_pro.py: 13 passed
-tests/test_framework_release_gate.py::test_package_install_entrypoint_smoke: 1 passed
+97 passed, 1 skipped
 ```
 
-## Production readiness status
+## Development readiness status
 
 ### Must remain enforced
 
@@ -200,14 +202,14 @@ These are intentionally not faked in the reference package but are the next prof
 
 ### Can stay as reference/demo scope
 
-These do not block the xctx framework release:
+These do not block the current xctx framework development baseline:
 
 - The bundled market-data and filings adapters remain read-only reference adapters.
 - The file-manager connector remains a middleware demonstration.
 - The `other` extension lane remains hidden and intentionally generic.
 - The execute path remains read-only/no-op until a real mutation-capable domain pack is added.
 
-## Release thesis
+## Development thesis
 
 The core framework is now easier to extend because xctx-specific concerns have clearer homes:
 
@@ -219,4 +221,4 @@ The core framework is now easier to extend because xctx-specific concerns have c
 - scoped option parsing lives in option specs/encoding;
 - domain semantics stay in YAML packs and adapters.
 
-That separation is the main production improvement. The framework is no longer asking handlers, tests, or adapter code to remember the protocol. The protocol is executable in the structure of the code.
+That separation is the main development hardening improvement. The framework is no longer asking handlers, tests, or adapter code to remember the protocol. The protocol is executable in the structure of the code.
