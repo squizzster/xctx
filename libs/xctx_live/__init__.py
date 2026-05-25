@@ -1,1 +1,1 @@
-"""Shared read-only live-data helpers for the xctx proof-of-concept."""
+"""Shared read-only live-data helpers for the xctx reference implementation."""

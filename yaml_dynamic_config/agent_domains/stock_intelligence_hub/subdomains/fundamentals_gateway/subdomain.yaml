@@ -1,8 +1,8 @@
 id: fundamentals_gateway
 kind: agent_subdomain
 status: down_for_maintenance
-basic_description: Fundamentals gateway placeholder. No bundled fundamentals adapter or repair path is exposed in this proof-of-concept.
+basic_description: Fundamentals gateway placeholder. No bundled fundamentals adapter or repair path is exposed in this reference implementation.
 full_description: >-
-  This placeholder is intentionally terminal for repair testing. It has no bundled fundamentals adapter, no configured data source, and no lawful repair path in this proof-of-concept.
-offline_reason: Terminal proof-of-concept placeholder; no bundled fundamentals adapter or repair path is currently exposed.
+  This placeholder is intentionally terminal for repair testing. It has no bundled fundamentals adapter, no configured data source, and no lawful repair path in this reference implementation.
+offline_reason: Terminal reference implementation placeholder; no bundled fundamentals adapter or repair path is currently exposed.
 repair_path: null

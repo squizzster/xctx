@@ -11,11 +11,14 @@ import signal
 import subprocess
 import sys
 import tempfile
+import uuid
 from pathlib import Path
 from typing import NamedTuple
 
 
 ROOT = Path(__file__).resolve().parents[1]
+TEST_RUN_ID_ENV = "XCTX_TEST_RUN_ID"
+TEST_OWNER_PID_ENV = "XCTX_TEST_OWNER_PID"
 RELEASE_GATE_PATTERNS = (
     "connector_supervisor.py",
     "market_data_gateway.py",
@@ -30,6 +33,13 @@ class ProcessRow(NamedTuple):
     ppid: int
     pgid: int
     cmd: str
+
+
+def ensure_test_process_scope() -> None:
+    """Stamp this pytest process so leak cleanup only owns its subprocesses."""
+
+    os.environ[TEST_RUN_ID_ENV] = uuid.uuid4().hex
+    os.environ[TEST_OWNER_PID_ENV] = str(os.getpid())
 
 
 def process_rows() -> list[ProcessRow]:
@@ -52,6 +62,23 @@ def process_rows() -> list[ProcessRow]:
     return rows
 
 
+def process_environ(pid: int) -> dict[str, str]:
+    """Return a process environment snapshot when /proc exposes it."""
+
+    environ_path = Path("/proc") / str(pid) / "environ"
+    try:
+        raw = environ_path.read_bytes()
+    except (FileNotFoundError, ProcessLookupError, PermissionError, OSError):
+        return {}
+    values: dict[str, str] = {}
+    for item in raw.split(b"\0"):
+        if not item or b"=" not in item:
+            continue
+        key, value = item.split(b"=", 1)
+        values[key.decode("utf-8", errors="replace")] = value.decode("utf-8", errors="replace")
+    return values
+
+
 def descendant_rows(root_pid: int, rows: list[ProcessRow]) -> list[ProcessRow]:
     by_parent: dict[int, list[ProcessRow]] = {}
     for row in rows:
@@ -65,16 +92,39 @@ def descendant_rows(root_pid: int, rows: list[ProcessRow]) -> list[ProcessRow]:
     return descendants
 
 
+def _current_test_scope() -> tuple[str, str] | None:
+    run_id = os.environ.get(TEST_RUN_ID_ENV)
+    owner_pid = os.environ.get(TEST_OWNER_PID_ENV)
+    if not run_id or not owner_pid:
+        return None
+    return run_id, owner_pid
+
+
+def _row_matches_test_scope(row: ProcessRow, scope: tuple[str, str]) -> bool:
+    run_id, owner_pid = scope
+    env = process_environ(row.pid)
+    return env.get(TEST_RUN_ID_ENV) == run_id and env.get(TEST_OWNER_PID_ENV) == owner_pid
+
+
 def release_gate_process_rows(rows: list[ProcessRow] | None = None) -> list[ProcessRow]:
     rows = rows or process_rows()
     current_pid = os.getpid()
-    return [
-        row
-        for row in rows
-        if row.pid != current_pid
-        and row.ppid != current_pid
-        and any(pattern in row.cmd for pattern in RELEASE_GATE_PATTERNS)
-    ]
+    current_pgid = os.getpgrp() if hasattr(os, "getpgrp") else None
+    current_descendants = {row.pid for row in descendant_rows(current_pid, rows)}
+    scope = _current_test_scope()
+    candidates: list[ProcessRow] = []
+    for row in rows:
+        if row.pid == current_pid:
+            continue
+        if not any(pattern in row.cmd for pattern in RELEASE_GATE_PATTERNS):
+            continue
+        if scope is not None:
+            if row.pid in current_descendants or _row_matches_test_scope(row, scope):
+                candidates.append(row)
+            continue
+        if row.ppid != current_pid and (current_pgid is None or row.pgid != current_pgid):
+            candidates.append(row)
+    return candidates
 
 
 def kill_process_rows(rows: list[ProcessRow]) -> None:

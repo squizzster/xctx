@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 
 from xctx.commands.helpers import cmdline_arg
-from xctx.domain.agent_domains import plan_payload
+from xctx.domain.planning import plan_payload
 from xctx.errors import XctxError
 from xctx.protocol.emitter import emit_final_stderr, emit_record, emit_stderr_event
 

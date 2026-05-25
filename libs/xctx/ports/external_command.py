@@ -9,15 +9,21 @@ from __future__ import annotations
 
 import json
 import os
-import selectors
-import signal
-import subprocess
-import sys
-import time
 from pathlib import Path
 from typing import Any
 
 from xctx.errors import XctxError
+from xctx.process.capture import capture_process
+from xctx.process.env import SAFE_ENV_KEYS, sanitized_env
+from xctx.process.limits import (
+    DEFAULT_MAX_OUTPUT_BYTES,
+    MAX_CAPTURE_BYTES,
+    MAX_TIMEOUT_SECONDS,
+    MIN_TIMEOUT_SECONDS,
+    validated_max_output_bytes,
+    validated_timeout,
+)
+from xctx.process.python_subprocess import python_entrypoint_argv
 from xctx.protocol.actions import action_matches
 
 
@@ -26,23 +32,6 @@ from xctx.protocol.actions import action_matches
 
 
 CONNECTOR_SUPERVISOR_ENTRYPOINT = "connector_supervisor.py"
-DEFAULT_MAX_OUTPUT_BYTES = 65536
-MAX_CAPTURE_BYTES = 1048576
-MIN_TIMEOUT_SECONDS = 0.05
-MAX_TIMEOUT_SECONDS = 300.0
-SAFE_ENV_KEYS = {
-    "HOME",
-    "LANG",
-    "LC_ALL",
-    "LC_CTYPE",
-    "PATH",
-    "PYTHONHOME",
-    "PYTHONPATH",
-    "TMPDIR",
-    "VIRTUAL_ENV",
-    "XCTX_RUNTIME_DIR",
-}
-
 
 def _adapter_error_message_from_text(returncode: int, stdout: str, stderr: str, executable: str) -> str:
     for text in (stdout.strip(), stderr.strip()):
@@ -76,55 +65,16 @@ def _adapter_env(subdomain: dict[str, Any]) -> dict[str, str | None]:
     }
 
 
+def _as_xctx_error(message: str) -> XctxError:
+    return XctxError(f"next valid move: set {message}")
+
+
 def _validated_timeout(value: Any, *, label: str = "timeout_seconds") -> float:
-    try:
-        timeout = float(value)
-    except (TypeError, ValueError) as exc:
-        raise XctxError(f"next valid move: set {label} to a number") from exc
-    if timeout != timeout or timeout < MIN_TIMEOUT_SECONDS or timeout > MAX_TIMEOUT_SECONDS:
-        raise XctxError(f"next valid move: set {label} between {MIN_TIMEOUT_SECONDS:g} and {MAX_TIMEOUT_SECONDS:g}")
-    return timeout
+    return validated_timeout(value, label=label, error_type=_as_xctx_error)
 
 
 def _validated_max_output_bytes(value: Any, *, label: str = "max_output_bytes") -> int:
-    try:
-        max_bytes = int(value)
-    except (TypeError, ValueError) as exc:
-        raise XctxError(f"next valid move: set {label} to an integer") from exc
-    if max_bytes < 1024 or max_bytes > MAX_CAPTURE_BYTES:
-        raise XctxError(f"next valid move: set {label} between 1024 and {MAX_CAPTURE_BYTES}")
-    return max_bytes
-
-
-def _sanitized_env(extra: dict[str, str | None]) -> dict[str, str]:
-    env = {key: value for key, value in os.environ.items() if key in SAFE_ENV_KEYS}
-    for key, value in extra.items():
-        if value is None:
-            env.pop(key, None)
-        elif key in SAFE_ENV_KEYS or key.startswith("XCTX_"):
-            env[key] = str(value)
-    return env
-
-
-def _kill_process_tree(proc: subprocess.Popen[str]) -> None:
-    try:
-        if os.name == "posix":
-            os.killpg(proc.pid, signal.SIGKILL)
-            return
-        proc.kill()
-    except ProcessLookupError:
-        return
-
-
-def _append_limited(buffer: bytearray, chunk: bytes, max_output_bytes: int) -> None:
-    if len(buffer) >= max_output_bytes:
-        return
-    remaining = max_output_bytes - len(buffer)
-    buffer.extend(chunk[:remaining])
-
-
-def _decode_output(buffer: bytearray) -> str:
-    return bytes(buffer).decode("utf-8", errors="replace")
+    return validated_max_output_bytes(value, label=label, error_type=_as_xctx_error)
 
 
 def _resolve_entrypoint(root: Path, raw: Any) -> Path:
@@ -159,60 +109,19 @@ def _call_python_entrypoint_subprocess(
     timeout: float,
     max_output_bytes: int,
 ) -> tuple[int, str, str]:
-    env = _sanitized_env(_adapter_env(subdomain))
-    proc = subprocess.Popen(
-        [sys.executable, str(command_path), *args],
+    captured = capture_process(
+        python_entrypoint_argv(command_path, args),
         cwd=store["root"],
-        env=env,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        start_new_session=(os.name == "posix"),
+        env=sanitized_env(_adapter_env(subdomain)),
+        timeout=timeout,
+        max_output_bytes=max_output_bytes,
     )
-    stdout_buffer = bytearray()
-    stderr_buffer = bytearray()
-    buffers = {"stdout": stdout_buffer, "stderr": stderr_buffer}
-    selector = selectors.DefaultSelector()
-    assert proc.stdout is not None
-    assert proc.stderr is not None
-    selector.register(proc.stdout, selectors.EVENT_READ, "stdout")
-    selector.register(proc.stderr, selectors.EVENT_READ, "stderr")
-    deadline = time.monotonic() + timeout
-    timed_out = False
-
-    while selector.get_map():
-        remaining = deadline - time.monotonic()
-        if remaining <= 0:
-            timed_out = True
-            _kill_process_tree(proc)
-            break
-        events = selector.select(timeout=remaining)
-        if not events:
-            continue
-        for key, _mask in events:
-            stream = key.fileobj
-            chunk = os.read(stream.fileno(), 8192)
-            if not chunk:
-                selector.unregister(stream)
-                continue
-            _append_limited(buffers[str(key.data)], chunk, max_output_bytes)
-
-    for stream in (proc.stdout, proc.stderr):
-        try:
-            selector.unregister(stream)
-        except Exception:
-            pass
-    try:
-        proc.wait(timeout=1)
-    except subprocess.TimeoutExpired:
-        _kill_process_tree(proc)
-        proc.wait(timeout=1)
-    stdout = _decode_output(stdout_buffer)
-    stderr = _decode_output(stderr_buffer)
-    if timed_out:
+    stderr = captured.stderr
+    if captured.timed_out:
         message = f"live connector timed out after {timeout:g} seconds"
         stderr = f"{stderr.rstrip()}\n{message}" if stderr else message
-        return 124, stdout, stderr
-    return proc.returncode or 0, stdout, stderr
+        return 124, captured.stdout, stderr
+    return captured.returncode or 0, captured.stdout, stderr
 
 
 def call_external_command(

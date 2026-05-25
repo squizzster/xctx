@@ -208,7 +208,7 @@ Representative refusals:
 
 ## Honest remaining boundary
 
-This is still a proof-of-concept. `latest_price` discovers the latest available
+This is still a reference implementation. `latest_price` discovers the latest available
 bundled price point; observe returns the price data. It is not a live quote feed.
 That boundary is explicitly present in the latest/range payloads.
 

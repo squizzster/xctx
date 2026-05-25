@@ -12,6 +12,8 @@ from typing import Any
 
 from xctx.config.loader import load_store
 from xctx.config.paths import project_root_from_module
+from xctx.process.python_subprocess import python_entrypoint_argv
+from xctx.protocol.guidance import normalize_guidance
 from xctx_connectors import runtime
 
 
@@ -19,6 +21,7 @@ _IMPORT_SAFE_ID = re.compile(r"^[a-z][a-z0-9_]*$")
 
 
 def _emit_json(payload: dict[str, Any], *, compact: bool) -> None:
+    payload = normalize_guidance(payload)
     if compact:
         print(json.dumps(payload, ensure_ascii=False, separators=(",", ":")))
     else:
@@ -99,7 +102,7 @@ def _passthrough(context: runtime.ConnectorContext, args: list[str], *, compact:
     target_path = _resolve_workspace_entrypoint(context.workspace_root, target, label="target_entrypoint")
     timeout = runtime.validated_timeout(connector.get("timeout_seconds", 30))
     max_output_bytes = runtime.validated_max_output_bytes(connector.get("max_output_bytes", runtime.DEFAULT_MAX_OUTPUT_BYTES))
-    argv = [sys.executable, str(target_path), *args]
+    argv = python_entrypoint_argv(target_path, args)
     include_argv = _full_shape_requested(args)
     if compact and "--compact" not in argv:
         argv.append("--compact")

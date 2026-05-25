@@ -1,6 +1,6 @@
 schema_version: v1
 id_policy: instrument:<lowercase_primary_ticker>
-description: Small read-only canonical equity instrument seed set for proof-of-concept ID handoff.
+description: Small read-only canonical equity instrument seed set for reference implementation ID handoff.
 instruments:
   - instrument_id: instrument:aapl
     issuer_id: issuer:cik:0000320193

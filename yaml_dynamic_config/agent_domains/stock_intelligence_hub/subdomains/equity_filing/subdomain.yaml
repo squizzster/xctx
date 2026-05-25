@@ -3,7 +3,7 @@ kind: agent_subdomain
 status: online
 basic_description: SEC/EDGAR company filing taxonomy lookup for equity research agents.
 full_description: >-
-  This subdomain exposes a bundled SQLite filing-form taxonomy. It can explain form codes, canonical filing families, priority buckets, amendment status, and SEC category labels. With an equity instrument context it can tell an agent how to reason about filings for that company, while clearly stating that issuer-specific submission history is not bundled in this proof-of-concept.
+  This subdomain exposes a bundled SQLite filing-form taxonomy. It can explain form codes, canonical filing families, priority buckets, amendment status, and SEC category labels. With an equity instrument context it can tell an agent how to reason about filings for that company, while clearly stating that issuer-specific submission history is not bundled in this reference implementation.
 data_description: >-
   Bundled read-only SQLite database: 412 EDGAR form lookup records, 41 canonical families, 12 priority buckets, 51 category labels, and 176 amendment forms.
 entrypoint:

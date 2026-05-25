@@ -2,35 +2,26 @@
 
 from __future__ import annotations
 
-import os
 import re
-import selectors
-import signal
-import subprocess
-import time
 from dataclasses import dataclass
 from pathlib import Path
 from types import MappingProxyType
 from typing import Any, Mapping
 
+from xctx.process.capture import capture_process
+from xctx.process.env import SAFE_ENV_KEYS, sanitized_env
+from xctx.process.limits import (
+    DEFAULT_MAX_OUTPUT_BYTES,
+    MAX_CAPTURE_BYTES,
+    MAX_TIMEOUT_SECONDS,
+    MIN_TIMEOUT_SECONDS,
+    validated_max_output_bytes,
+    validated_timeout,
+)
+from xctx.protocol.guidance import command_hints
+
 
 CONNECTOR_VERSION = "xctx_connector.v1"
-DEFAULT_MAX_OUTPUT_BYTES = 65536
-MAX_CAPTURE_BYTES = 1048576
-MIN_TIMEOUT_SECONDS = 0.05
-MAX_TIMEOUT_SECONDS = 300.0
-SAFE_ENV_KEYS = {
-    "HOME",
-    "LANG",
-    "LC_ALL",
-    "LC_CTYPE",
-    "PATH",
-    "PYTHONHOME",
-    "PYTHONPATH",
-    "TMPDIR",
-    "VIRTUAL_ENV",
-    "XCTX_RUNTIME_DIR",
-}
 SECRET_PATTERNS = (
     re.compile(r"(?i)(api[_-]?key|secret|token|password|passwd|authorization)(\\s*[=:]\\s*)([^\\s;&]+)"),
     re.compile(r"(?i)(bearer\\s+)[a-z0-9._~+/=-]+"),
@@ -138,32 +129,8 @@ def redact_preview(value: str, limit: int = 500) -> str:
     return preview
 
 
-def validated_timeout(value: Any, *, label: str = "timeout_seconds") -> float:
-    try:
-        timeout = float(value)
-    except (TypeError, ValueError) as exc:
-        raise ValueError(f"{label} must be a number") from exc
-    if timeout != timeout or timeout < MIN_TIMEOUT_SECONDS or timeout > MAX_TIMEOUT_SECONDS:
-        raise ValueError(f"{label} must be between {MIN_TIMEOUT_SECONDS:g} and {MAX_TIMEOUT_SECONDS:g}")
-    return timeout
-
-
-def validated_max_output_bytes(value: Any, *, label: str = "max_output_bytes") -> int:
-    try:
-        max_bytes = int(value)
-    except (TypeError, ValueError) as exc:
-        raise ValueError(f"{label} must be an integer") from exc
-    if max_bytes < 1024 or max_bytes > MAX_CAPTURE_BYTES:
-        raise ValueError(f"{label} must be between 1024 and {MAX_CAPTURE_BYTES}")
-    return max_bytes
-
-
-def sanitized_env(extra: Mapping[str, str] | None = None) -> dict[str, str]:
-    env = {key: value for key, value in os.environ.items() if key in SAFE_ENV_KEYS}
-    for key, value in (extra or {}).items():
-        if key in SAFE_ENV_KEYS or key.startswith("XCTX_"):
-            env[key] = str(value)
-    return env
+def sanitized_connector_env(extra: Mapping[str, str] | None = None) -> dict[str, str]:
+    return sanitized_env(extra)
 
 
 def command_status_from_external_result(result: Mapping[str, Any], *, include_argv: bool = True) -> dict[str, Any]:
@@ -206,7 +173,7 @@ def connector_error_payload(
         "requested_args": args or [],
         "command_status": command_status(ok=False, error=message),
         "data_boundary": "Middleware error payload. xctx received a structured object instead of raw connector failure output.",
-        "next_moves": next_moves,
+        "next_moves": command_hints(next_moves),
     }
     if command == "audit":
         payload["checks"] = [audit_failure_check(context, message)]
@@ -244,27 +211,6 @@ def parse_controls(args: list[str], *, default_limit: int, max_limit: int) -> tu
     return rest, controls
 
 
-def _append_limited(buffer: bytearray, chunk: bytes, max_output_bytes: int) -> None:
-    if len(buffer) >= max_output_bytes:
-        return
-    remaining = max_output_bytes - len(buffer)
-    buffer.extend(chunk[:remaining])
-
-
-def _decode_output(buffer: bytearray) -> str:
-    return bytes(buffer).decode("utf-8", errors="replace")
-
-
-def _kill_process_tree(proc: subprocess.Popen[str]) -> None:
-    try:
-        if os.name == "posix":
-            os.killpg(proc.pid, signal.SIGKILL)
-            return
-        proc.kill()
-    except ProcessLookupError:
-        return
-
-
 def run_external(
     argv: list[str],
     *,
@@ -274,75 +220,35 @@ def run_external(
     max_output_bytes: int | None = None,
 ) -> dict[str, Any]:
     timeout = validated_timeout(timeout)
-    max_bytes = validated_max_output_bytes(max_output_bytes or DEFAULT_MAX_OUTPUT_BYTES)
-    proc = subprocess.Popen(
+    configured_max_output = DEFAULT_MAX_OUTPUT_BYTES if max_output_bytes is None else max_output_bytes
+    max_bytes = validated_max_output_bytes(configured_max_output)
+    captured = capture_process(
         argv,
         cwd=cwd,
-        env=sanitized_env(env),
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        start_new_session=(os.name == "posix"),
+        env=sanitized_connector_env(env),
+        timeout=timeout,
+        max_output_bytes=max_bytes,
     )
-    stdout_buffer = bytearray()
-    stderr_buffer = bytearray()
-    buffers = {"stdout": stdout_buffer, "stderr": stderr_buffer}
-    selector = selectors.DefaultSelector()
-    assert proc.stdout is not None
-    assert proc.stderr is not None
-    selector.register(proc.stdout, selectors.EVENT_READ, "stdout")
-    selector.register(proc.stderr, selectors.EVENT_READ, "stderr")
-    deadline = time.monotonic() + timeout
-    timed_out = False
-
-    while selector.get_map():
-        remaining = deadline - time.monotonic()
-        if remaining <= 0:
-            timed_out = True
-            _kill_process_tree(proc)
-            break
-        events = selector.select(timeout=remaining)
-        if not events:
-            continue
-        for key, _mask in events:
-            stream = key.fileobj
-            chunk = os.read(stream.fileno(), 8192)
-            if not chunk:
-                selector.unregister(stream)
-                continue
-            _append_limited(buffers[str(key.data)], chunk, max_bytes)
-
-    for stream in (proc.stdout, proc.stderr):
-        try:
-            selector.unregister(stream)
-        except Exception:
-            pass
-    try:
-        proc.wait(timeout=1)
-    except subprocess.TimeoutExpired:
-        _kill_process_tree(proc)
-        proc.wait(timeout=1)
-    stdout = _decode_output(stdout_buffer)
-    stderr = _decode_output(stderr_buffer)
-    if timed_out:
+    if captured.timed_out:
         return {
             "ok": False,
             "argv": argv,
             "exit_code": None,
             "timed_out": True,
-            "stdout": stdout,
-            "stderr": stderr,
+            "stdout": captured.stdout,
+            "stderr": captured.stderr,
             "error": f"external command timed out after {timeout:g} seconds",
         }
     return {
-        "ok": (proc.returncode or 0) == 0,
+        "ok": captured.ok,
         "argv": argv,
-        "exit_code": proc.returncode or 0,
+        "exit_code": captured.returncode or 0,
         "timed_out": False,
-        "stdout": stdout,
-        "stderr": stderr,
+        "stdout": captured.stdout,
+        "stderr": captured.stderr,
         "error": None
-        if (proc.returncode or 0) == 0
-        else ((stderr or "").strip() or (stdout or "").strip() or "external command failed"),
+        if captured.ok
+        else ((captured.stderr or "").strip() or (captured.stdout or "").strip() or "external command failed"),
     }
 
 

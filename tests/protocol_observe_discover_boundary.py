@@ -49,8 +49,16 @@ GENERIC_XCTX_FILES = [
     "libs/xctx/process/parser.py",
     "libs/xctx/commands/discover.py",
     "libs/xctx/commands/observe.py",
-    "libs/xctx/domain/agent_domains.py",
+    "libs/xctx/domain/core.py",
+    "libs/xctx/domain/routing.py",
+    "libs/xctx/domain/discovery.py",
+    "libs/xctx/domain/observation.py",
     "libs/xctx/protocol/command_policy.py",
+]
+
+REMOVED_FACADE_FILES = [
+    "libs/xctx/domain/agent_domains.py",
+    "libs/xctx/protocol/options.py",
 ]
 
 FORBIDDEN_CORE_LITERALS = (
@@ -144,6 +152,8 @@ def assert_market_discovery_payload(payload: dict[str, Any]) -> None:
 
 
 def assert_generic_xctx_core_is_decoupled() -> None:
+    for rel in REMOVED_FACADE_FILES:
+        assert not (ROOT / rel).exists(), rel
     for rel in GENERIC_XCTX_FILES:
         text = (ROOT / rel).read_text(encoding="utf-8")
         for literal in FORBIDDEN_CORE_LITERALS:

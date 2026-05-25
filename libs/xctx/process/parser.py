@@ -8,7 +8,7 @@ from typing import Any, Callable
 from xctx.errors import XctxError
 from xctx.protocol.accessors import canonical_command, configured_command_names
 from xctx.protocol.command_policy import hidden_commands, visible_commands
-from xctx.protocol.options import command_cli_option_specs
+from xctx.protocol.option_specs import command_cli_option_specs
 
 
 ## Protocol boundary: argparse may expose configured option syntax so the
@@ -25,7 +25,6 @@ class XctxParser(argparse.ArgumentParser):
 def _add_discover_parser(subparsers: argparse._SubParsersAction, name: str) -> None:
     parser = subparsers.add_parser(name, add_help=False)
     parser.add_argument("--id")
-    parser.add_argument("--name")
     parser.add_argument("target", nargs="?")
     parser.add_argument("target_args", nargs=argparse.REMAINDER)
 
@@ -61,7 +60,7 @@ def _add_configured_cli_options(parser: argparse.ArgumentParser, store: dict[str
         else:
             kwargs["type"] = _argparse_type(option_type)
             if spec.get("choices"):
-                kwargs["choices"] = [str(choice) for choice in spec.get("choices") or []]
+                kwargs["choices"] = list(spec.get("choices") or [])
         parser.add_argument(*flags, **kwargs)
 
 

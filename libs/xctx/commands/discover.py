@@ -5,7 +5,8 @@ from __future__ import annotations
 import argparse
 
 from xctx.commands.helpers import command_payload_error, cmdline_arg, live_payload_failed
-from xctx.domain.agent_domains import discover_payload, has_agent_domains, universe_discovery_payload
+from xctx.domain.core import has_agent_domains
+from xctx.domain.discovery import discover_payload, universe_discovery_payload
 from xctx.errors import XctxError
 from xctx.protocol.emitter import emit_final_stderr, emit_record, emit_stderr_event
 
@@ -28,11 +29,14 @@ def handle(store: dict, args: argparse.Namespace) -> int:
         emit_final_stderr(store, command, True, "universe discovery complete", records=1)
         return 0
 
-    if getattr(args, "id", None) and not getattr(args, "target", None):
+    target_args = list(getattr(args, "target_args", []))
+    if "--id" in target_args:
+        raise XctxError("next valid move: place --id before TARGET or choose discover TARGET or --id ID, not both")
+    if getattr(args, "id", None) and getattr(args, "target", None):
+        raise XctxError("next valid move: choose discover TARGET or --id ID, not both")
+    if getattr(args, "id", None):
         args.target = args.id
-    if getattr(args, "name", None) and not getattr(args, "target", None):
-        raise XctxError("next valid move: use a scoped discovery action, for example ./xctx discover <agent_domain>::<affordance> <name>")
-    level, payload = discover_payload(store, getattr(args, "target", None), list(getattr(args, "target_args", [])))
+    level, payload = discover_payload(store, getattr(args, "target", None), target_args)
     failed = live_payload_failed(payload.get("live_data") if isinstance(payload, dict) else None)
     emit_record(
         store,

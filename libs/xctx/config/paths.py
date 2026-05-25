@@ -18,7 +18,12 @@ def project_root_from_module(module_file: str | Path | None = None) -> Path:
         installed_workspace = candidate / "xctx_workspace"
         if _is_workspace_root(installed_workspace):
             return installed_workspace
-    return path.parents[3]
+    parents = list(path.parents)
+    if len(parents) > 3:
+        return parents[3]
+    if parents:
+        return parents[-1]
+    return path.parent
 
 
 def as_project_path(root: Path, path: Path) -> str:

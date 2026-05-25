@@ -205,3 +205,10 @@ The strongest formulation now is:
 That is the big idea. Not “cheap model magic.”
 **Environment-amplified intelligence.**
 
+---
+
+## Release-oriented package layout
+
+This 4.2.3 masterclass workspace keeps the xctx protocol surface intentionally small: `discover`, `observe`, `plan`, `execute`, `audit`, and `repair` are the visible core commands. The YAML-defined `other` lane remains available as a hidden extension command, but it is not advertised by help, version, or root discovery.
+
+The generic protocol engine lives under `libs/xctx`; connector middleware and demo adapters live outside that core. The former monolithic agent-domain implementation has been split into focused modules for core lookup, routing, actions, discovery, observation, audit, repair, and planning. Old import facades such as `xctx.domain.agent_domains` and `xctx.protocol.options` are intentionally removed. See `docs/architecture.md` and `RELEASE_NOTES_PRO.md` for the release hardening notes.

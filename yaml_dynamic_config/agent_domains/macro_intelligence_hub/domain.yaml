@@ -1,7 +1,7 @@
 id: macro_intelligence_hub
 kind: agent_domain
 status: offline
-basic_description: Macro intelligence domain. Offline in this proof-of-concept.
+basic_description: Macro intelligence domain. Offline in this reference implementation.
 full_description: Macro calendar and central-bank intelligence are not bundled in this build.
 offline_reason: Macro data adapters are waiting for configuration.
 repair_path:

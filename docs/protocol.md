@@ -170,7 +170,7 @@ adapter argv encoding are framework semantics.
 `plan` returns a deterministic sha256 planner receipt and records the plan in
 `.xctx_runtime/plans/`. `execute` requires `--commit` and accepts
 `plan:sha256:<64-hex>`, the raw 64-character sha256, or the five-character
-PoC/debug `receipt_sha5` only when that value resolves to a recorded plan. Shape
+reference build/debug `receipt_sha5` only when that value resolves to a recorded plan. Shape
 alone is not enough. This build performs no domain mutation and returns
 `accepted_read_only_noop` with a `planner_binding` proof.
 

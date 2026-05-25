@@ -1,4 +1,13 @@
+include README.md
+include AGENT_README.md
+include AGENTS.md
+include VALIDATION.md
+include VALIDATION_RUN.txt
+include RELEASE_NOTES_PRO.md
 include connector_supervisor.py
+recursive-include docs *.md
+recursive-include libs *.py py.typed
+recursive-include tests *.py
 recursive-include yaml_dynamic_config *.yaml
 recursive-include data *.sqlite *.txt .keep
 recursive-include examples *.py *.md
