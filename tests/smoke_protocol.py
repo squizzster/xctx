@@ -689,19 +689,9 @@ def assert_observe_audit_repair() -> None:
 
     audit = one(["audit", "root"])
     assert audit["record_type"] == "audit"
-    assert audit["results"]["summary"]["checks"] == 9
-    root_audit_text = json.dumps(audit, sort_keys=True)
-    for forbidden in (
-        "aapl",
-        "apple_punctuation",
-        "market_data_gateway:",
-        "equity_filing:",
-        "file_manager:home_directory",
-        "external_command",
-        "mini_stocks_sqlite",
-        "edgar_form_reference",
-    ):
-        assert forbidden not in root_audit_text, forbidden
+    root_check_ids = {item["id"] for item in audit["results"]["checks"]}
+    assert "audit:market_data_gateway:aapl_latest_price_resolves" in root_check_ids
+    assert "audit:file_manager:home_directory:external_command:ls" in root_check_ids
     findings = {item["id"]: item for item in audit["results"]["findings"]}
     assert findings["down_for_maintenance:stock_intelligence_hub::fundamentals_gateway"]["repairable"] is False
     assert findings["offline:macro_intelligence_hub"]["repairable"] is True

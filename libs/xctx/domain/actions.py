@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from xctx.errors import XctxError
-from xctx.protocol.actions import action_matches
+from xctx.protocol.actions import action_matches, action_tokens
 
 
 ## Protocol boundary: action names, aliases, controls, and shapes are declared
@@ -31,6 +31,7 @@ def _domain_action_candidate(
         **action,
         "agent_domain": domain_id,
         "agent_subdomain": subdomain_id,
+        "_source_action_name": action_name,
         "_action_name": public_name,
     }
 
@@ -60,6 +61,37 @@ def domain_action_config(store: dict[str, Any], domain_id: str, action_name: str
         if action_matches(name, action, action_name):
             return {**action, "_action_name": name, "_matched_as": action_name}
     return None
+
+def domain_affordance_config_check(store: dict[str, Any]) -> dict[str, Any]:
+    """Return an audit check for ambiguous domain-scoped affordance names."""
+
+    duplicates: list[dict[str, Any]] = []
+    affordance_count = 0
+    for domain_id in sorted((store.get("agent_domains") or {}).keys()):
+        sources_by_token: dict[str, list[str]] = {}
+        for public_name, action in iter_domain_action_configs(store, domain_id):
+            affordance_count += 1
+            subdomain_id = str(action.get("agent_subdomain", ""))
+            source_action = str(action.get("_source_action_name") or public_name)
+            source = f"{domain_id}::{subdomain_id}::{source_action}"
+            for token in action_tokens(public_name, action):
+                sources_by_token.setdefault(str(token), []).append(source)
+        for token, sources in sorted(sources_by_token.items()):
+            if len(sources) > 1:
+                duplicates.append(
+                    {
+                        "agent_domain": domain_id,
+                        "token": token,
+                        "sources": sorted(sources),
+                    }
+                )
+
+    return {
+        "id": "audit:xctx:domain_affordances",
+        "status": "pass" if not duplicates else "fail",
+        "configured_affordance_count": affordance_count,
+        "duplicate_affordances": duplicates,
+    }
 
 def subdomain_action_config(subdomain: dict[str, Any], action_name: str) -> tuple[str | None, dict[str, Any] | None]:
     for name, action in (subdomain.get("actions") or {}).items():

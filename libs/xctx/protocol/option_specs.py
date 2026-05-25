@@ -34,7 +34,7 @@ def _option_flags(spec: dict[str, Any]) -> list[str]:
     raw_flags = spec.get("flags")
     if raw_flags is None:
         raw_flags = spec.get("flag", spec.get("name"))
-    flags = [str(flag) for flag in _as_list(raw_flags) if str(flag).strip()]
+    flags = [str(flag).strip() for flag in _as_list(raw_flags) if str(flag).strip()]
     if not flags and spec.get("dest"):
         flags = ["--" + str(spec["dest"]).replace("_", "-")]
     return flags
@@ -119,6 +119,12 @@ def _normalise_option_spec(raw: dict[str, Any], *, source: dict[str, Any], index
         raise XctxError("next valid move: add dest or flags to configured cli_option")
     if not flags:
         flags = ["--" + dest.replace("_", "-")]
+    invalid_flags = [flag for flag in flags if not flag.startswith("-") or flag in {"-", "--"}]
+    if invalid_flags:
+        raise XctxError(
+            "next valid move: make configured cli_option flags start with '-' "
+            f"for {dest} ({', '.join(invalid_flags)})"
+        )
     option_type = str(spec.get("type", "str"))
     if option_type not in SUPPORTED_OPTION_TYPES:
         supported = ", ".join(sorted(SUPPORTED_OPTION_TYPES))

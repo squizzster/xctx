@@ -16,7 +16,12 @@ class ArgvSelection:
 
 
 def extract_global_options(argv: list[str]) -> ArgvSelection:
-    """Extract process-global output flags before command parsing."""
+    """Extract process-global output flags before command parsing.
+
+    Global flags belong to the process invocation prefix. Once the command token
+    starts, remaining tokens are command/action data and must not be consumed as
+    xctx process options.
+    """
     normalized: list[str] = []
     output_format: str | None = None
     output_error: str | None = None
@@ -24,6 +29,9 @@ def extract_global_options(argv: list[str]) -> ArgvSelection:
     index = 0
     while index < len(argv):
         token = argv[index]
+        if token == "--":
+            normalized.extend(argv[index + 1 :])
+            break
         if token == "--detail":
             detail = True
             index += 1
@@ -39,8 +47,8 @@ def extract_global_options(argv: list[str]) -> ArgvSelection:
                 output_format = requested_format
             index += 1
             continue
-        normalized.append(token)
-        index += 1
+        normalized.extend(argv[index:])
+        break
     return ArgvSelection(
         argv=normalized,
         output_format=output_format,

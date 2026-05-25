@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from xctx.config.paths import as_project_path
+from xctx.domain.actions import domain_affordance_config_check
 from xctx.domain.routing import parse_ref
 from xctx.store.fingerprints import config_fingerprint_payload
 from xctx.errors import XctxError
@@ -96,6 +97,20 @@ def audit_domain_level(store: dict[str, Any], scope: str) -> str:
         raise XctxError(_known_audit_scope_guidance(store))
     return "agent_domain"
 
+def _live_audit_subdomains(store: dict[str, Any], scope: str) -> list[tuple[str, str, dict[str, Any]]]:
+    parsed_domain, parsed_subdomain = parse_ref(store, scope)
+    domains = store.get("agent_domains", {})
+    selected: list[tuple[str, str, dict[str, Any]]] = []
+    for domain_id, domain in domains.items():
+        if scope not in {"root", "all", "*"} and parsed_domain != domain_id:
+            continue
+        for subdomain_id, subdomain in (domain.get("_subdomains") or {}).items():
+            if parsed_subdomain and parsed_subdomain != subdomain_id:
+                continue
+            if subdomain.get("status") == "online" and subdomain.get("entrypoint"):
+                selected.append((domain_id, subdomain_id, subdomain))
+    return selected
+
 def audit_payload(store: dict[str, Any], scope: str) -> dict[str, Any]:
     scope = scope or "root"
     audit_domain_level(store, scope)
@@ -121,18 +136,12 @@ def audit_payload(store: dict[str, Any], scope: str) -> dict[str, Any]:
         },
     ]
     checks.append(command_surface_check(store))
+    checks.append(domain_affordance_config_check(store))
     checks.extend(option_config_checks(store))
-    parsed_domain, parsed_subdomain = parse_ref(store, scope)
-    domain_ids = [parsed_domain] if parsed_domain else []
 
-    for domain_id in domain_ids:
-        domain = store["agent_domains"][domain_id]
-        subdomain_ids = [parsed_subdomain] if parsed_subdomain else list(domain.get("_subdomains", {}))
-        for subdomain_id in [item for item in subdomain_ids if item]:
-            subdomain = domain.get("_subdomains", {}).get(subdomain_id)
-            if subdomain and subdomain.get("status") == "online" and subdomain.get("entrypoint"):
-                live = call_external_command(store, subdomain, ["audit"])
-                checks.extend(live.get("checks", []))
+    for _domain_id, _subdomain_id, subdomain in _live_audit_subdomains(store, scope):
+        live = call_external_command(store, subdomain, ["audit"])
+        checks.extend(live.get("checks", []))
 
     return {
         "scope": scope,

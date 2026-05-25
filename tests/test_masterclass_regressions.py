@@ -80,6 +80,13 @@ def test_cmdline_arg_shell_quotes_values_with_spaces() -> None:
     assert payload["cmdline_arg"] == "--json observe 'form:DEF 14A'"
 
 
+def test_global_options_do_not_strip_command_arguments_after_command_token() -> None:
+    rc, payload = run_runtime_json(["plan", "inspect", "--json"])
+
+    assert rc == 0
+    assert payload["results"]["operation"] == "inspect --json"
+
+
 def test_installed_workspace_root_fallback_is_non_throwing_for_shallow_paths() -> None:
     ensure_libs_path()
     from xctx.config.paths import project_root_from_module  # noqa: PLC0415

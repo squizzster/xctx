@@ -363,17 +363,16 @@ def main() -> int:
         root_audit = _json_payload_for_xctx(["audit", "root"])
         for token in (
             "external_command:",
-            "safe_root_exists",
             "aapl_latest_price_resolves",
             "mini_stocks_sqlite",
             "edgar_form_reference",
         ):
-            if _contains_token(root_audit, token):
+            if not _contains_token(root_audit, token):
                 findings.append(
                     finding(
                         "error",
-                        f"root_audit:no_adapter_check:{token}",
-                        "root audit must not call or expose scoped adapter checks",
+                        f"root_audit:live_adapter_check:{token}",
+                        "root audit must expose scoped live adapter checks",
                         token=token,
                     )
                 )

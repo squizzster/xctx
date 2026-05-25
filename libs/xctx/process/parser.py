@@ -83,7 +83,7 @@ def build_parser(store: dict[str, Any]) -> argparse.ArgumentParser:
         _add_configured_cli_options(observe, store, "observe")
     if "plan" in visible:
         plan = subparsers.add_parser("plan", add_help=False)
-        plan.add_argument("plan_args", nargs="*")
+        plan.add_argument("plan_args", nargs=argparse.REMAINDER)
     if "execute" in visible:
         execute = subparsers.add_parser("execute", add_help=False)
         execute.add_argument("execute_args", nargs="*")

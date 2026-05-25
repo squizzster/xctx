@@ -447,18 +447,9 @@ def assert_audit_scope_results() -> None:
     assert audit["results"]["summary"]["checks"] >= 9
     check_ids = {item["id"] for item in audit["results"]["checks"]}
     assert "audit:xctx:config_fingerprint" in check_ids
-    audit_text = json.dumps(audit, sort_keys=True)
-    for forbidden in (
-        "aapl",
-        "apple_punctuation",
-        "market_data_gateway:",
-        "equity_filing:",
-        "file_manager:home_directory",
-        "external_command",
-        "mini_stocks_sqlite",
-        "edgar_form_reference",
-    ):
-        assert forbidden not in audit_text, forbidden
+    assert "audit:market_data_gateway:aapl_latest_price_resolves" in check_ids
+    assert "audit:market_data_gateway:mini_stocks_sqlite_exists" in check_ids
+    assert "audit:file_manager:home_directory:external_command:ls" in check_ids
     findings = {item["id"]: item for item in audit["results"]["findings"]}
     assert findings["down_for_maintenance:stock_intelligence_hub::fundamentals_gateway"]["repairable"] is False
     market_audit = run_engine(["audit", "stock_intelligence_hub::market_data_gateway"])

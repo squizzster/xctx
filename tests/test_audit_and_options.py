@@ -61,3 +61,86 @@ def test_option_audit_detects_duplicates_before_dedupe() -> None:
     assert observe_check["status"] == "fail"
     assert "--xctx-duplicate-flag" in observe_check["duplicate_flags"]
     assert "shared_duplicate_dest" in observe_check["duplicate_dests"]
+
+
+def test_option_audit_rejects_non_flag_option_names_before_argparse_crash() -> None:
+    ensure_libs_path()
+    from xctx.config.loader import load_store  # noqa: PLC0415
+    from xctx.errors import XctxError  # noqa: PLC0415
+    from xctx.process.parser import build_parser  # noqa: PLC0415
+    from xctx.protocol.option_surface import option_config_checks  # noqa: PLC0415
+
+    store = copy.deepcopy(load_store(root=ROOT))
+    domain = next(iter(store["agent_domains"].values()))
+    subdomain = next(iter(domain["_subdomains"].values()))
+    subdomain.setdefault("cli_options", []).append(
+        {"flags": ["bad-flag"], "dest": "bad_flag", "commands": ["observe"]}
+    )
+
+    checks = option_config_checks(store)
+    observe_check = next(check for check in checks if check["id"] == "audit:xctx:cli_options:observe")
+    assert observe_check["status"] == "fail"
+    assert "flags start with '-'" in observe_check["error"]
+
+    with pytest.raises(XctxError, match="flags start with '-'"):
+        build_parser(store)
+
+
+def test_store_false_options_encode_when_present() -> None:
+    ensure_libs_path()
+    from xctx.config.loader import load_store  # noqa: PLC0415
+    from xctx.domain.routing import observe_adapter_option_args  # noqa: PLC0415
+    from xctx.process.parser import build_parser  # noqa: PLC0415
+    from xctx.protocol.option_specs import collect_cli_option_values  # noqa: PLC0415
+
+    store = copy.deepcopy(load_store(root=ROOT))
+    subdomain = store["agent_domains"]["stock_intelligence_hub"]["_subdomains"]["market_data_gateway"]
+    observe_action = subdomain["actions"]["observe"]
+    observe_action.setdefault("cli_options", []).append(
+        {
+            "flags": ["--no-cache"],
+            "dest": "cache",
+            "commands": ["observe"],
+            "type": "bool",
+            "action": "store_false",
+            "adapter_arg": "--no-cache",
+        }
+    )
+
+    parser = build_parser(store)
+    args, unknown = parser.parse_known_args(
+        ["observe", "stock_intelligence_hub::market_data_gateway", "AAPL", "--no-cache"]
+    )
+    values = collect_cli_option_values(store, "observe", args)
+    encoded = observe_adapter_option_args(store, subdomain, values)
+
+    assert unknown == []
+    assert values["cache"] is False
+    assert "--no-cache" in encoded
+
+
+def test_duplicate_domain_affordances_fail_audit_check() -> None:
+    ensure_libs_path()
+    from xctx.config.loader import load_store  # noqa: PLC0415
+    from xctx.domain.actions import domain_affordance_config_check  # noqa: PLC0415
+
+    store = copy.deepcopy(load_store(root=ROOT))
+    domain = store["agent_domains"]["stock_intelligence_hub"]
+    domain["_subdomains"]["market_data_gateway"]["actions"]["search_entity_instrument"][
+        "domain_action_name"
+    ] = "duplicate_route"
+    domain["_subdomains"]["equity_filing"]["actions"]["search_forms"]["domain_action_name"] = "duplicate_route"
+
+    check = domain_affordance_config_check(store)
+
+    assert check["status"] == "fail"
+    assert check["duplicate_affordances"] == [
+        {
+            "agent_domain": "stock_intelligence_hub",
+            "token": "duplicate_route",
+            "sources": [
+                "stock_intelligence_hub::equity_filing::search_forms",
+                "stock_intelligence_hub::market_data_gateway::search_entity_instrument",
+            ],
+        }
+    ]

@@ -16,7 +16,7 @@ def _display_flag_for_dest(store: dict[str, Any], command: str, dest: str) -> st
 
 
 def _is_present(value: Any) -> bool:
-    return value is not None and value is not False
+    return value is not None
 
 
 def _coerce_bound(spec: dict[str, Any], key: str) -> Any:
@@ -91,7 +91,10 @@ def encode_cli_options_for_target(
         adapter_arg = str(spec.get("adapter_arg") or spec["_primary_flag"])
         action = str(spec.get("action", "store"))
         if spec.get("_option_type") == "bool" or action in {"store_true", "store_false"}:
-            if bool(value):
+            if action == "store_false":
+                if value is False:
+                    encoded.append(adapter_arg)
+            elif bool(value):
                 encoded.append(adapter_arg)
         else:
             encoded.extend([adapter_arg, str(value)])

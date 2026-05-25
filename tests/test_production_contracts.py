@@ -75,6 +75,7 @@ def test_root_audit_exposes_loaded_config_fingerprint() -> None:
 
     assert rc == 0
     checks = payload["results"]["checks"]
+    check_ids = {check["id"] for check in checks}
     fingerprint_check = next(check for check in checks if check["id"] == "audit:xctx:config_fingerprint")
     fingerprint = fingerprint_check["fingerprint"]
     assert fingerprint_check["status"] == "pass"
@@ -82,6 +83,8 @@ def test_root_audit_exposes_loaded_config_fingerprint() -> None:
     assert len(fingerprint["sha256"]) == 64
     assert fingerprint["config_file_count"] == len(fingerprint["config_files"])
     assert all(entry["available"] for entry in fingerprint["config_files"])
+    assert "audit:market_data_gateway:mini_stocks_sqlite_exists" in check_ids
+    assert "audit:file_manager:home_directory:external_command:ls" in check_ids
 
 
 def test_config_validation_rejects_subdomain_id_mismatch() -> None:
