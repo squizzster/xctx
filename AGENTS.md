@@ -23,7 +23,7 @@ Default stance for every change:
 - Prefer the clean current protocol over backward compatibility.
 - Remove relic code instead of hiding it behind shims.
 - Replace confusing obsolete names with precise current names.
-- Delete compatibility aliases unless a user explicitly asks to keep one.
+- Delete old aliases unless a user explicitly asks to keep one.
 - Make tests enforce the desired contract, not historical behavior.
 - Treat stale docs, stale command hints, and old vocabulary as bugs.
 - Do not add deprecation layers unless there is an explicit release/user-data
@@ -36,7 +36,7 @@ For xctx specifically:
 - `other` is a hidden extension lane, not an advertised command.
 - Relic root commands such as `status`, `identify`, `doctor`, and `write`
   should stay removed unless the protocol is deliberately redesigned.
-- There is no active/default domain selector. Commands must use explicit scoped
+- There is no implicit domain selector. Commands must use explicit scoped
   domain references when a domain matters.
 - Domain-specific behavior belongs in scoped YAML and adapter-side code, not in
   generic `libs/xctx` protocol runtime.

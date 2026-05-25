@@ -5,7 +5,7 @@ The active protocol proof-of-concept is configured under `yaml_dynamic_config/`.
 Important files:
 
 - `universe.yaml`: root universe and domain routing. It must not contain
-  domain-action shortcuts, active/default domain selectors, removed system
+  domain-action shortcuts, implicit domain selectors, removed system
   registries, universe identity fields, or domain option names.
 - `protocols/xctx_v4_2.yaml`: envelope keys, exact command groups, record types,
   and output policy. Root command aliases are intentionally not supported.
@@ -100,7 +100,7 @@ But the root remains clean:
 returns agent domains and generic next moves only. It does not advertise
 `latest_price`, `search_entity_instrument`, `--bars`, or `--calendar-days`.
 Bare root targets are legal only for configured agent domains. Do not configure
-`agent_routing.discovery_fallback`, and do not rely on the active domain to
+`agent_routing.discovery_fallback`, and do not rely on implicit domain state to
 resolve bare subdomain/action/object tokens such as `market_data_gateway`,
 `GOOG`, `10-K`, or `file:README.txt`.
 

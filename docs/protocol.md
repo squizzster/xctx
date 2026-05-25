@@ -31,7 +31,7 @@ Protocol changes should optimize for the clean current contract:
 - reject aliases/shims unless an explicit release or migration requirement says
   otherwise.
 
-There is no active/default domain selector. Commands use explicit scoped domain
+There is no implicit domain selector. Commands use explicit scoped domain
 references when a domain matters.
 
 ## Protocol path

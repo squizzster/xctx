@@ -93,7 +93,11 @@ def test_package_version_matches_project_metadata() -> None:
 
 def test_no_stale_status_or_identify_guidance() -> None:
     scanned_paths = [
+        ROOT / "bin",
+        ROOT / "connector_supervisor.py",
+        ROOT / "equity_filings.py",
         ROOT / "libs" / "xctx",
+        ROOT / "market_data_gateway.py",
         ROOT / "yaml_dynamic_config",
     ]
     stale_fragments = (
@@ -109,8 +113,9 @@ def test_no_stale_status_or_identify_guidance() -> None:
         "identify_query_run_cmd",
     )
     for base in scanned_paths:
-        for path in base.rglob("*"):
-            if path.is_file() and path.suffix in {".py", ".yaml", ".yml"}:
+        paths = [base] if base.is_file() else list(base.rglob("*"))
+        for path in paths:
+            if path.is_file() and (path.suffix in {".py", ".yaml", ".yml"} or path.parent == ROOT / "bin"):
                 text = path.read_text(encoding="utf-8")
                 for fragment in stale_fragments:
                     assert fragment not in text, f"{fragment!r} leaked in {path.relative_to(ROOT)}"
