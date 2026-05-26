@@ -17,12 +17,13 @@ Canonical validation commands:
 
 3. Full pytest suite
    python3 -m pytest -q --durations=30
-   Expected current result: 102 passed
+   Expected current result: all collected non-online tests pass. The package-install smoke may skip in offline environments when local build dependencies are unavailable.
 
 Notes:
 - pytest has no default deselection configured; `pytest -q` means the full collected suite.
 - `make test` runs the full pytest suite.
 - `make full-test` runs the YAML checker, compileall, and the same full pytest suite.
 - Fast/unit/integration Makefile targets are explicit subset/debug runs only.
-- The package-install smoke is part of the default full pytest suite.
+- The package-install smoke is part of the default full pytest suite and skips instead of downloading dependencies unless network use is explicit.
+- `make package-install-smoke` runs the package-install smoke with its explicit online dependency-install allowance.
 - Local skills and reports are development aids; the current code, tests, and loaded YAML are the source of truth when they drift.

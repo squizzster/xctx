@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-import shlex
+
+from xctx.process.redaction import redact_argv
 
 
 @dataclass(frozen=True)
@@ -54,5 +55,5 @@ def extract_global_options(argv: list[str]) -> ArgvSelection:
         output_format=output_format,
         output_error=output_error,
         detail=detail,
-        cmdline_arg=shlex.join(argv),
+        cmdline_arg=redact_argv(argv),
     )

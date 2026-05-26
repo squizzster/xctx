@@ -9,6 +9,7 @@ from typing import Any
 import yaml
 
 from xctx.io.stdout import write_stdout_record
+from xctx.process.redaction import redact_value
 from xctx.protocol.accessors import key_for, protocol_version
 from xctx.protocol.guidance import normalize_guidance
 
@@ -30,7 +31,7 @@ def emit_stderr_event(store: dict[str, Any], command: str, stage: str, message: 
     }
     event["xctx_event"].update(extra)
     sys.stderr.write("---\n")
-    yaml.safe_dump(event, sys.stderr, sort_keys=False, allow_unicode=False)
+    yaml.safe_dump(redact_value(event), sys.stderr, sort_keys=False, allow_unicode=False)
     sys.stderr.flush()
 
 
@@ -45,7 +46,7 @@ def emit_final_stderr(store: dict[str, Any], command: str, ok: bool, summary: st
     }
     final.update(extra)
     sys.stderr.write("---\n")
-    yaml.safe_dump({"final": final}, sys.stderr, sort_keys=False, allow_unicode=False)
+    yaml.safe_dump(redact_value({"final": final}), sys.stderr, sort_keys=False, allow_unicode=False)
     sys.stderr.flush()
 
 
@@ -76,11 +77,11 @@ def emit_record(
         envelope[key_for(store, "error", "error")] = error
     if next_moves:
         envelope["next_moves"] = next_moves
-    write_stdout_record(normalize_guidance(envelope), store.get("output_format", "jsonl"))
+    write_stdout_record(redact_value(normalize_guidance(envelope)), store.get("output_format", "jsonl"))
 
 
 def emit_raw_for_store(store: dict[str, Any], payload: dict[str, Any]) -> None:
-    write_stdout_record(normalize_guidance(payload), store.get("output_format", "jsonl"))
+    write_stdout_record(redact_value(normalize_guidance(payload)), store.get("output_format", "jsonl"))
 
 
 def emit_minimal_error(
@@ -100,4 +101,4 @@ def emit_minimal_error(
     }
     if next_moves:
         payload["next_moves"] = next_moves
-    write_stdout_record(normalize_guidance(payload), output_format)
+    write_stdout_record(redact_value(normalize_guidance(payload)), output_format)

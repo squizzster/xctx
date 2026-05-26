@@ -109,7 +109,7 @@ def run(argv: Sequence[str] | None = None, root: Path | None = None) -> int:
         )
     if selection.argv[0] in help_aliases(store):
         return command_handlers()["help"](store, type("Args", (), {"cmdline_arg": selection.cmdline_arg or "help"})())
-    if selection.argv[0] in {"--version", "-V", "version"}:
+    if selection.argv[0] in {"--version", "-V"}:
         command = selection.argv[0]
         emit_record(
             store,

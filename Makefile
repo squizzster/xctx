@@ -13,7 +13,7 @@ test:
 	python3 -m pytest -q --durations=30
 
 package-install-smoke:
-	python3 -m pytest -q tests/test_framework_local_gate.py::test_package_install_entrypoint_smoke --durations=10
+	XCTX_PACKAGE_SMOKE_ALLOW_NETWORK=1 python3 -m pytest -q tests/test_framework_local_gate.py::test_package_install_entrypoint_smoke --durations=10
 
 full-test:
 	python3 .agents/skills/xctx-yaml-config/scripts/check_xctx_yaml_surface.py

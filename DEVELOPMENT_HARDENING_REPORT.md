@@ -11,7 +11,8 @@ source_of_truth:
   - loaded_yaml
 visible_commands: [discover, observe, plan, execute, audit, repair]
 hidden_commands: [other]
-expected_pytest_result: "102 passed"
+expected_pytest_result: "full collected suite passes; package install smoke may skip offline when build deps are unavailable"
+online_package_smoke: "make package-install-smoke"
 ```
 
 ## Hardened Rules

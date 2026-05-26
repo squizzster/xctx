@@ -191,5 +191,6 @@ python3 -m pytest -q --durations=30
 Expected current pytest result:
 
 ```text
-102 passed
+full collected suite passes; package install smoke may skip offline when build deps are unavailable
+run `make package-install-smoke` for the explicit online package smoke
 ```

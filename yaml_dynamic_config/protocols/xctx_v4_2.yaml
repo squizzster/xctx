@@ -15,6 +15,8 @@ stdout:
     payload: results
     error: error
 record_types:
+  help: Machine-readable root command interface.
+  version: Version and root executable-context metadata.
   discovery: Discovery records describing root, agent-domain, agent-subdomain, or named affordance surfaces.
   result: Discovery and non-mutating command result records.
   observation: Read-only observation of a discovered object or domain surface.

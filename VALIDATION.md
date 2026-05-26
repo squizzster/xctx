@@ -8,7 +8,8 @@ pytest_default: full_collected_suite
 subset_runs:
   allowed_for: debugging
   allowed_as_full_validation: false
-expected_pytest_result: "102 passed"
+expected_pytest_result: "full collected suite passes; package install smoke may skip offline when build deps are unavailable"
+online_package_smoke: "make package-install-smoke"
 ```
 
 ## Full Gate

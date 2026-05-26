@@ -119,7 +119,9 @@ python3 -m pytest -q --durations=30
 Expected current pytest result:
 
 ```text
-102 passed
+full collected suite passes.
+the package-install smoke may skip offline when local build dependencies are unavailable.
 ```
 
 `python3 -m pytest -q` means the full collected suite. Marker and file selections are subset/debug runs only.
+Run `make package-install-smoke` to execute the package install smoke with its explicit online dependency-install allowance.

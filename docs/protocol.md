@@ -43,6 +43,8 @@ error_record:
   error: actual_error_text
   next_moves: optional_structured_command_hints
 record_types:
+  - help
+  - version
   - discovery
   - result
   - observation

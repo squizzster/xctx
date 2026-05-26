@@ -98,6 +98,41 @@ def _target_entrypoint(install_dir: Path) -> Path:
     return install_dir / "bin" / "xctx"
 
 
+def _assert_or_prepare_build_dependencies(package_python: Path, source_dir: Path) -> None:
+    probe = subprocess.run(
+        [
+            str(package_python),
+            "-c",
+            "import setuptools, wheel, yaml",
+        ],
+        cwd=source_dir,
+        text=True,
+        capture_output=True,
+        timeout=30,
+        check=False,
+    )
+    if probe.returncode == 0:
+        return
+    if os.environ.get("XCTX_PACKAGE_SMOKE_ALLOW_NETWORK") != "1":
+        pytest.skip(
+            "package smoke build dependencies are not locally available; "
+            "set XCTX_PACKAGE_SMOKE_ALLOW_NETWORK=1 to run the online dependency install path"
+        )
+
+    build_deps_proc = subprocess.run(
+        [str(package_python), "-m", "pip", "install", "setuptools>=68", "wheel", "PyYAML>=6.0"],
+        cwd=source_dir,
+        text=True,
+        capture_output=True,
+        timeout=180,
+        check=False,
+    )
+    assert build_deps_proc.returncode == 0, (
+        "package smoke build dependency install failed\n"
+        f"returncode={build_deps_proc.returncode}\nSTDOUT={build_deps_proc.stdout}\nSTDERR={build_deps_proc.stderr}"
+    )
+
+
 def _assert_installed_json_smoke(
     args: list[str],
     *,
@@ -170,18 +205,7 @@ def test_package_install_entrypoint_smoke(tmp_path: Path) -> None:
         f"returncode={venv_proc.returncode}\nSTDOUT={venv_proc.stdout}\nSTDERR={venv_proc.stderr}"
     )
     package_python = _venv_python(venv_dir)
-    build_deps_proc = subprocess.run(
-        [str(package_python), "-m", "pip", "install", "setuptools>=68", "wheel", "PyYAML>=6.0"],
-        cwd=source_dir,
-        text=True,
-        capture_output=True,
-        timeout=180,
-        check=False,
-    )
-    assert build_deps_proc.returncode == 0, (
-        "package smoke build dependency install failed\n"
-        f"returncode={build_deps_proc.returncode}\nSTDOUT={build_deps_proc.stdout}\nSTDERR={build_deps_proc.stderr}"
-    )
+    _assert_or_prepare_build_dependencies(package_python, source_dir)
     install_dir = tmp_path / "installed"
     runtime_dir = tmp_path / "runtime"
     source_runtime = ROOT / ".xctx_runtime"
@@ -250,6 +274,47 @@ def test_package_install_entrypoint_smoke(tmp_path: Path) -> None:
     assert source_runtime_after == source_runtime_before
     assert not (tmp_path / ".xctx_runtime").exists()
     assert_no_local_gate_runaways()
+
+
+def test_package_smoke_dependency_probe_skips_offline_when_build_deps_are_missing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[list[str]] = []
+
+    def fake_run(args, **_kwargs):
+        calls.append([str(item) for item in args])
+        return subprocess.CompletedProcess(args, 1, "", "missing build dependency")
+
+    monkeypatch.delenv("XCTX_PACKAGE_SMOKE_ALLOW_NETWORK", raising=False)
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    with pytest.raises(pytest.skip.Exception):
+        _assert_or_prepare_build_dependencies(Path("/tmp/fake-python"), tmp_path)
+
+    assert len(calls) == 1
+    assert calls[0][1] == "-c"
+
+
+def test_package_smoke_dependency_probe_installs_only_when_network_is_explicitly_allowed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[list[str]] = []
+
+    def fake_run(args, **_kwargs):
+        call = [str(item) for item in args]
+        calls.append(call)
+        returncode = 1 if call[1] == "-c" else 0
+        return subprocess.CompletedProcess(args, returncode, "", "missing build dependency" if returncode else "")
+
+    monkeypatch.setenv("XCTX_PACKAGE_SMOKE_ALLOW_NETWORK", "1")
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    _assert_or_prepare_build_dependencies(Path("/tmp/fake-python"), tmp_path)
+
+    assert len(calls) == 2
+    assert calls[1][1:4] == ["-m", "pip", "install"]
 
 
 def test_local_gate_timeout_cleans_detached_children() -> None:

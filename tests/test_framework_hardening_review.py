@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import json
 
 import pytest
 
@@ -129,7 +130,11 @@ def test_connector_redaction_masks_common_secret_shapes() -> None:
     ensure_libs_path()
     from xctx_connectors.runtime import redact_preview  # noqa: PLC0415
 
-    text = "api_key=abc123 secret: xyz Authorization=Bearer token123 bearer abc.def password = pass123"
+    text = (
+        "api_key=abc123 secret: xyz Authorization=Bearer token123 bearer abc.def "
+        "password = pass123 --api-key cli-secret --token=token-secret "
+        "--access-token access-secret client_secret=client-secret"
+    )
     redacted = redact_preview(text)
 
     assert "abc123" not in redacted
@@ -137,7 +142,85 @@ def test_connector_redaction_masks_common_secret_shapes() -> None:
     assert "token123" not in redacted
     assert "abc.def" not in redacted
     assert "pass123" not in redacted
-    assert redacted.count("<redacted>") >= 5
+    assert "cli-secret" not in redacted
+    assert "token-secret" not in redacted
+    assert "access-secret" not in redacted
+    assert "client-secret" not in redacted
+    assert redacted.count("<redacted>") >= 9
+    assert redact_preview("operation_token=bring_online") == "operation_token=bring_online"
+
+
+def test_redaction_handles_argv_secret_values_without_masking_protocol_tokens() -> None:
+    ensure_libs_path()
+    from xctx.process.redaction import redact_argv, redact_argv_values, redact_value  # noqa: PLC0415
+
+    argv = [
+        "observe",
+        "--api-key",
+        "abc123",
+        "--token=tok456",
+        "--access-token",
+        "access789",
+        "--shape",
+        "full",
+    ]
+    redacted = redact_argv_values(argv)
+
+    assert redacted == [
+        "observe",
+        "--api-key",
+        "<redacted>",
+        "--token=<redacted>",
+        "--access-token",
+        "<redacted>",
+        "--shape",
+        "full",
+    ]
+    joined = redact_argv(argv)
+    assert "abc123" not in joined
+    assert "tok456" not in joined
+    assert "access789" not in joined
+
+    payload = redact_value(
+        {
+            "operation_token": "bring_online",
+            "api_key": "dict-secret",
+            "requested_args": ["discover", "--password", "pass123"],
+        }
+    )
+    assert payload["operation_token"] == "bring_online"
+    assert payload["api_key"] == "<redacted>"
+    assert payload["requested_args"] == ["discover", "--password", "<redacted>"]
+
+
+def test_runtime_error_envelopes_redact_two_token_cli_secrets() -> None:
+    secret = "xctx-review-secret-123"
+
+    rc, payload = run_runtime_json(
+        ["observe", "stock_intelligence_hub::market_data_gateway", "AAPL", "--api-key", secret]
+    )
+
+    serialized = json.dumps(payload, sort_keys=True)
+    assert rc == 1
+    assert payload["record_type"] == "error"
+    assert secret not in serialized
+    assert "<redacted>" in serialized
+
+
+def test_connector_failure_payloads_redact_requested_args_and_do_not_mask_operation_token() -> None:
+    secret = "xctx-review-connector-secret-456"
+
+    rc, payload = run_runtime_json(["discover", "stock_intelligence_hub::market_data_gateway", "--api-key", secret])
+    serialized = json.dumps(payload, sort_keys=True)
+
+    assert rc == 1
+    assert payload["record_type"] == "discovery"
+    assert secret not in serialized
+    assert payload["results"]["live_data"]["requested_args"] == ["discover", "--api-key", "<redacted>"]
+
+    plan_rc, plan_payload = run_runtime_json(["plan", "inspect", "root"])
+    assert plan_rc == 0
+    assert plan_payload["results"]["operation_token"] == "inspect"
 
 
 def test_connector_protocol_error_fields_are_redacted() -> None:

@@ -28,6 +28,11 @@ ROOT_NEXT_MOVES = [
 ]
 
 
+def assert_protocol_envelope(payload: dict) -> None:
+    required = {"version_xctx", "cmdline_arg", "record_type", "ok", "results"}
+    assert required <= set(payload), payload
+
+
 def test_no_stale_status_or_identify_guidance() -> None:
     scanned_paths = [
         ROOT / "bin",
@@ -66,7 +71,7 @@ def test_command_policy_contract() -> None:
     assert hidden_commands(store) == {"other"}
     configured = configured_command_names(store)
     assert "other" in configured
-    for rejected_command in ("status", "identify", "doctor", "write", "discovery"):
+    for rejected_command in ("status", "identify", "doctor", "write", "discovery", "version"):
         assert rejected_command not in configured
 
     store["protocol"]["command_groups"]["main"].append("status")
@@ -99,7 +104,7 @@ def test_framework_cli_command_contract() -> None:
     assert rc == 1
     assert payload["ok"] is False
 
-    for rejected_command in ("status", "identify", "doctor", "write", "discovery", "d", "xctx_other"):
+    for rejected_command in ("status", "identify", "doctor", "write", "discovery", "version", "d", "xctx_other"):
         rc, payload = run_runtime_json([rejected_command])
         assert rc == 1
         assert payload["record_type"] == "error"
@@ -169,7 +174,9 @@ def test_next_moves_are_command_hint_objects() -> None:
 
 
 def test_protocol_walker_uses_visible_command_surface_only() -> None:
-    assert "xctx_other" not in (ROOT / "bin" / "protocol_walker").read_text(encoding="utf-8")
+    text = (ROOT / "bin" / "protocol_walker").read_text(encoding="utf-8")
+    assert "xctx_other" not in text
+    assert ".get(\"aliases\"" not in text
 
 
 def test_configured_command_without_handler_fails_closed(monkeypatch) -> None:
@@ -190,3 +197,24 @@ def test_configured_command_without_handler_fails_closed(monkeypatch) -> None:
     assert payload["ok"] is False
     assert payload["record_type"] == "error"
     assert payload["error"] == "configured command has no handler: repair"
+
+
+def test_help_and_version_use_declared_protocol_envelopes() -> None:
+    ensure_libs_path()
+    from xctx.config.loader import load_store  # noqa: PLC0415
+
+    store = load_store(root=ROOT)
+    declared_record_types = set(store["protocol"]["record_types"])
+
+    cases = (
+        (["help"], "help", "universe"),
+        (["--version"], "version", "universe"),
+        (["-V"], "version", "universe"),
+    )
+    for args, record_type, domain_level in cases:
+        rc, payload = run_runtime_json(list(args))
+        assert rc == 0
+        assert_protocol_envelope(payload)
+        assert payload["record_type"] == record_type
+        assert payload["domain_level"] == domain_level
+        assert payload["record_type"] in declared_record_types

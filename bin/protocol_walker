@@ -162,16 +162,11 @@ def valid_commands() -> list[str]:
         ):
             _add_discover_target(commands, seen, store, f"{domain_id}::{subdomain_id}")
             _add_run_cmd(commands, seen, store, compact_subdomain(store, domain_id, subdomain).get("run_cmd"))
-            for alias in subdomain.get("aliases", []) or []:
-                _add_discover_target(commands, seen, store, f"{domain_id}::{alias}")
 
             for action_name, action in sorted((subdomain.get("actions") or {}).items()):
                 _add_discover_target(commands, seen, store, f"{domain_id}::{subdomain_id}::{action_name}")
                 _add_discover_target(commands, seen, store, f"{domain_id}::{subdomain_id} {action_name}")
                 _add_run_cmd(commands, seen, store, action.get("run_cmd"))
-                for alias in action.get("aliases", []) or []:
-                    _add_discover_target(commands, seen, store, f"{domain_id}::{subdomain_id}::{alias}")
-                    _add_discover_target(commands, seen, store, f"{domain_id}::{subdomain_id} {alias}")
 
     return commands
 
