@@ -91,7 +91,8 @@ def assert_root_universe_command_surface() -> None:
     assert "aliases" not in surface
     assert "identify" not in surface["xctx"] and "write" not in surface["xctx"] and "status" not in surface["xctx"]
     assert_root_surface_clean(universe)
-    assert_root_surface_clean(run_engine(["help"]))
+    help_payload = run_engine(["help"], code=1)
+    assert help_payload["error"] == "unknown xctx command"
     assert_root_surface_clean(run_engine(["--version"]))
 
     root = run_engine(["discover"])
@@ -106,10 +107,6 @@ def assert_root_universe_command_surface() -> None:
         {
             "desc": "Discover configured agent domains in this universe.",
             "run_cmd": "./xctx discover",
-        },
-        {
-            "desc": "Inspect the machine command surface explicitly.",
-            "run_cmd": "./xctx help",
         },
         {
             "desc": "Audit loaded configuration, live adapters, and offline/maintenance findings.",
@@ -254,42 +251,42 @@ def assert_scoped_filing_affordance_routing() -> None:
     family = run_engine(["discover", "stock_intelligence_hub::search_filing_family", "annual"])
     assert any(item["id"] == "family:ANNUAL_REPORT" for item in family["results"]["live_data"]["matches"])
     assert len(family["results"]["live_data"]["matches"]) > 1
-    priority = run_engine(["stock_intelligence_hub::search_priority_bucket", "critical"])
+    priority = run_engine(["discover", "stock_intelligence_hub::search_priority_bucket", "critical"])
     assert priority["results"]["agent_subdomain"] == "equity_filing"
     assert priority["results"]["live_data"]["matches"][0]["id"] == "priority:critical_always"
 
     form_mode = run_engine(["discover", "stock_intelligence_hub::equity_filing::search_forms"])
     assert form_mode["results"]["object_type"] == "xctx_action_discovery_interface"
     assert form_mode["results"]["argument_patterns"]
-    form_mode_alt = run_engine(["discover", "stock_intelligence_hub::equity_filing", "search_forms"])
-    assert form_mode_alt["results"]["object_type"] == "xctx_action_discovery_interface"
-    list_forms = run_engine(["discover", "stock_intelligence_hub::equity_filing", "list_forms"])
+    form_mode_alt = run_engine(["discover", "stock_intelligence_hub::equity_filing", "search_forms"], code=1)
+    assert form_mode_alt["error"].startswith("non-canonical subdomain action form:")
+    list_forms = run_engine(["discover", "stock_intelligence_hub::equity_filing::list_forms"])
     assert list_forms["results"]["live_data"]["object_type"] == "equity_filing_form_list"
     assert list_forms["results"]["live_data"]["projection"] == "compact"
     assert "run_cmd" not in list_forms["results"]["live_data"]["forms"][0]
-    list_forms_full = run_engine(["discover", "stock_intelligence_hub::equity_filing", "list_forms", "--limit", "2", "--projection", "full"])
+    list_forms_full = run_engine(["discover", "stock_intelligence_hub::equity_filing::list_forms", "--limit", "2", "--projection", "full"])
     assert list_forms_full["results"]["live_data"]["pagination"]["returned_count"] == 2
     assert "run_cmd" in list_forms_full["results"]["live_data"]["forms"][0]
-    exact_10k = run_engine(["discover", "stock_intelligence_hub::equity_filing", "search_forms", "10-K"])
+    exact_10k = run_engine(["discover", "stock_intelligence_hub::equity_filing::search_forms", "10-K"])
     exact_10k_ids = [item["id"] for item in exact_10k["results"]["live_data"]["matches"]]
     assert exact_10k_ids == ["form:10-K", "form:10-K/A"]
     exact_8k = run_engine(["discover", "stock_intelligence_hub::search_filing_form", "8-K"])
     exact_8k_ids = [item["id"] for item in exact_8k["results"]["live_data"]["matches"]]
     assert exact_8k_ids == ["form:8-K", "form:8-K/A"]
-    exact_family = run_engine(["discover", "stock_intelligence_hub::equity_filing", "search_families", "ANNUAL_REPORT"])
+    exact_family = run_engine(["discover", "stock_intelligence_hub::equity_filing::search_families", "ANNUAL_REPORT"])
     assert [item["id"] for item in exact_family["results"]["live_data"]["matches"]] == ["family:ANNUAL_REPORT"]
 
 
 def assert_scoped_market_list_affordance() -> None:
     print("[pressure] scoped market list affordance", flush=True)
-    instruments = run_engine(["discover", "stock_intelligence_hub::market_data_gateway", "list_instruments", "--limit", "2"])
+    instruments = run_engine(["discover", "stock_intelligence_hub::market_data_gateway::list_instruments", "--limit", "2"])
     assert instruments["results"]["live_data"]["projection"] == "compact"
     assert instruments["results"]["live_data"]["pagination"]["next_cursor"] == "2"
 
 
 def assert_scoped_file_affordance_routing() -> None:
     print("[pressure] scoped file affordance routing", flush=True)
-    file_list = run_engine(["discover", "file_manager::home_directory", "list_files", "--limit", "2"])
+    file_list = run_engine(["discover", "file_manager::home_directory::list_files", "--limit", "2"])
     assert file_list["results"]["live_data"]["object_type"] == "external_command_filesystem_file_list"
     assert "connector" not in file_list["results"]["live_data"]
     assert file_list["results"]["live_data"]["files"][0]["id"] == "file:README.txt"
@@ -297,7 +294,7 @@ def assert_scoped_file_affordance_routing() -> None:
     assert "external_command" not in file_list["results"]["live_data"]
     assert "command_status" not in file_list["results"]["live_data"]
     assert "This is a bundled file-manager demo fixture" not in json.dumps(file_list["results"]["live_data"])
-    file_list_full = run_engine(["--max", "discover", "file_manager::home_directory", "list_files", "--limit", "1", "--projection", "full"])
+    file_list_full = run_engine(["--max", "discover", "file_manager::home_directory::list_files", "--limit", "1", "--projection", "full"])
     assert file_list_full["results"]["live_data"]["pagination"]["returned_count"] == 1
     assert file_list_full["results"]["live_data"]["connector"]["payload_contract"]["failure_payload"] == "xctx_connector_error"
     assert file_list_full["results"]["live_data"]["command_status"]["argv"][0] == "ls"
@@ -314,7 +311,7 @@ def assert_scoped_file_affordance_routing() -> None:
     assert "content" not in discovered_file["results"]["live_data"]
     assert "configured_action_index" not in discovered_file["results"]
     assert "This is a bundled file-manager demo fixture" not in json.dumps(discovered_file["results"]["live_data"])
-    directory_list = run_engine(["discover", "file_manager::home_directory", "list_directories"])
+    directory_list = run_engine(["discover", "file_manager::home_directory::list_directories"])
     assert "directory:docs" in {item["id"] for item in directory_list["results"]["live_data"]["directories"]}
 
 
@@ -322,7 +319,7 @@ def assert_market_identity_search() -> None:
     print("[pressure] market identity search", flush=True)
     market_mode = run_engine(["discover", "stock_intelligence_hub::market_data_gateway::search_entity_instrument"])
     assert market_mode["results"]["object_type"] == "xctx_action_discovery_interface"
-    apple = run_engine(["discover", "stock_intelligence_hub::market_data_gateway", "search_entity_instrument", "Apple"])
+    apple = run_engine(["discover", "stock_intelligence_hub::market_data_gateway::search_entity_instrument", "Apple"])
     live = apple["results"]["live_data"]
     assert live["matches_returned"] == 1
     assert live["matches"][0]["instrument_id"] == "instrument:aapl"
@@ -331,7 +328,7 @@ def assert_market_identity_search() -> None:
     name_shortcut = run_engine(["discover", "--name", "Apple"], code=1)
     assert_cmd(name_shortcut, ok=False, record_type="error")
     assert "unrecognized arguments: --name" in name_shortcut["error"]
-    apple_punct = run_engine(["discover", "stock_intelligence_hub::market_data_gateway", "search_entity_instrument", "Apple, Inc."])
+    apple_punct = run_engine(["discover", "stock_intelligence_hub::market_data_gateway::search_entity_instrument", "Apple, Inc."])
     assert apple_punct["results"]["live_data"]["matches"][0]["resolver_match"]["reason"] == "normalized_name_exact"
     apple_cik = run_engine(["discover", "stock_intelligence_hub::search_entity_instrument", "issuer:cik:0000320193"])
     assert apple_cik["results"]["live_data"]["matches"][0]["resolver_match"]["reason"] == "exact_cik"
@@ -339,7 +336,7 @@ def assert_market_identity_search() -> None:
     assert fb["results"]["live_data"]["matches_returned"] == 1
     assert fb["results"]["live_data"]["matches"][0]["ticker"] == "META"
 
-    ticker_a = run_engine(["discover", "stock_intelligence_hub::market_data_gateway", "search_entity_instrument", "A"])
+    ticker_a = run_engine(["discover", "stock_intelligence_hub::market_data_gateway::search_entity_instrument", "A"])
     live_a = ticker_a["results"]["live_data"]
     assert live_a["total_matches"] >= 50
     assert live_a["matches_returned"] == 10
@@ -362,16 +359,19 @@ def assert_market_identity_search() -> None:
     msft_latest = run_engine(["discover", "stock_intelligence_hub::latest_price", "MSFT"])
     assert msft_latest["results"]["live_data"]["found"] is False
     assert "Known instrument MSFT was resolved" in msft_latest["results"]["live_data"]["empty_result_guidance"]
-    broad_series = run_engine(["discover", "stock_intelligence_hub::market_data_gateway", "search_market_series", "A"])
+    broad_series = run_engine(["discover", "stock_intelligence_hub::market_data_gateway::search_market_series", "A"])
     broad_ids = [item["market_series_id"] for item in broad_series["results"]["live_data"]["matches"]]
     assert len(broad_ids) == len(set(broad_ids)), broad_ids
 
 def assert_market_observe_range_semantics() -> None:
     print("[pressure] market observe/range semantics", flush=True)
-    observed = run_engine(["observe", "instrument:aapl"])
+    observed = run_engine(["observe", "stock_intelligence_hub::market_data_gateway", "instrument:aapl"])
     assert_cmd(observed, record_type="observation", level="agent_subdomain")
     assert observed["results"]["live_data"]["instrument_id"] == "instrument:aapl"
-    assert observed["results"]["live_data"]["latest_available_price"]["is_live_quote"] is False
+    assert "market_series" not in observed["results"]["live_data"]
+    assert "latest_available_price" not in observed["results"]["live_data"]
+    observed_more = run_engine(["--more", "observe", "stock_intelligence_hub::market_data_gateway", "instrument:aapl"])
+    assert observed_more["results"]["live_data"]["latest_available_price"]["is_live_quote"] is False
     observed_former = run_engine(["observe", "stock_intelligence_hub::market_data_gateway", "FB"])
     assert observed_former["results"]["live_data"]["ticker"] == "META"
     assert observed_former["results"]["live_data"]["market_series_available"] is False
@@ -412,11 +412,11 @@ def assert_market_observe_range_semantics() -> None:
 
 def assert_observe_error_and_cross_domain_routes() -> None:
     print("[pressure] observe error and cross-domain routes", flush=True)
-    unsupported_range = run_engine(["observe", "form:10-K", "--bars", "5"], code=1)
+    unsupported_range = run_engine(["observe", "stock_intelligence_hub::equity_filing", "form:10-K", "--bars", "5"], code=1)
     assert unsupported_range["error"] == "unsupported option --bars for stock_intelligence_hub::equity_filing observe"
     missing_range_target = run_engine(["observe", "stock_intelligence_hub::market_data_gateway", "--bars", "5"], code=1)
     assert missing_range_target["error"] == "missing observation target before configured observe options"
-    spaced_form = run_engine(["observe", "DEF", "14A"])
+    spaced_form = run_engine(["observe", "stock_intelligence_hub::equity_filing", "form:DEF 14A"])
     assert spaced_form["results"]["agent_subdomain"] == "equity_filing"
     assert spaced_form["results"]["live_data"]["id"] == "form:DEF 14A"
     range_conflict = run_engine(
@@ -427,15 +427,15 @@ def assert_observe_error_and_cross_domain_routes() -> None:
     filing_context = run_engine(["observe", "stock_intelligence_hub::equity_filing", "instrument:aapl"])
     assert filing_context["results"]["live_data"]["context_state"] == "with_equity"
     assert filing_context["results"]["live_data"]["issuer_submission_feed_status"] == "offline_not_bundled"
-    observed_file = run_engine(["--max", "observe", "file:README.txt"])
+    observed_file = run_engine(["--max", "observe", "file_manager::home_directory", "file:README.txt"])
     assert observed_file["results"]["agent_domain"] == "file_manager"
     assert observed_file["results"]["live_data"]["object_type"] == "external_command_filesystem_file_observation"
     assert observed_file["results"]["live_data"]["connector"]["payload_contract"]["success_payload"] == "domain_object"
     assert observed_file["results"]["live_data"]["content"]["available"] is True
     assert "This is a bundled file-manager demo fixture" in observed_file["results"]["live_data"]["content"]["text"]
-    observed_directory = run_engine(["observe", "directory:docs"])
+    observed_directory = run_engine(["observe", "file_manager::home_directory", "directory:docs"])
     assert observed_directory["results"]["live_data"]["directory_id"] == "directory:docs"
-    escaped_file = run_engine(["--max", "observe", "file:../README.md"], code=1)
+    escaped_file = run_engine(["--max", "observe", "file_manager::home_directory", "file:../README.md"], code=1)
     assert_cmd(escaped_file, ok=False, record_type="observation", level="agent_subdomain")
     assert escaped_file["error"] == "path escapes configured safe root"
     assert escaped_file["results"]["live_data"]["object_type"] == "xctx_connector_error"
@@ -469,6 +469,8 @@ def assert_repair_results() -> None:
     print("[pressure] repair results", flush=True)
     repaired = run_engine(["repair", "offline:macro_intelligence_hub"])
     assert_cmd(repaired, record_type="repair_result", level="agent_domain")
+    assert repaired["results"]["next_moves"][0]["writes_protocol_ledger"] is True
+    assert repaired["results"]["next_moves"][0]["domain_mutation"] is False
     terminal = run_engine(["--max", "repair", "down_for_maintenance:stock_intelligence_hub::fundamentals_gateway"], code=1)
     assert terminal["error"] == "down_for_maintenance"
     assert terminal["results"]["repair_path"] is None

@@ -14,9 +14,6 @@ from xctx.protocol.guidance import command_hint, root_protocol_next_moves
 def has_agent_domains(store: dict[str, Any]) -> bool:
     return bool(store.get("agent_domains"))
 
-def agent_routing(store: dict[str, Any]) -> dict[str, Any]:
-    return store.get("universe", {}).get("agent_routing", {}) or {}
-
 def compact_domain(store: dict[str, Any], domain: dict[str, Any]) -> dict[str, Any]:
     payload = {
         "id": domain["id"],

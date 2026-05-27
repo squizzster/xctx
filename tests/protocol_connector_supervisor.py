@@ -233,12 +233,12 @@ print(json.dumps({{
 
 
 def test_xctx_native_passthrough_stays_transparent() -> None:
-    market = run_engine(["discover", "stock_intelligence_hub::market_data_gateway", "search_market_series", "AAPL"])
+    market = run_engine(["discover", "stock_intelligence_hub::market_data_gateway::search_market_series", "AAPL"])
     live = market["results"]["live_data"]
     assert live["object_type"] == "market_data_gateway::search_market_series::result"
     assert live["matches"][0]["market_series_id"] == "market_series:aapl:daily"
 
-    filing = run_engine(["observe", "form:10-K"])
+    filing = run_engine(["observe", "stock_intelligence_hub::equity_filing", "form:10-K"])
     filing_live = filing["results"]["live_data"]
     assert filing_live["object_type"] == "filing_form_observation"
     assert filing_live["id"] == "form:10-K"
@@ -271,7 +271,7 @@ def test_xctx_native_passthrough_failure_has_payload_contract() -> None:
 
 def test_xctx_native_passthrough_failure_hides_argv_until_max_detail() -> None:
     compact = run_engine(
-        ["discover", "stock_intelligence_hub::market_data_gateway", "list_instruments", "--cursor", "nope"],
+        ["discover", "stock_intelligence_hub::market_data_gateway::list_instruments", "--cursor", "nope"],
         code=1,
     )
     assert compact["ok"] is False
@@ -284,8 +284,7 @@ def test_xctx_native_passthrough_failure_hides_argv_until_max_detail() -> None:
         [
             "--max",
             "discover",
-            "stock_intelligence_hub::market_data_gateway",
-            "list_instruments",
+            "stock_intelligence_hub::market_data_gateway::list_instruments",
             "--cursor",
             "nope",
         ],
@@ -307,7 +306,7 @@ def test_external_command_filesystem_discovery_and_observation() -> None:
     assert_payload_contract(live["connector"], contract="always_json_object", failure_payload="xctx_connector_error")
     assert live["observable_objects"]["file"]["id_pattern"] == "file:<relative_path>"
 
-    files = run_engine(["discover", "file_manager::home_directory", "list_files", "--limit", "5"])
+    files = run_engine(["discover", "file_manager::home_directory::list_files", "--limit", "5"])
     file_live = files["results"]["live_data"]
     assert file_live["object_type"] == "external_command_filesystem_file_list"
     assert "connector" not in file_live
@@ -318,7 +317,7 @@ def test_external_command_filesystem_discovery_and_observation() -> None:
     assert "command_status" not in file_live
     assert "This is a bundled file-manager demo fixture" not in json.dumps(file_live)
 
-    files_full = run_engine(["--max", "discover", "file_manager::home_directory", "list_files", "--limit", "1", "--projection", "full"])
+    files_full = run_engine(["--max", "discover", "file_manager::home_directory::list_files", "--limit", "1", "--projection", "full"])
     files_full_live = files_full["results"]["live_data"]
     assert files_full_live["projection"] == "full"
     assert files_full_live["pagination"]["total_count"] == 1
@@ -356,7 +355,7 @@ def test_external_command_filesystem_discovery_and_observation() -> None:
     assert discovered_directory_live["id"] == "directory:docs"
     assert discovered_directory_live["child_count"] == 1
 
-    observed = run_engine(["--max", "observe", "file:README.txt"])
+    observed = run_engine(["--max", "observe", "file_manager::home_directory", "file:README.txt"])
     observed_live = observed["results"]["live_data"]
     assert observed["results"]["agent_domain"] == "file_manager"
     assert observed_live["object_type"] == "external_command_filesystem_file_observation"
@@ -369,7 +368,7 @@ def test_external_command_filesystem_discovery_and_observation() -> None:
 
 
 def test_external_command_filesystem_always_shapes_failures() -> None:
-    escaped = run_engine(["--max", "observe", "file:../README.md"], code=1)
+    escaped = run_engine(["--max", "observe", "file_manager::home_directory", "file:../README.md"], code=1)
     assert escaped["ok"] is False
     assert escaped["error"] == "path escapes configured safe root"
     live = escaped["results"]["live_data"]
@@ -379,7 +378,7 @@ def test_external_command_filesystem_always_shapes_failures() -> None:
     assert live["command_status"]["ok"] is False
     assert "safe root" in live["command_status"]["error"]
 
-    unknown = run_engine(["--max", "observe", "file:missing.txt"])
+    unknown = run_engine(["--max", "observe", "file_manager::home_directory", "file:missing.txt"])
     assert unknown["ok"] is True
     unknown_live = unknown["results"]["live_data"]
     assert unknown_live["object_type"] == "external_command_filesystem_observation"
@@ -405,7 +404,7 @@ def main() -> int:
     test_external_command_filesystem_always_shapes_failures()
 
     cli = subprocess.run(
-        [str(XCTX), "--json", "discover", "file_manager::home_directory", "list_directories"],
+        [str(XCTX), "--json", "discover", "file_manager::home_directory::list_directories"],
         cwd=ROOT,
         text=True,
         capture_output=True,

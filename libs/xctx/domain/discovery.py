@@ -159,7 +159,10 @@ def subdomain_discovery_payload(
     if query_parts:
         action_name, action = subdomain_action_config(subdomain, query_parts[0])
         if action_name and action:
-            return scoped_subdomain_action_payload(store, domain_id, subdomain, action_name, action, query_parts[1:])
+            raise XctxError(
+                f"non-canonical subdomain action form: {domain_id}::{subdomain_id} {query_parts[0]}",
+                next_moves=[f"./xctx discover {domain_id}::{subdomain_id}::{action_name}"],
+            )
         canonical_action = canonical_action_for_structural_token(subdomain, query_parts[0])
         if canonical_action:
             raise XctxError(
@@ -203,6 +206,8 @@ def scoped_action_discovery_payload(
 ) -> dict[str, Any]:
     """Execute an opt-in domain affordance through an explicit agent-domain scope."""
     subdomain_id = str(action["agent_subdomain"])
+    source_action = str(action.get("_source_action_name") or action_name)
+    implemented_by = str(action.get("implemented_by") or f"{domain_id}::{subdomain_id}::{source_action}")
     subdomain = resolve_subdomain(store, domain_id, subdomain_id)
     if subdomain.get("status") != "online":
         return {
@@ -221,11 +226,16 @@ def scoped_action_discovery_payload(
     live = call_external_command(store, subdomain, [live_command, *query_parts])
     payload = {
         "action": action_name,
+        "domain_affordance": True,
         "agent_domain": domain_id,
         "agent_subdomain": subdomain_id,
+        "implemented_by": implemented_by,
+        "implemented_by_run_cmd": f"./xctx discover {implemented_by}",
         "action_description": action.get("desc"),
         "live_data": live,
     }
+    if source_action != action_name:
+        payload["implemented_action"] = source_action
     if query and action.get("query_required", True):
         payload["query"] = query
     if query_parts:
@@ -255,6 +265,12 @@ def scoped_subdomain_action_payload(
         "action_description": action.get("desc"),
         "live_data": live,
     }
+    if action.get("domain_affordance"):
+        domain_action_name = str(action.get("domain_action_name") or action_name)
+        payload["domain_affordance"] = True
+        payload["domain_action_name"] = domain_action_name
+        payload["domain_affordance_run_cmd"] = f"./xctx discover {domain_id}::{domain_action_name}"
+        payload["implemented_by"] = f"{domain_id}::{subdomain['id']}::{action_name}"
     if action_args:
         payload["action_args"] = action_args
     return payload
@@ -266,7 +282,7 @@ def discover_payload(
 ) -> tuple[str, dict[str, Any]]:
     if target is None:
         return "root", root_discovery_payload(store)
-    scoped_domain_id, scoped_action_name, scoped_action = parse_scoped_action(store, target)
+    scoped_domain_id, scoped_action_name, scoped_action = parse_scoped_action(store, target, action_args=query_parts)
     if scoped_domain_id and scoped_action_name and scoped_action:
         return "agent_subdomain", scoped_action_discovery_payload(
             store,

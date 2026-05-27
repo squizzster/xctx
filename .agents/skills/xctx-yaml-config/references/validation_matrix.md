@@ -20,9 +20,9 @@ Expected:
 root_boundary:
   probes:
     - ./xctx --json
-    - ./xctx --json help
     - ./xctx --json --version
     - ./xctx --json discover
+    - ./xctx --json help should fail closed
   assert_absent:
     - --bars
     - --calendar-days

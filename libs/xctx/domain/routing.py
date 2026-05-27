@@ -5,7 +5,6 @@ from __future__ import annotations
 from typing import Any
 
 from xctx.domain.actions import domain_action_config, iter_domain_action_configs, subdomain_action_config
-from xctx.domain.core import agent_routing
 from xctx.protocol.actions import action_matches
 from xctx.protocol.option_encoding import encode_cli_options_for_target
 
@@ -27,7 +26,11 @@ def parse_ref(store: dict[str, Any], token: str | None) -> tuple[str | None, str
         return token, None
     return None, None
 
-def parse_scoped_action(store: dict[str, Any], token: str | None) -> tuple[str | None, str | None, dict[str, Any] | None]:
+def parse_scoped_action(
+    store: dict[str, Any],
+    token: str | None,
+    action_args: list[str] | None = None,
+) -> tuple[str | None, str | None, dict[str, Any] | None]:
     """Parse <agent_domain>::<domain_affordance> without mistaking the affordance for a subdomain."""
     if not token or "::" not in token:
         return None, None, None
@@ -36,25 +39,10 @@ def parse_scoped_action(store: dict[str, Any], token: str | None) -> tuple[str |
         return None, None, None
     if domain_id not in store.get("agent_domains", {}):
         return None, None, None
-    action = domain_action_config(store, domain_id, scoped_token)
+    action = domain_action_config(store, domain_id, scoped_token, action_args=action_args)
     if action:
         return domain_id, str(action.get("_action_name", scoped_token)), action
     return None, None, None
-
-def route_for_identifier(store: dict[str, Any], identifier: str) -> tuple[str, str] | tuple[None, None]:
-    routing = agent_routing(store)
-    lowered = identifier.lower().strip()
-    uppered = identifier.upper().strip()
-    for route in routing.get("observe_routes", []) or []:
-        domain_id = route.get("agent_domain")
-        subdomain_id = route.get("agent_subdomain")
-        if not domain_id or not subdomain_id:
-            continue
-        prefixes = [str(prefix).lower() for prefix in route.get("prefixes", []) or []]
-        exact_tokens = {str(token).upper() for token in route.get("unprefixed_exact", []) or []}
-        if any(lowered.startswith(prefix) for prefix in prefixes) or uppered in exact_tokens:
-            return str(domain_id), str(subdomain_id)
-    return None, None
 
 def observe_adapter_option_args(store: dict[str, Any], subdomain: dict[str, Any], options: dict[str, Any]) -> list[str]:
     """Encode observe options only after the concrete subdomain is resolved."""

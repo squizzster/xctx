@@ -25,7 +25,6 @@ xctx_interface:
     xctx is the first object an agent discovers. It describes the universe, the active protocol version, the command surface, and the next command that discovers configured agent domains. It is not the business domain itself; it is the agent-facing gateway into the domains.
   run_cmd: ./xctx
   discover_domains_run_cmd: ./xctx discover
-  help_run_cmd: ./xctx help
 agent_domains:
   - id: file_manager
     path: agent_domains/file_manager/domain.yaml
@@ -37,38 +36,3 @@ agent_domains:
     path: agent_domains/crypto_intelligence_hub/domain.yaml
   - id: options_intelligence_hub
     path: agent_domains/options_intelligence_hub/domain.yaml
-agent_routing:
-  observe_routes:
-    - id: file_manager_objects
-      agent_domain: file_manager
-      agent_subdomain: home_directory
-      prefixes:
-        - "file:"
-        - "directory:"
-    - id: canonical_equity_instrument_ids
-      agent_domain: stock_intelligence_hub
-      agent_subdomain: market_data_gateway
-      prefixes:
-        - "instrument:"
-        - "issuer:cik:"
-    - id: market_series_ids
-      agent_domain: stock_intelligence_hub
-      agent_subdomain: market_data_gateway
-      prefixes:
-        - "market_series:"
-        - "ohlcv_series:"
-    - id: equity_filing_taxonomy_ids
-      agent_domain: stock_intelligence_hub
-      agent_subdomain: equity_filing
-      prefixes:
-        - "form:"
-        - "family:"
-        - "priority:"
-      unprefixed_exact:
-        - 10-K
-        - 10-Q
-        - 8-K
-        - DEF 14A
-        - SC 13D
-        - S-3
-        - 424B5

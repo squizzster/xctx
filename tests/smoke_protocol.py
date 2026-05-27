@@ -182,10 +182,8 @@ def assert_protocol_is_config_driven() -> None:
     assert "root_affordances" not in universe
     assert "identity_resolution" not in universe
     assert "active_agent_domain" not in universe
+    assert "agent_routing" not in universe
     assert any(item["id"] == "file_manager" for item in universe["agent_domains"])
-    file_routes = [route for route in universe["agent_routing"]["observe_routes"] if route["id"] == "file_manager_objects"]
-    assert file_routes[0]["agent_domain"] == "file_manager"
-    assert file_routes[0]["prefixes"] == ["file:", "directory:"]
     market_subdomain = yaml.safe_load((ROOT / "yaml_dynamic_config" / "agent_domains" / "stock_intelligence_hub" / "subdomains" / "market_data_gateway" / "subdomain.yaml").read_text())
     assert market_subdomain["entrypoint"]["file"] == "connector_supervisor.py"
     assert market_subdomain["connector"]["kind"] == "xctx_native_passthrough"
@@ -258,11 +256,6 @@ def assert_root_domain_subdomain_discovery() -> None:
     assert_no_description_variants(universe)
     assert_root_surface_clean(universe)
 
-    help_payload = one(["help"])
-    assert "extension_lane" not in help_payload
-    assert "xctx_other" not in help_payload
-    assert_root_surface_clean(help_payload)
-
     version = one(["--version"])
     assert version["record_type"] == "version"
     assert version["ok"] is True
@@ -294,10 +287,6 @@ def assert_root_domain_subdomain_discovery() -> None:
         {
             "desc": "Discover configured agent domains in this universe.",
             "run_cmd": "./xctx discover",
-        },
-        {
-            "desc": "Inspect the machine command surface explicitly.",
-            "run_cmd": "./xctx help",
         },
         {
             "desc": "Audit loaded configuration, live adapters, and offline/maintenance findings.",
@@ -374,7 +363,7 @@ def assert_root_domain_subdomain_discovery() -> None:
         "list_priority_buckets",
     }
     assert any(
-        move["run_cmd"] == "./xctx discover stock_intelligence_hub::equity_filing list_forms"
+        move["run_cmd"] == "./xctx discover stock_intelligence_hub::equity_filing::list_forms"
         for move in filing_live["next_moves"]
     )
     filing_full = one(["--max", "discover", "stock_intelligence_hub::equity_filing", "--projection", "full"])
@@ -431,16 +420,15 @@ def assert_scoped_affordance_routing() -> None:
     assert priority["results"]["agent_subdomain"] == "equity_filing"
     assert priority["results"]["live_data"]["matches"][0]["id"] == "priority:critical_always"
 
-    shorthand = one(["stock_intelligence_hub::search_priority_bucket", "critical"])
-    assert shorthand["cmdline_arg"] == "stock_intelligence_hub::search_priority_bucket critical"
-    assert shorthand["results"]["live_data"]["matches"][0]["id"] == "priority:critical_always"
+    shorthand = one(["stock_intelligence_hub::search_priority_bucket", "critical"], expected_code=1)
+    assert shorthand["error"] == "unknown xctx command"
 
     unscoped = one(["discover", "search_filing_family", "annual"], expected_code=1)
     assert unscoped["record_type"] == "error"
     assert unscoped["ok"] is False
     assert "./xctx discover stock_intelligence_hub::search_filing_family" in unscoped["error"]
 
-    form = one(["discover", "stock_intelligence_hub::equity_filing", "search_forms", "10-K"])
+    form = one(["discover", "stock_intelligence_hub::equity_filing::search_forms", "10-K"])
     assert form["results"]["action"] == "search_forms"
     assert form["results"]["live_data"]["object_type"] == "equity_filing::search_filing_form::result"
     form_ids = [item["id"] for item in form["results"]["live_data"]["matches"]]
@@ -451,7 +439,7 @@ def assert_scoped_affordance_routing() -> None:
     affordance_ids = [item["id"] for item in form_affordance["results"]["live_data"]["matches"]]
     assert affordance_ids == ["form:10-K", "form:10-K/A"]
 
-    eight_k = one(["discover", "stock_intelligence_hub::equity_filing", "search_forms", "8-K"])
+    eight_k = one(["discover", "stock_intelligence_hub::equity_filing::search_forms", "8-K"])
     eight_k_ids = [item["id"] for item in eight_k["results"]["live_data"]["matches"]]
     assert eight_k_ids == ["form:8-K", "form:8-K/A"]
     assert "form:10-K" not in eight_k_ids
@@ -460,13 +448,12 @@ def assert_scoped_affordance_routing() -> None:
     assert form_mode["results"]["object_type"] == "xctx_action_discovery_interface"
     assert form_mode["results"]["action"] == "search_forms"
     assert form_mode["results"]["argument_patterns"]
-    assert form_mode["results"]["examples"][0]["run_cmd"].endswith("search_forms 10-K")
+    assert form_mode["results"]["examples"][0]["run_cmd"].endswith("::search_forms 10-K")
 
-    form_mode_alt = one(["discover", "stock_intelligence_hub::equity_filing", "search_forms"])
-    assert form_mode_alt["results"]["object_type"] == "xctx_action_discovery_interface"
-    assert form_mode_alt["results"]["argument_patterns"] == form_mode["results"]["argument_patterns"]
+    form_mode_alt = one(["discover", "stock_intelligence_hub::equity_filing", "search_forms"], expected_code=1)
+    assert form_mode_alt["error"].startswith("non-canonical subdomain action form:")
 
-    list_forms = one(["discover", "stock_intelligence_hub::equity_filing", "list_forms"])
+    list_forms = one(["discover", "stock_intelligence_hub::equity_filing::list_forms"])
     assert list_forms["results"]["action"] == "list_forms"
     assert list_forms["results"]["live_data"]["object_type"] == "equity_filing_form_list"
     assert list_forms["results"]["live_data"]["returned_count"] > 0
@@ -478,21 +465,21 @@ def assert_scoped_affordance_routing() -> None:
     assert "priority_bucket" not in list_forms_live["forms"][0]
     assert "run_cmd" not in list_forms_live["forms"][0]
 
-    list_forms_full = one(["discover", "stock_intelligence_hub::equity_filing", "list_forms", "--limit", "2", "--projection", "full"])
+    list_forms_full = one(["discover", "stock_intelligence_hub::equity_filing::list_forms", "--limit", "2", "--projection", "full"])
     full_live = list_forms_full["results"]["live_data"]
     assert full_live["projection"] == "full"
     assert full_live["pagination"]["returned_count"] == 2
     assert "canonical_family" in full_live["forms"][0]
     assert "run_cmd" in full_live["forms"][0]
 
-    list_forms_page = one(["discover", "stock_intelligence_hub::equity_filing", "list_forms", "--limit", "2", "--cursor", "2"])
+    list_forms_page = one(["discover", "stock_intelligence_hub::equity_filing::list_forms", "--limit", "2", "--cursor", "2"])
     assert list_forms_page["results"]["live_data"]["pagination"]["cursor"] == "2"
     assert list_forms_page["results"]["live_data"]["forms"][0]["id"] != list_forms_live["forms"][0]["id"]
 
-    bad_cursor = one(["discover", "stock_intelligence_hub::equity_filing", "list_priority_buckets", "--cursor", "1"], expected_code=1)
+    bad_cursor = one(["discover", "stock_intelligence_hub::equity_filing::list_priority_buckets", "--cursor", "1"], expected_code=1)
     assert "does not declare cursor support" in bad_cursor["error"]
 
-    exact_family = one(["discover", "stock_intelligence_hub::equity_filing", "search_families", "ANNUAL_REPORT"])
+    exact_family = one(["discover", "stock_intelligence_hub::equity_filing::search_families", "ANNUAL_REPORT"])
     assert [item["id"] for item in exact_family["results"]["live_data"]["matches"]] == ["family:ANNUAL_REPORT"]
 
     missing_root_query = one(["discover", "stock_intelligence_hub::search_entity_instrument"])
@@ -501,11 +488,8 @@ def assert_scoped_affordance_routing() -> None:
     assert missing_root_query["results"]["query_required"] is True
     assert "live_data" not in missing_root_query["results"]
 
-    missing_subdomain_query = one(["discover", "stock_intelligence_hub::market_data_gateway", "search_entity_instrument"])
-    assert missing_subdomain_query["ok"] is True
-    assert missing_subdomain_query["results"]["object_type"] == "xctx_action_discovery_interface"
-    assert missing_subdomain_query["results"]["query_required"] is True
-    assert "live_data" not in missing_subdomain_query["results"]
+    missing_subdomain_query = one(["discover", "stock_intelligence_hub::market_data_gateway", "search_entity_instrument"], expected_code=1)
+    assert missing_subdomain_query["error"].startswith("non-canonical subdomain action form:")
 
     missing_subdomain_query_ref = one(["discover", "stock_intelligence_hub::market_data_gateway::search_entity_instrument"])
     assert missing_subdomain_query_ref["ok"] is True
@@ -524,7 +508,7 @@ def assert_scoped_affordance_routing() -> None:
     assert apple_name_shortcut["ok"] is False
     assert "unrecognized arguments: --name" in apple_name_shortcut["error"]
 
-    apple_full = one(["discover", "stock_intelligence_hub::market_data_gateway", "search_entity_instrument", "Apple"])
+    apple_full = one(["discover", "stock_intelligence_hub::market_data_gateway::search_entity_instrument", "Apple"])
     live = apple_full["results"]["live_data"]
     assert live["object_type"] == "market_data_gateway::search_entity_instrument::result"
     assert live["query"] == "Apple"
@@ -533,7 +517,7 @@ def assert_scoped_affordance_routing() -> None:
     assert live["matches"][0]["instrument_id"] == "instrument:aapl"
     assert any(move["run_cmd"].endswith("search_market_series AAPL") for move in live["matches"][0]["next_moves"])
 
-    apple_punct = one(["discover", "stock_intelligence_hub::market_data_gateway", "search_entity_instrument", "Apple, Inc."])
+    apple_punct = one(["discover", "stock_intelligence_hub::market_data_gateway::search_entity_instrument", "Apple, Inc."])
     assert apple_punct["results"]["live_data"]["matches"][0]["resolver_match"]["reason"] == "normalized_name_exact"
     assert apple_punct["results"]["live_data"]["matches"][0]["ticker"] == "AAPL"
 
@@ -549,7 +533,7 @@ def assert_scoped_affordance_routing() -> None:
     assert former_ticker["results"]["live_data"]["matches"][0]["ticker"] == "META"
     assert former_ticker["results"]["live_data"]["matches"][0]["resolver_match"]["reason"] == "exact_alias"
 
-    ticker_a = one(["discover", "stock_intelligence_hub::market_data_gateway", "search_entity_instrument", "A"])
+    ticker_a = one(["discover", "stock_intelligence_hub::market_data_gateway::search_entity_instrument", "A"])
     live_a = ticker_a["results"]["live_data"]
     assert live_a["total_matches"] > 10
     assert live_a["matches_returned"] == 10
@@ -571,13 +555,13 @@ def assert_scoped_affordance_routing() -> None:
     assert latest_live["found"] is True
     assert latest_live["observe_cmd"] == "./xctx observe stock_intelligence_hub::market_data_gateway AAPL"
     assert "latest_available_price" not in latest_live
-    latest_subdomain = one(["discover", "stock_intelligence_hub::market_data_gateway", "latest_price", "issuer:cik:0000320193"])
+    latest_subdomain = one(["discover", "stock_intelligence_hub::market_data_gateway::latest_price", "issuer:cik:0000320193"])
     assert latest_subdomain["results"]["live_data"]["ticker"] == "AAPL"
     assert "latest_available_price" not in latest_subdomain["results"]["live_data"]
     msft_latest = one(["discover", "stock_intelligence_hub::latest_price", "MSFT"])
     assert msft_latest["results"]["live_data"]["found"] is False
     assert "Known instrument MSFT was resolved" in msft_latest["results"]["live_data"]["empty_result_guidance"]
-    instruments_page = one(["discover", "stock_intelligence_hub::market_data_gateway", "list_instruments", "--limit", "2"])
+    instruments_page = one(["discover", "stock_intelligence_hub::market_data_gateway::list_instruments", "--limit", "2"])
     instruments_live = instruments_page["results"]["live_data"]
     assert instruments_live["projection"] == "compact"
     assert instruments_live["pagination"]["returned_count"] == 2
@@ -585,22 +569,27 @@ def assert_scoped_affordance_routing() -> None:
     assert "run_cmd" not in instruments_live["instruments"][0]
     assert "next_moves" not in instruments_live["instruments"][0]
 
-    instruments_full = one(["discover", "stock_intelligence_hub::market_data_gateway", "list_instruments", "--limit", "2", "--projection", "full"])
+    instruments_full = one(["discover", "stock_intelligence_hub::market_data_gateway::list_instruments", "--limit", "2", "--projection", "full"])
     full_instruments_live = instruments_full["results"]["live_data"]
     assert full_instruments_live["projection"] == "full"
     assert "run_cmd" in full_instruments_live["instruments"][0]
     assert "next_moves" in full_instruments_live["instruments"][0]
-    broad_series = one(["discover", "stock_intelligence_hub::market_data_gateway", "search_market_series", "A"])
+    broad_series = one(["discover", "stock_intelligence_hub::market_data_gateway::search_market_series", "A"])
     broad_ids = [item["market_series_id"] for item in broad_series["results"]["live_data"]["matches"]]
     assert len(broad_ids) == len(set(broad_ids)), broad_ids
 
 
 def assert_observe_audit_repair() -> None:
-    observed = one(["observe", "instrument:aapl"])
+    observed = one(["observe", "stock_intelligence_hub::market_data_gateway", "instrument:aapl"])
     assert observed["record_type"] == "observation"
     assert observed["results"]["agent_subdomain"] == "market_data_gateway"
     assert observed["results"]["live_data"]["instrument_id"] == "instrument:aapl"
-    assert observed["results"]["live_data"]["latest_available_price"]["is_live_quote"] is False
+    assert "market_series" not in observed["results"]["live_data"]
+    assert "latest_available_price" not in observed["results"]["live_data"]
+
+    observed_more = one(["--more", "observe", "stock_intelligence_hub::market_data_gateway", "instrument:aapl"])
+    assert observed_more["results"]["live_data"]["latest_available_price"]["is_live_quote"] is False
+    assert observed_more["results"]["live_data"]["market_series"]["market_series_id"] == "market_series:aapl:daily"
 
     observed_former = one(["observe", "stock_intelligence_hub::market_data_gateway", "FB"])
     assert observed_former["results"]["live_data"]["ticker"] == "META"
@@ -649,12 +638,12 @@ def assert_observe_audit_repair() -> None:
     assert calendar_live["request"] == {"unit": "calendar_days", "value": 50, "all_available": False}
     assert calendar_live["returned_bars"] >= 30
 
-    unsupported_option = one(["observe", "form:10-K", "--bars", "5"], expected_code=1)
+    unsupported_option = one(["observe", "stock_intelligence_hub::equity_filing", "form:10-K", "--bars", "5"], expected_code=1)
     assert unsupported_option["ok"] is False
     assert "remove unsupported option --bars for stock_intelligence_hub::equity_filing observe" in unsupported_option["error"]
 
     bare_ticker = one(["observe", "AAPL"], expected_code=1)
-    assert "observe a discovered id with a known prefix" in bare_ticker["error"]
+    assert "unscoped observe target requires explicit agent_subdomain scope" in bare_ticker["error"]
 
     conflict = one(["observe", "stock_intelligence_hub::market_data_gateway", "AAPL", "--bars", "1", "--calendar-days", "1"], expected_code=1)
     assert "choose either --bars or --calendar-days" in conflict["error"]
@@ -666,11 +655,11 @@ def assert_observe_audit_repair() -> None:
         "./xctx observe stock_intelligence_hub::market_data_gateway"
     )
 
-    observed_form = one(["observe", "form:10-K"])
+    observed_form = one(["observe", "stock_intelligence_hub::equity_filing", "form:10-K"])
     assert observed_form["results"]["agent_subdomain"] == "equity_filing"
     assert observed_form["results"]["live_data"]["canonical_family"]["code"] == "ANNUAL_REPORT"
 
-    observed_spaced_form = one(["observe", "DEF", "14A"])
+    observed_spaced_form = one(["observe", "stock_intelligence_hub::equity_filing", "form:DEF 14A"])
     assert observed_spaced_form["results"]["agent_subdomain"] == "equity_filing"
     assert observed_spaced_form["results"]["live_data"]["id"] == "form:DEF 14A"
 
@@ -707,10 +696,11 @@ def assert_observe_audit_repair() -> None:
     file_check_ids = {item["id"] for item in file_audit["results"]["checks"]}
     assert "audit:file_manager:home_directory:external_command:ls" in file_check_ids
 
-    repairable = one(["repair", "offline:macro_intelligence_hub"])
+    repairable = one(["--more", "repair", "offline:macro_intelligence_hub"])
     assert repairable["record_type"] == "repair_result"
     assert repairable["ok"] is True
-    assert repairable["results"]["repair_path"]["steps"]
+    assert repairable["results"]["repair_steps"]
+    assert repairable["results"]["next_moves"][0]["writes_protocol_ledger"] is True
 
     maintenance = one(["repair", "down_for_maintenance:stock_intelligence_hub::fundamentals_gateway"], expected_code=1)
     assert maintenance["ok"] is False
@@ -720,22 +710,25 @@ def assert_observe_audit_repair() -> None:
 
 
 def assert_scoped_filing_affordance_routing() -> None:
-    priority = one(["stock_intelligence_hub::search_priority_bucket", "critical"])
+    priority = one(["discover", "stock_intelligence_hub::search_priority_bucket", "critical"])
     assert priority["results"]["agent_subdomain"] == "equity_filing"
+    assert priority["results"]["domain_affordance"] is True
+    assert priority["results"]["implemented_by"] == "stock_intelligence_hub::equity_filing::search_priority_buckets"
     assert priority["results"]["live_data"]["matches"][0]["id"] == "priority:critical_always"
 
-    form = one(["discover", "stock_intelligence_hub::equity_filing", "search_forms", "10-K"])
+    form = one(["discover", "stock_intelligence_hub::equity_filing::search_forms", "10-K"])
     assert form["results"]["action"] == "search_forms"
+    assert form["results"]["domain_action_name"] == "search_filing_form"
     form_ids = [item["id"] for item in form["results"]["live_data"]["matches"]]
     assert form_ids == ["form:10-K", "form:10-K/A"]
 
-    list_forms = one(["discover", "stock_intelligence_hub::equity_filing", "list_forms"])
+    list_forms = one(["discover", "stock_intelligence_hub::equity_filing::list_forms"])
     assert list_forms["results"]["live_data"]["object_type"] == "equity_filing_form_list"
     assert list_forms["results"]["live_data"]["projection"] == "compact"
 
 
 def assert_scoped_market_affordance_routing() -> None:
-    apple = one(["discover", "stock_intelligence_hub::market_data_gateway", "search_entity_instrument", "Apple"])
+    apple = one(["discover", "stock_intelligence_hub::market_data_gateway::search_entity_instrument", "Apple"])
     assert apple["results"]["live_data"]["matches"][0]["instrument_id"] == "instrument:aapl"
 
     latest = one(["discover", "stock_intelligence_hub::latest_price", "AAPL"])
@@ -744,14 +737,19 @@ def assert_scoped_market_affordance_routing() -> None:
     assert latest_live["found"] is True
     assert "latest_available_price" not in latest_live
 
-    instruments = one(["discover", "stock_intelligence_hub::market_data_gateway", "list_instruments", "--limit", "2"])
+    instruments = one(["discover", "stock_intelligence_hub::market_data_gateway::list_instruments", "--limit", "2"])
     assert instruments["results"]["live_data"]["pagination"]["returned_count"] == 2
 
 
 def assert_market_observe_range() -> None:
-    observed = one(["observe", "instrument:aapl"])
+    observed = one(["observe", "stock_intelligence_hub::market_data_gateway", "instrument:aapl"])
     assert observed["record_type"] == "observation"
     assert observed["results"]["agent_subdomain"] == "market_data_gateway"
+    assert "market_series" not in observed["results"]["live_data"]
+    assert "latest_available_price" not in observed["results"]["live_data"]
+
+    observed_more = one(["--more", "observe", "stock_intelligence_hub::market_data_gateway", "instrument:aapl"])
+    assert observed_more["results"]["live_data"]["latest_available_price"]["is_live_quote"] is False
 
     ranged_small = one(["observe", "stock_intelligence_hub::market_data_gateway", "market_series:aapl:daily", "--bars", "5"])
     small_live = ranged_small["results"]["live_data"]
@@ -763,7 +761,7 @@ def assert_filing_and_file_observe() -> None:
     filing_context = one(["observe", "stock_intelligence_hub::equity_filing", "instrument:aapl"])
     assert filing_context["results"]["live_data"]["context_state"] == "with_equity"
 
-    observed_file = one(["observe", "file:README.txt"])
+    observed_file = one(["observe", "file_manager::home_directory", "file:README.txt"])
     assert observed_file["results"]["agent_domain"] == "file_manager"
     assert observed_file["results"]["live_data"]["object_type"] == "external_command_filesystem_file_observation"
 
@@ -776,6 +774,7 @@ def assert_audit_repair() -> None:
     repaired = one(["repair", "offline:macro_intelligence_hub"])
     assert repaired["record_type"] == "repair_result"
     assert repaired["domain_level"] == "agent_domain"
+    assert repaired["results"]["next_moves"][0]["writes_protocol_ledger"] is True
 
 
 def assert_connector_supervisor_middleware() -> None:
@@ -785,7 +784,7 @@ def assert_connector_supervisor_middleware() -> None:
         assert value["raw_external_output"] == "never_returned_unparsed"
         return value
 
-    files = one(["discover", "file_manager::home_directory", "list_files", "--limit", "2"])
+    files = one(["discover", "file_manager::home_directory::list_files", "--limit", "2"])
     live_files = files["results"]["live_data"]
     assert live_files["object_type"] == "external_command_filesystem_file_list"
     assert "connector" not in live_files
@@ -795,7 +794,7 @@ def assert_connector_supervisor_middleware() -> None:
     assert live_files["files"][0]["id"] == "file:README.txt"
     assert "This is a bundled file-manager demo fixture" not in json.dumps(live_files)
 
-    full_files = one(["--max", "discover", "file_manager::home_directory", "list_files", "--limit", "1", "--projection", "full"])
+    full_files = one(["--max", "discover", "file_manager::home_directory::list_files", "--limit", "1", "--projection", "full"])
     full_files_live = full_files["results"]["live_data"]
     assert guarantee(full_files_live["connector"])["failure_payload"] == "xctx_connector_error"
     assert full_files_live["pagination"]["returned_count"] == 1
@@ -819,7 +818,7 @@ def assert_connector_supervisor_middleware() -> None:
     assert "This is a bundled file-manager demo fixture" not in json.dumps(discovered_file_live)
     assert "configured_action_index" not in discovered_file["results"]
 
-    directories = one(["discover", "file_manager::home_directory", "list_directories"])
+    directories = one(["discover", "file_manager::home_directory::list_directories"])
     live_directories = directories["results"]["live_data"]
     directory_ids = {item["id"] for item in live_directories["directories"]}
     assert {"directory:docs", "directory:reports", "directory:archive"} <= directory_ids
@@ -834,14 +833,14 @@ def assert_connector_supervisor_middleware() -> None:
     assert file_live["content"]["available"] is True
     assert "This is a bundled file-manager demo fixture" in file_live["content"]["text"]
 
-    routed_directory = one(["observe", "directory:docs"])
+    routed_directory = one(["observe", "file_manager::home_directory", "directory:docs"])
     directory_live = routed_directory["results"]["live_data"]
     assert routed_directory["results"]["agent_domain"] == "file_manager"
     assert routed_directory["results"]["agent_subdomain"] == "home_directory"
     assert directory_live["directory_id"] == "directory:docs"
     assert directory_live["sample_children"][0]["id"] == "file:docs/manual.txt"
 
-    escaped = one(["--max", "observe", "file:../README.md"], expected_code=1)
+    escaped = one(["--max", "observe", "file_manager::home_directory", "file:../README.md"], expected_code=1)
     assert escaped["ok"] is False
     assert escaped["error"] == "path escapes configured safe root"
     escaped_live = escaped["results"]["live_data"]

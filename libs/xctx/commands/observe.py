@@ -22,6 +22,11 @@ def handle(store: dict, args: argparse.Namespace) -> int:
     positional_ids = list(getattr(args, "target_args", []))
     if getattr(args, "id", None) and positional_ids:
         raise XctxError("conflicting observation identifiers: positional ID and --id")
+    if getattr(args, "id", None) and not target:
+        raise XctxError(
+            "invalid observe arguments: --id requires a scoped target",
+            next_moves=["./xctx observe <agent_domain>::<agent_subdomain> --id <id>"],
+        )
     if getattr(args, "id", None) and target and not all(parse_ref(store, target)):
         raise XctxError(
             "invalid observe arguments: --id requires a scoped target",

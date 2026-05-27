@@ -81,8 +81,6 @@ def default_detail_level(store: dict[str, Any], argv: Sequence[str]) -> str:
     first = str(argv[0])
     if first in {"--version", "-V"}:
         return ORIENTATION_DETAIL_LEVEL
-    if first in set(store.get("protocol", {}).get("help_aliases", [])) | {"help"}:
-        return ORIENTATION_DETAIL_LEVEL
     if first in _configured_discover_names(store) and len(argv) == 1:
         return ORIENTATION_DETAIL_LEVEL
     return DEFAULT_DETAIL_LEVEL
@@ -172,7 +170,7 @@ def detail_hint(
 
 
 def orientation_surface(record_type: str, domain_level: str | None, command: str | None = None) -> bool:
-    if record_type in {"help", "version"}:
+    if record_type == "version":
         return True
     if record_type == "discovery" and domain_level in {"universe", "root"}:
         return True

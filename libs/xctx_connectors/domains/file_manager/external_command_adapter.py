@@ -217,18 +217,18 @@ def _filesystem_discovery(context: Any, args: list[str], *, runtime: Any) -> dic
             {
                 "id": "list_files",
                 "mode_kind": "list",
-                "run_cmd": f"./xctx discover {domain_ref} list_files [--limit N] [--cursor CURSOR] [--projection compact|full]",
+                "run_cmd": f"./xctx discover {domain_ref}::list_files [--limit N] [--cursor CURSOR] [--projection compact|full]",
             },
             {
                 "id": "list_directories",
                 "mode_kind": "list",
-                "run_cmd": f"./xctx discover {domain_ref} list_directories [--limit N] [--cursor CURSOR] [--projection compact|full]",
+                "run_cmd": f"./xctx discover {domain_ref}::list_directories [--limit N] [--cursor CURSOR] [--projection compact|full]",
             },
         ],
         "data_boundary": "Discovery returns file and directory identities. Use observe to inspect a selected object.",
         "next_moves": [
-            f"./xctx discover {domain_ref} list_files",
-            f"./xctx discover {domain_ref} list_directories",
+            f"./xctx discover {domain_ref}::list_files",
+            f"./xctx discover {domain_ref}::list_directories",
             f"./xctx observe {domain_ref} file:<relative_path>",
             f"./xctx observe {domain_ref} directory:<relative_path>",
         ],

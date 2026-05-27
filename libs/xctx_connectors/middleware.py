@@ -93,6 +93,15 @@ def _include_command_argv(context: runtime.ConnectorContext) -> bool:
     return context.detail_level == "max"
 
 
+def _passthrough_env(context: runtime.ConnectorContext) -> dict[str, str | None]:
+    return {
+        "XCTX_AGENT_DOMAIN": context.domain_id,
+        "XCTX_AGENT_SUBDOMAIN": context.subdomain_id,
+        "XCTX_DETAIL_LEVEL": context.detail_level,
+        "XCTX_RUNTIME_DIR": os.environ.get("XCTX_RUNTIME_DIR"),
+    }
+
+
 def _passthrough(context: runtime.ConnectorContext, args: list[str], *, compact: bool) -> dict[str, Any]:
     connector = context.connector_config
     target = connector.get("target_entrypoint")
@@ -103,7 +112,13 @@ def _passthrough(context: runtime.ConnectorContext, args: list[str], *, compact:
     include_argv = _include_command_argv(context)
     if compact and "--compact" not in argv:
         argv.append("--compact")
-    result = runtime.run_external(argv, cwd=context.workspace_root, timeout=timeout, max_output_bytes=max_output_bytes)
+    result = runtime.run_external(
+        argv,
+        cwd=context.workspace_root,
+        env=_passthrough_env(context),
+        timeout=timeout,
+        max_output_bytes=max_output_bytes,
+    )
     if result["timed_out"]:
         payload: dict[str, Any] = {
             "object_type": "xctx_native_passthrough_error",

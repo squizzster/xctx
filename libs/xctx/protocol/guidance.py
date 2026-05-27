@@ -75,10 +75,6 @@ def root_protocol_next_moves(store: dict[str, Any]) -> list[dict[str, Any]]:
             "Discover configured agent domains in this universe.",
         ),
         command_hint(
-            str(interface.get("help_run_cmd", "./xctx help")),
-            "Inspect the machine command surface explicitly.",
-        ),
-        command_hint(
             str(guidance.get("audit_root_run_cmd", "./xctx audit root")),
             "Audit loaded configuration, live adapters, and offline/maintenance findings.",
         ),

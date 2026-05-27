@@ -164,22 +164,26 @@ def main() -> None:
     assert_generic_xctx_core_is_decoupled()
 
     assert_market_discovery_payload(
-        run_xctx(["discover", "stock_intelligence_hub::market_data_gateway", "search_entity_instrument", "GOOG"])
+        run_xctx(["discover", "stock_intelligence_hub::market_data_gateway::search_entity_instrument", "GOOG"])
     )
     assert_market_discovery_payload(
-        run_xctx(["discover", "stock_intelligence_hub::market_data_gateway", "search_market_series", "AAPL"])
+        run_xctx(["discover", "stock_intelligence_hub::market_data_gateway::search_market_series", "AAPL"])
     )
     assert_market_discovery_payload(run_xctx(["discover", "stock_intelligence_hub::latest_price", "AAPL"]))
     assert_market_discovery_payload(run_xctx(["discover", "stock_intelligence_hub::market_data_gateway"]))
 
-    form_search = run_xctx(["discover", "stock_intelligence_hub::equity_filing", "search_forms", "10-K"])
+    form_search = run_xctx(["discover", "stock_intelligence_hub::equity_filing::search_forms", "10-K"])
     assert form_search["record_type"] == "discovery"
     assert_no_observation_object_type(live_data(form_search))
     assert_has_observe_next_move(live_data(form_search))
 
     observed = live_data(run_xctx(["observe", "stock_intelligence_hub::market_data_gateway", "AAPL"]))
     assert observed["object_type"] == "market_data_gateway_instrument_observation"
-    assert observed["latest_available_price"]["is_live_quote"] is False
+    assert "market_series" not in observed
+    assert "latest_available_price" not in observed
+
+    observed_more = live_data(run_xctx(["--more", "observe", "stock_intelligence_hub::market_data_gateway", "AAPL"]))
+    assert observed_more["latest_available_price"]["is_live_quote"] is False
 
     observed_bars = live_data(run_xctx(["observe", "stock_intelligence_hub::market_data_gateway", "AAPL", "--bars", "3"]))
     assert observed_bars["object_type"] == "market_data_gateway_market_series_range_observation"

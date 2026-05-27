@@ -18,10 +18,6 @@ ROOT_NEXT_MOVES = [
         "run_cmd": "./xctx discover",
     },
     {
-        "desc": "Inspect the machine command surface explicitly.",
-        "run_cmd": "./xctx help",
-    },
-    {
         "desc": "Audit loaded configuration, live adapters, and offline/maintenance findings.",
         "run_cmd": "./xctx audit root",
     },
@@ -199,15 +195,15 @@ def test_configured_command_without_handler_fails_closed(monkeypatch) -> None:
     assert payload["error"] == "configured command has no handler: repair"
 
 
-def test_help_and_version_use_declared_protocol_envelopes() -> None:
+def test_version_uses_declared_protocol_envelope_and_help_is_rejected() -> None:
     ensure_libs_path()
     from xctx.config.loader import load_store  # noqa: PLC0415
 
     store = load_store(root=ROOT)
     declared_record_types = set(store["protocol"]["record_types"])
+    assert "help" not in declared_record_types
 
     cases = (
-        (["help"], "help", "universe"),
         (["--version"], "version", "universe"),
         (["-V"], "version", "universe"),
     )
@@ -218,3 +214,8 @@ def test_help_and_version_use_declared_protocol_envelopes() -> None:
         assert payload["record_type"] == record_type
         assert payload["domain_level"] == domain_level
         assert payload["record_type"] in declared_record_types
+
+    rc, payload = run_runtime_json(["help"])
+    assert rc == 1
+    assert payload["record_type"] == "error"
+    assert payload["error"] == "unknown xctx command"

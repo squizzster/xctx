@@ -71,7 +71,16 @@ def instrument_gateway_ref() -> str:
 
 
 def latest_price_discovery_cmd(query: Any) -> str:
-    return f"./xctx discover {instrument_gateway_ref()} latest_price {query}"
+    return f"./xctx discover {instrument_gateway_ref()}::latest_price {query}"
+
+
+def _detail_level() -> str:
+    level = str(os.environ.get("XCTX_DETAIL_LEVEL") or "basic").strip().lower()
+    return level if level in {"basic", "more", "max"} else "basic"
+
+
+def _expanded_observation_detail() -> bool:
+    return _detail_level() in {"more", "max"}
 
 
 def instrument_data_path(root: Path) -> Path:
@@ -338,7 +347,7 @@ def public_instrument(record: dict[str, Any], *, include_aliases: bool = False) 
         next_moves.append(
             {
                 "desc": "Discover the bundled market series for this ticker.",
-                "run_cmd": f"./xctx discover {instrument_gateway_ref()} search_market_series {record.get('ticker')}",
+                "run_cmd": f"./xctx discover {instrument_gateway_ref()}::search_market_series {record.get('ticker')}",
             }
         )
         next_moves.append(
@@ -351,7 +360,7 @@ def public_instrument(record: dict[str, Any], *, include_aliases: bool = False) 
         next_moves.append(
             {
                 "desc": "Check whether a bundled market series exists for this ticker.",
-                "run_cmd": f"./xctx discover {instrument_gateway_ref()} search_market_series {record.get('ticker')}",
+                "run_cmd": f"./xctx discover {instrument_gateway_ref()}::search_market_series {record.get('ticker')}",
             }
         )
     if next_moves:
@@ -602,7 +611,7 @@ def _matches_filter(record: dict[str, Any], key: str, expected: str | None) -> b
 
 
 def _list_run_cmd(options: dict[str, Any], cursor: int | None = None) -> str:
-    parts = [f"./xctx discover {scoped_ref()} list_instruments"]
+    parts = [f"./xctx discover {scoped_ref()}::list_instruments"]
     if options.get("limit") != LIST_DEFAULT_LIMIT:
         parts.append(f"--limit {options['limit']}")
     if cursor is not None:
@@ -1092,7 +1101,7 @@ def market_series_range_observation(
             "query": identifier,
             "found": False,
             "candidate_series": search_market_series(root, identifier, limit=5),
-            "next_move": f"./xctx discover {scoped_ref()} search_market_series <ticker|issuer|provider|text>",
+            "next_move": f"./xctx discover {scoped_ref()}::search_market_series <ticker|issuer|provider|text>",
         }
 
     unit = "bars" if bars is not None else "calendar_days"
@@ -1159,7 +1168,7 @@ def latest_price_observation(root: Path, identifier: str) -> dict[str, Any]:
             "candidate_instruments": candidate_instruments,
             "candidate_series": candidate_series,
             "empty_result_guidance": _empty_market_series_guidance(record),
-            "next_move": f"./xctx discover {scoped_ref()} search_entity_instrument <company|ticker|CIK|alias>",
+            "next_move": f"./xctx discover {scoped_ref()}::search_entity_instrument <company|ticker|CIK|alias>",
         }
 
     if not record:
@@ -1211,7 +1220,7 @@ def latest_price_discovery(root: Path, identifier: str) -> dict[str, Any]:
             "candidate_instruments": candidate_instruments,
             "candidate_series": candidate_series,
             "empty_result_guidance": _empty_market_series_guidance(record),
-            "next_move": f"./xctx discover {scoped_ref()} search_entity_instrument <company|ticker|CIK|alias>",
+            "next_move": f"./xctx discover {scoped_ref()}::search_entity_instrument <company|ticker|CIK|alias>",
             "data_boundary": "latest_price discovers the latest available bundled price point; observe returns the price data.",
         }
 
@@ -1249,7 +1258,7 @@ def market_series_observation(root: Path, identifier: str) -> dict[str, Any]:
             "query": identifier,
             "found": False,
             "candidate_series": search_market_series(root, identifier, limit=5),
-            "next_move": f"./xctx discover {scoped_ref()} search_market_series <ticker|issuer|provider|text>",
+            "next_move": f"./xctx discover {scoped_ref()}::search_market_series <ticker|issuer|provider|text>",
         }
     payload = dict(found)
     record = find_instrument(root, str(found.get("ticker", "")))
@@ -1313,13 +1322,13 @@ def instrument_registry_discovery(root: Path, *, projection: str = "compact") ->
                     "id": "search_entity_instrument",
                     "mode_kind": "search",
                     "query_pattern": "<company|ticker|CIK|alias>",
-                    "run_cmd": f"./xctx discover {scoped_ref()} search_entity_instrument <query>",
+                    "run_cmd": f"./xctx discover {scoped_ref()}::search_entity_instrument <query>",
                 },
                 {
                     "id": "search_market_series",
                     "mode_kind": "search",
                     "query_pattern": "<ticker|issuer|provider|text>",
-                    "run_cmd": f"./xctx discover {scoped_ref()} search_market_series <query>",
+                    "run_cmd": f"./xctx discover {scoped_ref()}::search_market_series <query>",
                 },
                 {
                     "id": "latest_price",
@@ -1330,7 +1339,7 @@ def instrument_registry_discovery(root: Path, *, projection: str = "compact") ->
                 {
                     "id": "list_instruments",
                     "mode_kind": "list",
-                    "run_cmd": f"./xctx discover {scoped_ref()} list_instruments [--limit N] [--projection compact|full]",
+                    "run_cmd": f"./xctx discover {scoped_ref()}::list_instruments [--limit N] [--projection compact|full]",
                 },
             ],
             "projection_controls": {
@@ -1338,8 +1347,8 @@ def instrument_registry_discovery(root: Path, *, projection: str = "compact") ->
                 "available": [{"projection": "full", "run_cmd": f"./xctx discover {scoped_ref()} --projection full"}],
             },
             "next_moves": [
-                f"./xctx discover {scoped_ref()} search_entity_instrument <company|ticker|CIK|alias>",
-                f"./xctx discover {scoped_ref()} search_market_series <ticker|issuer|provider|text>",
+                f"./xctx discover {scoped_ref()}::search_entity_instrument <company|ticker|CIK|alias>",
+                f"./xctx discover {scoped_ref()}::search_market_series <ticker|issuer|provider|text>",
                 latest_price_discovery_cmd("<ticker|instrument|CIK>"),
                 f"./xctx observe {scoped_ref()} <instrument_id|ticker|CIK|market_series:ticker:daily>",
             ],
@@ -1356,12 +1365,12 @@ def instrument_registry_discovery(root: Path, *, projection: str = "compact") ->
             "search_entity_instrument": {
                 "priority": 10,
                 "desc": "Find the canonical stock_intelligence_hub instrument id.",
-                "run_cmd": f"./xctx discover {scoped_ref()} search_entity_instrument <company|ticker|CIK|alias>",
+                "run_cmd": f"./xctx discover {scoped_ref()}::search_entity_instrument <company|ticker|CIK|alias>",
             },
             "search_market_series": {
                 "priority": 15,
                 "desc": "Find a bundled read-only daily OHLCV series.",
-                "run_cmd": f"./xctx discover {scoped_ref()} search_market_series <ticker|issuer|provider|text>",
+                "run_cmd": f"./xctx discover {scoped_ref()}::search_market_series <ticker|issuer|provider|text>",
             },
             "latest_price": {
                 "priority": 18,
@@ -1371,7 +1380,7 @@ def instrument_registry_discovery(root: Path, *, projection: str = "compact") ->
             "list_instruments": {
                 "priority": 20,
                 "desc": "Enumerate a compact canonical instrument index without guessing a company name or ticker.",
-                "run_cmd": f"./xctx discover {scoped_ref()} list_instruments [--limit N] [--cursor CURSOR] [--projection compact|full] [--status STATUS] [--exchange EXCHANGE] [--security-type TYPE]",
+                "run_cmd": f"./xctx discover {scoped_ref()}::list_instruments [--limit N] [--cursor CURSOR] [--projection compact|full] [--status STATUS] [--exchange EXCHANGE] [--security-type TYPE]",
             },
             "observe_instrument_or_series": {
                 "priority": 30,
@@ -1433,7 +1442,7 @@ def instrument_observation(root: Path, identifier: str, range_request: dict[str,
             "found": False,
             "candidate_instruments": search_instruments(root, identifier, limit=5),
             "candidate_market_series": search_market_series(root, identifier, limit=5),
-            "next_move": f"./xctx discover {scoped_ref()} search_entity_instrument <company|ticker|CIK|alias>",
+            "next_move": f"./xctx discover {scoped_ref()}::search_entity_instrument <company|ticker|CIK|alias>",
         }
     payload = public_instrument(record, include_aliases=True)
     series = find_market_series(root, str(record.get("ticker", "")))
@@ -1445,16 +1454,19 @@ def instrument_observation(root: Path, identifier: str, range_request: dict[str,
             "trusted_id_scope": "stock_intelligence_hub",
             "valid_in_subdomains": ["market_data_gateway", "equity_filing"],
             "market_series_available": bool(series),
-            "market_series": series,
-            "latest_available_price": latest_price,
             "next_moves": [
                 f"./xctx discover stock_intelligence_hub::equity_filing {record['instrument_id']}",
                 f"./xctx observe stock_intelligence_hub::equity_filing {record['instrument_id']}",
                 latest_price_discovery_cmd(record["ticker"]),
-                f"./xctx discover {scoped_ref()} search_market_series {record['ticker']}",
+                f"./xctx discover {scoped_ref()}::search_market_series {record['ticker']}",
             ],
         }
     )
+    if series:
+        payload["market_series_id"] = series["market_series_id"]
+    if _expanded_observation_detail():
+        payload["market_series"] = series
+        payload["latest_available_price"] = latest_price
     return payload
 
 

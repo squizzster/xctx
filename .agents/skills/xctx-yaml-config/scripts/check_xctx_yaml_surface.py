@@ -103,10 +103,12 @@ def _run_xctx_json(args: list[str]) -> tuple[int, dict[str, Any]]:
     return code, json.loads(lines[0])
 
 
-def _json_payload_for_xctx(args: list[str]) -> dict[str, Any]:
+def _json_payload_for_xctx(args: list[str], *, expected_code: int = 0) -> dict[str, Any]:
     code, payload = _run_xctx_json(args)
-    if code != 0:
-        raise RuntimeError(f"xctx {' '.join(args) or '<default>'} failed: rc={code}; payload={payload!r}")
+    if code != expected_code:
+        raise RuntimeError(
+            f"xctx {' '.join(args) or '<default>'} failed: rc={code}, expected={expected_code}; payload={payload!r}"
+        )
     return payload
 
 
@@ -245,21 +247,12 @@ def main() -> int:
                 "root command shortcuts must not encode domain-specific action routing",
             )
         )
-    routing = universe.get("agent_routing") or {}
-    if routing.get("discovery_fallback"):
+    if universe.get("agent_routing"):
         findings.append(
             finding(
                 "error",
-                "agent_routing:discovery_fallback_removed",
-                "bare discover targets must not be routed through a configured fallback; discovery must enter an explicit domain/subdomain scope",
-            )
-        )
-    if routing.get("default_observe_route"):
-        findings.append(
-            finding(
-                "error",
-                "agent_routing:default_observe_route_removed",
-                "bare observe targets must not use a default catch-all route; require typed IDs or explicit domain/subdomain scope",
+                "universe:agent_routing_removed",
+                "implicit root routing is forbidden; observe/discover targets must use explicit domain/subdomain scope",
             )
         )
     root_guidance = (universe.get("root") or {}).get("next_move_guidance") or {}
@@ -339,7 +332,6 @@ def main() -> int:
 
     for payload_name, args in {
         "universe_default": [],
-        "help": ["help"],
         "version": ["--version"],
         "root_discover": ["discover"],
     }.items():
@@ -354,10 +346,25 @@ def main() -> int:
                     finding(
                         "error",
                         f"root_surface:{payload_name}:no_{token}",
-                        "root/universe/help/version surfaces must not expose scoped domain action tokens",
+                        "root/universe/version surfaces must not expose scoped domain action tokens",
                         token=token,
                     )
                 )
+
+    try:
+        help_payload = _json_payload_for_xctx(["help"], expected_code=1)
+    except Exception as exc:
+        findings.append(finding("error", "root_surface:help:forbidden", "help command must fail closed", error=str(exc)))
+    else:
+        if help_payload.get("record_type") != "error" or help_payload.get("error") != "unknown xctx command":
+            findings.append(
+                finding(
+                    "error",
+                    "root_surface:help:forbidden",
+                    "help command must fail closed",
+                    payload=help_payload,
+                )
+            )
 
     try:
         root_audit = _json_payload_for_xctx(["--max", "audit", "root"])
@@ -632,19 +639,6 @@ def main() -> int:
                     domain_level=payload.get("domain_level"),
                 )
             )
-
-    for route in routing.get("observe_routes", []) or []:
-        route_id = str(route.get("id") or "<unnamed>")
-        domain_id = str(route.get("agent_domain") or "")
-        subdomain_id = str(route.get("agent_subdomain") or "")
-        route_prefix = f"observe_route:{route_id}"
-        if domain_id not in domains:
-            findings.append(finding("error", f"{route_prefix}:domain", "observe route references unknown domain", agent_domain=domain_id))
-            continue
-        if subdomain_id not in (domains[domain_id].get("_subdomains") or {}):
-            findings.append(finding("error", f"{route_prefix}:subdomain", "observe route references unknown subdomain", agent_domain=domain_id, agent_subdomain=subdomain_id))
-        if not (route.get("prefixes") or route.get("unprefixed_exact")):
-            findings.append(finding("error", f"{route_prefix}:matchers", "observe route needs prefixes or unprefixed_exact tokens"))
 
     for check in option_config_checks(store):
         if check.get("status") != "pass":

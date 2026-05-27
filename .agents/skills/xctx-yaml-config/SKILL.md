@@ -29,9 +29,12 @@ visible_commands: [discover, observe, plan, execute, audit, repair]
 hidden_commands: [other]
 root_surfaces:
   - ./xctx
-  - ./xctx help
   - ./xctx --version
   - ./xctx discover
+root_must_refuse:
+  - ./xctx help
+  - ./xctx --help
+  - ./xctx -h
 root_may_show:
   - generic_commands
   - configured_agent_domains
@@ -82,7 +85,7 @@ checks:
   - id: source_truth
     question: Does this match current code, tests, and loaded YAML?
   - id: root_surface
-    question: Are root/help/version/discover still generic?
+    question: Are root/version/discover generic and help aliases refused?
   - id: explicit_scope
     question: Does each domain operation require domain or subdomain scope?
   - id: core_purity
@@ -109,17 +112,19 @@ forbidden_universe_keys:
   - identity_resolution
   - root_affordances
   - command_shortcuts
-forbidden_routing:
-  - agent_routing.discovery_fallback
-  - agent_routing.default_observe_route
+  - agent_routing
 domain_affordance:
   location: subdomain.actions.<action>
   required: domain_affordance: true
   optional_name: domain_action_name
+  response_must_disclose: [agent_domain, agent_subdomain, implemented_by, implemented_by_run_cmd]
   constraints:
     - unique_within_domain
     - must_not_collide_with_subdomain_id
     - unscoped_equivalent_refused
+  ambiguity_behavior:
+    - duplicate_or_colliding_shortcuts_fail_closed
+    - next_moves_offer_fully_qualified_domain_subdomain_action_commands
 cli_options:
   location: owning_action.cli_options
   supported_types: [str, int, float, bool]

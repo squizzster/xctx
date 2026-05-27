@@ -22,6 +22,9 @@ visible:
 hidden:
   - other
 removed:
+  - help
+  - --help
+  - -h
   - discovery
   - d
   - identify
@@ -43,7 +46,6 @@ error_record:
   error: actual_error_text
   next_moves: optional_structured_command_hints
 record_types:
-  - help
   - version
   - discovery
   - result
@@ -75,10 +77,21 @@ root:
 domain_affordance:
   syntax: "<domain>::<affordance>"
   source: subdomain_action_domain_affordance_true
+  duplicate_behavior:
+    status: fail_closed
+    next_moves: fully_qualified_domain_subdomain_action_commands
+  response_contract:
+    action: public_affordance_name
+    agent_domain: explicit_configured_domain
+    agent_subdomain: concrete_implementing_subdomain
+    implemented_by: "<domain>::<subdomain>::<action>"
+    implemented_by_run_cmd: "./xctx discover <domain>::<subdomain>::<action>"
 subdomain_action:
   syntax:
     - "<domain>::<subdomain>::<action>"
-    - "<domain>::<subdomain> <action>"
+  response_contract_when_domain_affordance_exists:
+    domain_action_name: public_affordance_name
+    domain_affordance_run_cmd: "./xctx discover <domain>::<affordance>"
 ```
 
 ## Audit

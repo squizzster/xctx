@@ -71,8 +71,6 @@ def build_parser(store: dict[str, Any]) -> argparse.ArgumentParser:
     configured = configured_command_names(store)
     visible = visible_commands(store)
     hidden = hidden_commands(store)
-    if "help" in configured or not configured:
-        subparsers.add_parser("help", add_help=False)
     for command in sorted({name for name in configured if canonical_command(store, name) == "discover"}):
         _add_discover_parser(subparsers, command)
     if "observe" in visible:

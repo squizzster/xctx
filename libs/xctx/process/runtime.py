@@ -18,7 +18,7 @@ from xctx.process.argv import extract_global_options
 from xctx.process.parser import build_parser
 from xctx.process.redaction import redact_argv
 from xctx.process.signals import configure_sigpipe
-from xctx.protocol.accessors import canonical_command, configured_command_names, help_aliases
+from xctx.protocol.accessors import canonical_command, configured_command_names
 from xctx.protocol.detail import select_detail_level
 from xctx.protocol.emitter import emit_final_stderr, emit_minimal_error, emit_record, emit_stderr_event
 from xctx.protocol.guidance import root_protocol_next_moves
@@ -54,27 +54,6 @@ def select_output_format(store: dict, explicit_format: str | None) -> str:
     return selected
 
 
-def _with_discover_shortcut(store: dict, argv: list[str]) -> list[str]:
-    """Allow the protocol-safe shorthand: ./xctx <agent_domain>::<affordance> ...
-
-    This helper does not add a new command; it only inserts the discover command when
-    the first token is already a scoped xctx reference. Unknown natural-language
-    phrases are refused instead of guessed.
-    """
-
-    ## Boundary guard: this is structural shorthand only. Do not inspect or infer
-    ## business vocabulary here; scoped packs own that through config/adapters.
-    if not argv or argv[0] in configured_command_names(store) or argv[0] in help_aliases(store):
-        return argv
-    token = argv[0]
-    if "::" not in token:
-        return argv
-    domain_id = token.split("::", 1)[0]
-    if domain_id and domain_id in store.get("agent_domains", {}):
-        return ["discover", *argv]
-    return argv
-
-
 def _select_detail(store: dict, argv: list[str], explicit: str | None) -> str:
     return select_detail_level(store, argv, explicit)
 
@@ -86,7 +65,7 @@ def run(argv: Sequence[str] | None = None, root: Path | None = None) -> int:
     selection = extract_global_options(raw_argv)
     store = load_store(root=root)
     store["output_format"] = select_output_format(store, selection.output_format)
-    normalized_argv = _with_discover_shortcut(store, selection.argv)
+    normalized_argv = selection.argv
     store["detail_level"] = _select_detail(store, normalized_argv, selection.detail_level)
     if selection.output_error and not selection.detail_level:
         store["detail_level"] = "basic"
@@ -118,8 +97,6 @@ def run(argv: Sequence[str] | None = None, root: Path | None = None) -> int:
                 },
             )(),
         )
-    if selection.argv[0] in help_aliases(store):
-        return command_handlers()["help"](store, type("Args", (), {"cmdline_arg": selection.cmdline_arg or "help"})())
     if selection.argv[0] in {"--version", "-V"}:
         command = selection.argv[0]
         emit_record(
@@ -155,13 +132,13 @@ def _emit_process_error(
     root: Path | None = None,
     next_moves: list | None = None,
 ) -> None:
-    command = redact_argv(list(raw_argv)) if raw_argv else "help"
+    command = redact_argv(list(raw_argv)) if raw_argv else "xctx"
     moves = list(next_moves or [])
     try:
         selection = extract_global_options(list(raw_argv))
         fallback_store = load_store(root=root)
         fallback_store["output_format"] = select_output_format(fallback_store, selection.output_format)
-        normalized_argv = _with_discover_shortcut(fallback_store, selection.argv)
+        normalized_argv = selection.argv
         fallback_store["detail_level"] = _select_detail(fallback_store, normalized_argv, selection.detail_level)
         if selection.output_error and not selection.detail_level:
             fallback_store["detail_level"] = "basic"

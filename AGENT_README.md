@@ -61,6 +61,14 @@ action:
 domain_affordance:
   path: "<domain>::<affordance>"
   declared_by: subdomain_action_domain_affordance_true
+  duplicate_behavior:
+    status: fail_closed
+    next_moves: fully_qualified_domain_subdomain_action_commands
+  response_must_disclose:
+    - agent_domain
+    - agent_subdomain
+    - implemented_by
+    - implemented_by_run_cmd
 ```
 
 ## Framework Boundary
@@ -100,7 +108,7 @@ checks:
   - id: source_truth
     question: Does this match current code, tests, and loaded YAML?
   - id: root_surface
-    question: Does root/help/version/discover stay generic?
+    question: Does root/version/discover stay generic and help aliases fail closed?
   - id: explicit_scope
     question: Does every domain operation require explicit domain or subdomain scope?
   - id: core_purity

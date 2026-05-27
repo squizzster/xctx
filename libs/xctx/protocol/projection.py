@@ -435,7 +435,7 @@ def project_record_payload(
         projected = _project_repair(store, normalized, cmdline_arg=cmdline_arg)
     elif record_type == "extension":
         projected = _project_extension(store, normalized)
-    elif record_type in {"discovery", "observation", "help", "version"}:
+    elif record_type in {"discovery", "observation", "version"}:
         projected = _project_discovery_like(
             store,
             normalized,

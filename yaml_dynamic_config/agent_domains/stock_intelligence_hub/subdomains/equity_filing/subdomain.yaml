@@ -52,17 +52,17 @@ actions:
       - "<descriptive text>"
     examples:
       - query: exact annual report form
-        run_cmd: ./xctx discover stock_intelligence_hub::equity_filing search_forms 10-K
+        run_cmd: ./xctx discover stock_intelligence_hub::equity_filing::search_forms 10-K
       - query: broad annual filing text
-        run_cmd: ./xctx discover stock_intelligence_hub::equity_filing search_forms annual
+        run_cmd: ./xctx discover stock_intelligence_hub::equity_filing::search_forms annual
       - query: domain affordance exact current report form
         run_cmd: ./xctx discover stock_intelligence_hub::search_filing_form 8-K
     related_commands:
-      - ./xctx discover stock_intelligence_hub::equity_filing list_forms
-      - ./xctx discover stock_intelligence_hub::equity_filing search_families <family|text>
+      - ./xctx discover stock_intelligence_hub::equity_filing::list_forms
+      - ./xctx discover stock_intelligence_hub::equity_filing::search_families <family|text>
       - ./xctx observe stock_intelligence_hub::equity_filing form:10-K
     returns: equity_filing::search_filing_form::result
-    run_cmd: ./xctx discover stock_intelligence_hub::equity_filing search_forms <form code|name|family|priority|text>
+    run_cmd: ./xctx discover stock_intelligence_hub::equity_filing::search_forms <form code|name|family|priority|text>
   list_forms:
     priority: 25
     entrypoint_command: list-forms
@@ -85,16 +85,16 @@ actions:
       - "[--projection compact|full]"
     examples:
       - query: list default bounded form set
-        run_cmd: ./xctx discover stock_intelligence_hub::equity_filing list_forms
+        run_cmd: ./xctx discover stock_intelligence_hub::equity_filing::list_forms
       - query: list a smaller bounded form set
-        run_cmd: ./xctx discover stock_intelligence_hub::equity_filing list_forms --limit 10
+        run_cmd: ./xctx discover stock_intelligence_hub::equity_filing::list_forms --limit 10
       - query: list full detail records explicitly
-        run_cmd: ./xctx discover stock_intelligence_hub::equity_filing list_forms --limit 10 --projection full
+        run_cmd: ./xctx discover stock_intelligence_hub::equity_filing::list_forms --limit 10 --projection full
     related_commands:
       - ./xctx discover stock_intelligence_hub::equity_filing::search_forms
-      - ./xctx discover stock_intelligence_hub::equity_filing search_forms 10-K
+      - ./xctx discover stock_intelligence_hub::equity_filing::search_forms 10-K
     returns: equity_filing_form_list
-    run_cmd: ./xctx discover stock_intelligence_hub::equity_filing list_forms [--limit N] [--cursor CURSOR] [--projection compact|full]
+    run_cmd: ./xctx discover stock_intelligence_hub::equity_filing::list_forms [--limit N] [--cursor CURSOR] [--projection compact|full]
   search_families:
     domain_affordance: true
     domain_action_name: search_filing_family
@@ -109,14 +109,14 @@ actions:
       - "<descriptive text>"
     examples:
       - query: exact annual report family
-        run_cmd: ./xctx discover stock_intelligence_hub::equity_filing search_families ANNUAL_REPORT
+        run_cmd: ./xctx discover stock_intelligence_hub::equity_filing::search_families ANNUAL_REPORT
       - query: broad annual family text
         run_cmd: ./xctx discover stock_intelligence_hub::search_filing_family annual
     related_commands:
-      - ./xctx discover stock_intelligence_hub::equity_filing list_families
+      - ./xctx discover stock_intelligence_hub::equity_filing::list_families
       - ./xctx observe stock_intelligence_hub::equity_filing family:ANNUAL_REPORT
     returns: equity_filing::search_filing_family::result
-    run_cmd: ./xctx discover stock_intelligence_hub::equity_filing search_families <family|text>
+    run_cmd: ./xctx discover stock_intelligence_hub::equity_filing::search_families <family|text>
   list_families:
     priority: 35
     entrypoint_command: list-families
@@ -139,14 +139,14 @@ actions:
       - "[--projection compact|full]"
     examples:
       - query: list canonical filing families
-        run_cmd: ./xctx discover stock_intelligence_hub::equity_filing list_families
+        run_cmd: ./xctx discover stock_intelligence_hub::equity_filing::list_families
       - query: list full detail family records explicitly
-        run_cmd: ./xctx discover stock_intelligence_hub::equity_filing list_families --projection full
+        run_cmd: ./xctx discover stock_intelligence_hub::equity_filing::list_families --projection full
     related_commands:
       - ./xctx discover stock_intelligence_hub::equity_filing::search_families
-      - ./xctx discover stock_intelligence_hub::equity_filing search_families ANNUAL_REPORT
+      - ./xctx discover stock_intelligence_hub::equity_filing::search_families ANNUAL_REPORT
     returns: equity_filing_family_list
-    run_cmd: ./xctx discover stock_intelligence_hub::equity_filing list_families [--limit N] [--cursor CURSOR] [--projection compact|full]
+    run_cmd: ./xctx discover stock_intelligence_hub::equity_filing::list_families [--limit N] [--cursor CURSOR] [--projection compact|full]
   search_priority_buckets:
     domain_affordance: true
     domain_action_name: search_priority_bucket
@@ -160,14 +160,14 @@ actions:
       - "<priority name text>"
     examples:
       - query: exact critical bucket
-        run_cmd: ./xctx discover stock_intelligence_hub::equity_filing search_priority_buckets critical_always
+        run_cmd: ./xctx discover stock_intelligence_hub::equity_filing::search_priority_buckets critical_always
       - query: broad critical bucket text
         run_cmd: ./xctx discover stock_intelligence_hub::search_priority_bucket critical
     related_commands:
-      - ./xctx discover stock_intelligence_hub::equity_filing list_priority_buckets
+      - ./xctx discover stock_intelligence_hub::equity_filing::list_priority_buckets
       - ./xctx observe stock_intelligence_hub::equity_filing priority:critical_always
     returns: equity_filing::search_priority_bucket::result
-    run_cmd: ./xctx discover stock_intelligence_hub::equity_filing search_priority_buckets <priority|text>
+    run_cmd: ./xctx discover stock_intelligence_hub::equity_filing::search_priority_buckets <priority|text>
   list_priority_buckets:
     priority: 45
     entrypoint_command: list-priority-buckets
@@ -188,14 +188,14 @@ actions:
       - "[--projection compact|full]"
     examples:
       - query: list priority buckets
-        run_cmd: ./xctx discover stock_intelligence_hub::equity_filing list_priority_buckets
+        run_cmd: ./xctx discover stock_intelligence_hub::equity_filing::list_priority_buckets
       - query: list full detail priority records explicitly
-        run_cmd: ./xctx discover stock_intelligence_hub::equity_filing list_priority_buckets --projection full
+        run_cmd: ./xctx discover stock_intelligence_hub::equity_filing::list_priority_buckets --projection full
     related_commands:
       - ./xctx discover stock_intelligence_hub::equity_filing::search_priority_buckets
-      - ./xctx discover stock_intelligence_hub::equity_filing search_priority_buckets critical_always
+      - ./xctx discover stock_intelligence_hub::equity_filing::search_priority_buckets critical_always
     returns: equity_filing_priority_bucket_list
-    run_cmd: ./xctx discover stock_intelligence_hub::equity_filing list_priority_buckets [--limit N] [--projection compact|full]
+    run_cmd: ./xctx discover stock_intelligence_hub::equity_filing::list_priority_buckets [--limit N] [--projection compact|full]
   observe:
     priority: 60
     entrypoint_command: observe

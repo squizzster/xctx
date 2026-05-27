@@ -73,11 +73,11 @@ actions:
       - "[--projection compact|full]"
     examples:
       - query: list root files
-        run_cmd: ./xctx discover file_manager::home_directory list_files
+        run_cmd: ./xctx discover file_manager::home_directory::list_files
       - query: list files under docs
-        run_cmd: ./xctx discover file_manager::home_directory list_files directory:docs
+        run_cmd: ./xctx discover file_manager::home_directory::list_files directory:docs
     returns: external_command_filesystem_file_list
-    run_cmd: ./xctx discover file_manager::home_directory list_files [directory:<relative_path>] [--limit N] [--cursor CURSOR] [--projection compact|full]
+    run_cmd: ./xctx discover file_manager::home_directory::list_files [directory:<relative_path>] [--limit N] [--cursor CURSOR] [--projection compact|full]
   list_directories:
     priority: 30
     entrypoint_command: list-directories
@@ -101,9 +101,9 @@ actions:
       - "[--projection compact|full]"
     examples:
       - query: list root directories
-        run_cmd: ./xctx discover file_manager::home_directory list_directories
+        run_cmd: ./xctx discover file_manager::home_directory::list_directories
     returns: external_command_filesystem_directory_list
-    run_cmd: ./xctx discover file_manager::home_directory list_directories [directory:<relative_path>] [--limit N] [--cursor CURSOR] [--projection compact|full]
+    run_cmd: ./xctx discover file_manager::home_directory::list_directories [directory:<relative_path>] [--limit N] [--cursor CURSOR] [--projection compact|full]
   observe:
     priority: 40
     entrypoint_command: observe
@@ -115,7 +115,7 @@ actions:
     examples:
       - query: observe bundled readme
         run_cmd: ./xctx observe file_manager::home_directory file:README.txt
-      - query: observe docs directory through routed id
-        run_cmd: ./xctx observe directory:docs
+      - query: observe docs directory
+        run_cmd: ./xctx observe file_manager::home_directory directory:docs
     returns: external_command_filesystem_observation
     run_cmd: ./xctx observe file_manager::home_directory <file:relative_path|directory:relative_path>

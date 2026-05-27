@@ -97,11 +97,11 @@ def test_connector_runtime_preserves_missing_returncode(monkeypatch: pytest.Monk
     assert result["error"] == "missing returncode"
 
 
-def test_cmdline_arg_shell_quotes_values_with_spaces() -> None:
-    rc, payload = run_runtime_json(["observe", "form:DEF 14A"])
+def test_cmdline_arg_shell_quotes_scoped_values_with_spaces() -> None:
+    rc, payload = run_runtime_json(["observe", "stock_intelligence_hub::equity_filing", "form:DEF 14A"])
 
     assert rc == 0
-    assert payload["cmdline_arg"] == "--json observe 'form:DEF 14A'"
+    assert payload["cmdline_arg"] == "--json observe stock_intelligence_hub::equity_filing 'form:DEF 14A'"
 
 
 def test_global_options_do_not_strip_command_arguments_after_command_token() -> None:

@@ -31,10 +31,10 @@ def test_orientation_surfaces_default_to_more_and_advertise_detail_controls() ->
     assert discover["detail_level"] == "more"
     assert discover["results"]["detail_controls"]["current"] == "more"
 
-    rc, help_payload = run_runtime_json(["help"])
+    rc, version = run_runtime_json(["--version"])
     assert rc == 0
-    assert help_payload["detail_level"] == "more"
-    assert help_payload["results"]["detail_policy"]["levels"] == ["basic", "more", "max"]
+    assert version["detail_level"] == "more"
+    assert version["results"]["detail_policy"]["levels"] == ["basic", "more", "max"]
 
 
 def test_scoped_commands_default_to_basic() -> None:
@@ -83,8 +83,7 @@ def test_observation_basic_suppresses_connector_diagnostics_and_max_restores_the
 def test_projection_is_separate_from_detail_level() -> None:
     rc, payload = run_runtime_json([
         "discover",
-        "stock_intelligence_hub::market_data_gateway",
-        "list_instruments",
+        "stock_intelligence_hub::market_data_gateway::list_instruments",
         "--limit",
         "2",
         "--projection",

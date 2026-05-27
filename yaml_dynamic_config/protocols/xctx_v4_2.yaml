@@ -20,7 +20,6 @@ detail_levels:
   more: Navigation and learning payload. Adds affordance context and examples.
   max: Forensic developer payload. Adds diagnostics, provenance, and full definitions.
 record_types:
-  help: Machine-readable root command interface.
   version: Version and root executable-context metadata.
   discovery: Discovery records describing root, agent-domain, agent-subdomain, or named affordance surfaces.
   observation: Read-only observation of a discovered object or domain surface.
@@ -35,10 +34,6 @@ stderr:
   format_when_active: yaml_documents
 hint_keys:
   run_command: run_cmd
-help_aliases:
-  - help
-  - -h
-  - --help
 command_groups:
   main:
     - discover
@@ -49,9 +44,5 @@ command_groups:
     - repair
   other:
     - other
-response_templates:
-  help:
-    version_key: version_xctx
-    main_commands_key: xctx
 guidance:
   discover_root_run_cmd: ./xctx discover

@@ -6,7 +6,7 @@ from typing import Any
 
 from xctx.domain.core import joined_identifier, offline_subdomain_payload, resolve_subdomain
 from xctx.domain.discovery import domain_discovery_payload
-from xctx.domain.routing import observe_adapter_option_args, parse_ref, route_for_identifier
+from xctx.domain.routing import observe_adapter_option_args, parse_ref
 from xctx.errors import XctxError
 from xctx.ports.external_command import call_external_command
 
@@ -47,14 +47,9 @@ def observe_payload(
     if not identifier:
         raise XctxError(
             "missing observe target",
-            next_moves=["./xctx observe <thing>", "./xctx observe <target> --id <id>"],
+            next_moves=["./xctx observe <agent_domain>::<agent_subdomain> <id>"],
         )
-    domain_id, subdomain_id = route_for_identifier(store, identifier)
-    if not domain_id or not subdomain_id:
-        raise XctxError("unknown observation identifier prefix", next_moves=["./xctx discover"])
-    subdomain = resolve_subdomain(store, domain_id, subdomain_id)
-    if subdomain.get("status") != "online":
-        return "agent_subdomain", offline_subdomain_payload(store, domain_id, subdomain)
-    option_args = observe_adapter_option_args(store, subdomain, options)
-    live = call_external_command(store, subdomain, ["observe", identifier, *option_args])
-    return "agent_subdomain", {"agent_domain": domain_id, "agent_subdomain": subdomain_id, "live_data": live}
+    raise XctxError(
+        f"unscoped observe target requires explicit agent_subdomain scope: {identifier}",
+        next_moves=["./xctx observe <agent_domain>::<agent_subdomain> <id>"],
+    )

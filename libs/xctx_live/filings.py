@@ -120,7 +120,7 @@ def pagination_payload(
 
 
 def list_page_run_cmd(action: str, *, limit: int, cursor: int | None, projection: str) -> str:
-    parts = [f"./xctx discover stock_intelligence_hub::equity_filing {action}"]
+    parts = [f"./xctx discover stock_intelligence_hub::equity_filing::{action}"]
     if limit != LIST_DEFAULT_LIMIT:
         parts.append(f"--limit {limit}")
     if cursor is not None:
@@ -326,7 +326,7 @@ def list_forms(root: Path, *, limit: int = LIST_DEFAULT_LIMIT, cursor: int = 0, 
     )
     next_moves = [
         "./xctx discover stock_intelligence_hub::equity_filing::search_forms",
-        "./xctx discover stock_intelligence_hub::equity_filing search_forms <form code|text>",
+        "./xctx discover stock_intelligence_hub::equity_filing::search_forms <form code|text>",
     ]
     if next_cursor is not None:
         next_moves.append(list_page_run_cmd("list_forms", limit=limit, cursor=next_cursor, projection=projection_name))
@@ -381,7 +381,7 @@ def list_families(root: Path, *, limit: int = LIST_DEFAULT_LIMIT, cursor: int = 
     )
     next_moves = [
         "./xctx discover stock_intelligence_hub::equity_filing::search_families",
-        "./xctx discover stock_intelligence_hub::equity_filing search_families <family|text>",
+        "./xctx discover stock_intelligence_hub::equity_filing::search_families <family|text>",
     ]
     if next_cursor is not None:
         next_moves.append(list_page_run_cmd("list_families", limit=limit, cursor=next_cursor, projection=projection_name))
@@ -444,7 +444,7 @@ def list_priority_buckets(root: Path, *, limit: int = LIST_DEFAULT_LIMIT, projec
         "priority_buckets": [projector(row) for row in rows],
         "next_moves": [
             "./xctx discover stock_intelligence_hub::equity_filing::search_priority_buckets",
-            "./xctx discover stock_intelligence_hub::equity_filing search_priority_buckets <priority|text>",
+            "./xctx discover stock_intelligence_hub::equity_filing::search_priority_buckets <priority|text>",
         ],
     }
 
@@ -463,8 +463,8 @@ def filing_taxonomy_discovery(root: Path, *, projection: str = "compact") -> dic
     stats_payload = stats(root)
     next_moves = [
         "./xctx discover stock_intelligence_hub::equity_filing::search_forms",
-        "./xctx discover stock_intelligence_hub::equity_filing list_forms",
-        "./xctx discover stock_intelligence_hub::equity_filing search_forms 10-K",
+        "./xctx discover stock_intelligence_hub::equity_filing::list_forms",
+        "./xctx discover stock_intelligence_hub::equity_filing::search_forms 10-K",
         "./xctx observe stock_intelligence_hub::equity_filing form:10-K",
     ]
     if projection == "compact":
@@ -502,34 +502,34 @@ def filing_taxonomy_discovery(root: Path, *, projection: str = "compact") -> dic
                     "id": "search_forms",
                     "mode_kind": "search",
                     "query_pattern": "<form code|name|family|priority|text>",
-                    "run_cmd": "./xctx discover stock_intelligence_hub::equity_filing search_forms <query>",
+                    "run_cmd": "./xctx discover stock_intelligence_hub::equity_filing::search_forms <query>",
                 },
                 {
                     "id": "search_families",
                     "mode_kind": "search",
                     "query_pattern": "<family code|name|text>",
-                    "run_cmd": "./xctx discover stock_intelligence_hub::equity_filing search_families <query>",
+                    "run_cmd": "./xctx discover stock_intelligence_hub::equity_filing::search_families <query>",
                 },
                 {
                     "id": "search_priority_buckets",
                     "mode_kind": "search",
                     "query_pattern": "<priority code|name>",
-                    "run_cmd": "./xctx discover stock_intelligence_hub::equity_filing search_priority_buckets <query>",
+                    "run_cmd": "./xctx discover stock_intelligence_hub::equity_filing::search_priority_buckets <query>",
                 },
                 {
                     "id": "list_forms",
                     "mode_kind": "list",
-                    "run_cmd": "./xctx discover stock_intelligence_hub::equity_filing list_forms [--limit N] [--projection compact|full]",
+                    "run_cmd": "./xctx discover stock_intelligence_hub::equity_filing::list_forms [--limit N] [--projection compact|full]",
                 },
                 {
                     "id": "list_families",
                     "mode_kind": "list",
-                    "run_cmd": "./xctx discover stock_intelligence_hub::equity_filing list_families [--limit N] [--projection compact|full]",
+                    "run_cmd": "./xctx discover stock_intelligence_hub::equity_filing::list_families [--limit N] [--projection compact|full]",
                 },
                 {
                     "id": "list_priority_buckets",
                     "mode_kind": "list",
-                    "run_cmd": "./xctx discover stock_intelligence_hub::equity_filing list_priority_buckets [--limit N] [--projection compact|full]",
+                    "run_cmd": "./xctx discover stock_intelligence_hub::equity_filing::list_priority_buckets [--limit N] [--projection compact|full]",
                 },
             ],
             "projection_controls": {
@@ -553,8 +553,7 @@ def filing_taxonomy_discovery(root: Path, *, projection: str = "compact") -> dic
         },
         "command_grammar": {
             "mode_discovery": "./xctx discover stock_intelligence_hub::equity_filing::<mode>",
-            "mode_discovery_alt": "./xctx discover stock_intelligence_hub::equity_filing <mode>",
-            "mode_query": "./xctx discover stock_intelligence_hub::equity_filing <mode> <query>",
+            "mode_query": "./xctx discover stock_intelligence_hub::equity_filing::<mode> <query>",
             "domain_affordance": "./xctx discover stock_intelligence_hub::<domain_affordance> <query>",
             "observation": "./xctx observe stock_intelligence_hub::equity_filing <form|family|priority|instrument id>",
         },
@@ -563,8 +562,8 @@ def filing_taxonomy_discovery(root: Path, *, projection: str = "compact") -> dic
                 "desc": "Search filing form taxonomy records. Exact form-code queries return the exact form and direct amendment only.",
                 "arguments": ["<form code>", "<form name text>", "<family text>", "<priority text>", "<descriptive text>"],
                 "examples": [
-                    "./xctx discover stock_intelligence_hub::equity_filing search_forms 10-K",
-                    "./xctx discover stock_intelligence_hub::equity_filing search_forms annual",
+                    "./xctx discover stock_intelligence_hub::equity_filing::search_forms 10-K",
+                    "./xctx discover stock_intelligence_hub::equity_filing::search_forms annual",
                     "./xctx discover stock_intelligence_hub::search_filing_form 8-K",
                 ],
                 "discover_cmd": "./xctx discover stock_intelligence_hub::equity_filing::search_forms",
@@ -573,7 +572,7 @@ def filing_taxonomy_discovery(root: Path, *, projection: str = "compact") -> dic
                 "desc": "Search canonical filing families. Exact family code queries return the exact family only.",
                 "arguments": ["<family code>", "<family name text>", "<descriptive text>"],
                 "examples": [
-                    "./xctx discover stock_intelligence_hub::equity_filing search_families ANNUAL_REPORT",
+                    "./xctx discover stock_intelligence_hub::equity_filing::search_families ANNUAL_REPORT",
                     "./xctx discover stock_intelligence_hub::search_filing_family annual",
                 ],
                 "discover_cmd": "./xctx discover stock_intelligence_hub::equity_filing::search_families",
@@ -582,7 +581,7 @@ def filing_taxonomy_discovery(root: Path, *, projection: str = "compact") -> dic
                 "desc": "Search filing priority buckets. Exact priority code queries return the exact bucket only.",
                 "arguments": ["<priority code>", "<priority name text>"],
                 "examples": [
-                    "./xctx discover stock_intelligence_hub::equity_filing search_priority_buckets critical_always",
+                    "./xctx discover stock_intelligence_hub::equity_filing::search_priority_buckets critical_always",
                     "./xctx discover stock_intelligence_hub::search_priority_bucket critical",
                 ],
                 "discover_cmd": "./xctx discover stock_intelligence_hub::equity_filing::search_priority_buckets",
@@ -590,17 +589,17 @@ def filing_taxonomy_discovery(root: Path, *, projection: str = "compact") -> dic
             "list_forms": {
                 "desc": "List a compact, bounded form taxonomy index without treating the mode name as a search query.",
                 "arguments": ["optional --limit N", "optional --cursor CURSOR", "optional --projection compact|full"],
-                "run_cmd": "./xctx discover stock_intelligence_hub::equity_filing list_forms [--limit N] [--cursor CURSOR] [--projection compact|full]",
+                "run_cmd": "./xctx discover stock_intelligence_hub::equity_filing::list_forms [--limit N] [--cursor CURSOR] [--projection compact|full]",
             },
             "list_families": {
                 "desc": "List a compact, bounded canonical filing-family index.",
                 "arguments": ["optional --limit N", "optional --cursor CURSOR", "optional --projection compact|full"],
-                "run_cmd": "./xctx discover stock_intelligence_hub::equity_filing list_families [--limit N] [--cursor CURSOR] [--projection compact|full]",
+                "run_cmd": "./xctx discover stock_intelligence_hub::equity_filing::list_families [--limit N] [--cursor CURSOR] [--projection compact|full]",
             },
             "list_priority_buckets": {
                 "desc": "List a compact, bounded filing-priority bucket index.",
                 "arguments": ["optional --limit N", "optional --projection compact|full"],
-                "run_cmd": "./xctx discover stock_intelligence_hub::equity_filing list_priority_buckets [--limit N] [--projection compact|full]",
+                "run_cmd": "./xctx discover stock_intelligence_hub::equity_filing::list_priority_buckets [--limit N] [--projection compact|full]",
             },
             "observe": {
                 "desc": "Observe a form, family, priority bucket, or equity instrument filing context.",
@@ -649,7 +648,7 @@ def equity_context_payload(root: Path, identifier: str) -> dict[str, Any]:
             "query": identifier,
             "found": False,
             "candidate_instruments": candidate_matches,
-            "next_move": "./xctx discover stock_intelligence_hub::market_data_gateway search_entity_instrument <company|ticker|CIK|alias>",
+            "next_move": "./xctx discover stock_intelligence_hub::market_data_gateway::search_entity_instrument <company|ticker|CIK|alias>",
         }
     public = public_instrument(record, include_aliases=True)
     return {

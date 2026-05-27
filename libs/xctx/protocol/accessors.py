@@ -65,10 +65,6 @@ def guidance_cmd(store: dict[str, Any], name: str, **context: Any) -> str:
     return format_run_cmd(store, template, **context)
 
 
-def help_aliases(store: dict[str, Any]) -> set[str]:
-    return set(store["protocol"].get("help_aliases", []))
-
-
 def command_map_for_group(store: dict[str, Any], map_key: str, group_name: str) -> dict[str, Any]:
     configured = store["commands"].get(map_key, {})
     group = command_groups(store).get(group_name, list(configured.keys()))

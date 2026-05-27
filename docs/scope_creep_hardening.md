@@ -5,7 +5,6 @@
 ```yaml
 commands:
   - ./xctx
-  - ./xctx help
   - ./xctx --version
   - ./xctx discover
 must_expose:
@@ -30,7 +29,7 @@ must_not_expose:
 ```yaml
 domain: ./xctx discover <domain>
 subdomain: ./xctx discover <domain>::<subdomain>
-subdomain_action: ./xctx discover <domain>::<subdomain> <action>
+subdomain_action: ./xctx discover <domain>::<subdomain>::<action>
 domain_affordance: ./xctx discover <domain>::<affordance>
 observe: ./xctx observe <domain>::<subdomain> <id>
 ```
@@ -43,6 +42,8 @@ must_fail:
   - ./xctx discover search_filing_family annual
   - ./xctx discover market_data_gateway
   - ./xctx discover file:README.txt
+  - ./xctx help
+  - ./xctx observe form:10-K
   - ./xctx observe form:10-K --bars 5
 error_contract:
   record_type: error

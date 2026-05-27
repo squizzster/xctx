@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import shlex
 from typing import Any
 
 from xctx.errors import XctxError
@@ -27,10 +28,16 @@ def _domain_action_candidate(
     a named domain.
     """
     public_name = _domain_action_name(action_name, action)
+    implemented_by = f"{domain_id}::{subdomain_id}::{action_name}"
+    domain_run_cmd = f"./xctx discover {domain_id}::{public_name}"
     return {
         **action,
         "agent_domain": domain_id,
         "agent_subdomain": subdomain_id,
+        "implemented_by": implemented_by,
+        "implemented_by_run_cmd": f"./xctx discover {implemented_by}",
+        "domain_run_cmd": domain_run_cmd,
+        "run_cmd": str(action.get("run_cmd") or domain_run_cmd).replace(f"./xctx discover {implemented_by}", domain_run_cmd),
         "_source_action_name": action_name,
         "_action_name": public_name,
     }
@@ -55,7 +62,22 @@ def iter_domain_action_configs(store: dict[str, Any], domain_id: str) -> list[tu
             items.append((str(candidate["_action_name"]), candidate))
     return items
 
-def domain_action_config(store: dict[str, Any], domain_id: str, action_name: str) -> dict[str, Any] | None:
+def _domain_action_source_ref(domain_id: str, public_name: str, action: dict[str, Any]) -> str:
+    source_action = str(action.get("_source_action_name") or public_name)
+    return f"{domain_id}::{action.get('agent_subdomain')}::{source_action}"
+
+
+def _disambiguation_run_cmd(ref: str, action_args: list[str] | None = None) -> str:
+    parts = ["./xctx", "discover", ref, *(action_args or [])]
+    return shlex.join(parts)
+
+
+def domain_action_config(
+    store: dict[str, Any],
+    domain_id: str,
+    action_name: str,
+    action_args: list[str] | None = None,
+) -> dict[str, Any] | None:
     """Resolve a named affordance inside an explicit agent-domain scope."""
     domain = store.get("agent_domains", {}).get(domain_id) or {}
     subdomains = domain.get("_subdomains") or {}
@@ -66,23 +88,25 @@ def domain_action_config(store: dict[str, Any], domain_id: str, action_name: str
     if not matches:
         return None
     if action_name in subdomains:
-        sources = sorted(
-            f"{domain_id}::{action.get('agent_subdomain')}::{action.get('_source_action_name') or name}"
-            for name, action in matches
+        sources = sorted(_domain_action_source_ref(domain_id, name, action) for name, action in matches)
+        subdomain_ref = f"{domain_id}::{action_name}"
+        sources.insert(0, subdomain_ref)
+        message = (
+            f"ambiguous scoped target: {domain_id}::{action_name} conflicts with configured subdomain "
+            f"and domain affordance shortcut ({', '.join(sources)})"
         )
-        sources.insert(0, f"{domain_id}::{action_name}")
         raise XctxError(
-            f"ambiguous scoped target: {domain_id}::{action_name} ({', '.join(sources)})",
-            next_moves=[f"./xctx audit {domain_id}"],
+            message,
+            next_moves=[
+                _disambiguation_run_cmd(subdomain_ref),
+                *[_disambiguation_run_cmd(source, action_args) for source in sources[1:]],
+            ],
         )
     if len(matches) > 1:
-        sources = sorted(
-            f"{domain_id}::{action.get('agent_subdomain')}::{action.get('_source_action_name') or name}"
-            for name, action in matches
-        )
+        sources = sorted(_domain_action_source_ref(domain_id, name, action) for name, action in matches)
         raise XctxError(
-            f"ambiguous domain affordance: {domain_id}::{action_name} ({', '.join(sources)})",
-            next_moves=[f"./xctx audit {domain_id}"],
+            f"duplicate domain affordance shortcut: {domain_id}::{action_name} ({', '.join(sources)})",
+            next_moves=[_disambiguation_run_cmd(source, action_args) for source in sources],
         )
     name, action = matches[0]
     return {**action, "_action_name": name, "_matched_as": action_name}

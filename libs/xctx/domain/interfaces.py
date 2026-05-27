@@ -33,6 +33,18 @@ def scoped_mode_interface_payload(
         "configured_action": public_action,
         "data_boundary": "Interface only. Provide a query to execute this discovery action.",
     }
+    if public_action.get("domain_affordance"):
+        domain_action_name = str(public_action.get("domain_action_name") or action_name)
+        payload["domain_affordance"] = True
+        payload["domain_action_name"] = domain_action_name
+        payload["domain_affordance_run_cmd"] = str(
+            public_action.get("domain_run_cmd") or f"./xctx discover {domain_id}::{domain_action_name}"
+        )
+        implemented_by = str(public_action.get("implemented_by") or f"{domain_id}::{subdomain['id']}::{action_name}")
+        payload["implemented_by"] = implemented_by
+        payload["implemented_by_run_cmd"] = str(
+            public_action.get("implemented_by_run_cmd") or f"./xctx discover {implemented_by}"
+        )
     if run_cmd:
         payload["run_cmd"] = run_cmd
         payload["next_moves"] = [command_hint(str(run_cmd))]

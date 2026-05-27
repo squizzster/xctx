@@ -183,14 +183,5 @@ cli_options:
 
 ## Observe Route
 
-```yaml
-agent_routing:
-  observe_routes:
-    - id: <route_id>
-      agent_domain: <domain_id>
-      agent_subdomain: <subdomain_id>
-      prefixes:
-        - "<trusted_prefix>:"
-      unprefixed_exact:
-        - <OPTIONAL_EXACT_TOKEN>
-```
+Root-level observe routing is forbidden. Observations must use an explicit
+`<agent_domain>::<agent_subdomain>` target.

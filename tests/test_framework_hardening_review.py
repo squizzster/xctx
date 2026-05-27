@@ -46,9 +46,12 @@ def test_ambiguous_domain_affordance_resolution_fails_closed() -> None:
     ] = "duplicate_route"
     domain["_subdomains"]["equity_filing"]["actions"]["search_forms"]["domain_action_name"] = "duplicate_route"
 
-    with pytest.raises(XctxError, match="ambiguous domain affordance") as raised:
+    with pytest.raises(XctxError, match="duplicate domain affordance shortcut") as raised:
         discover_payload(store, "stock_intelligence_hub::duplicate_route", ["AAPL"])
-    assert raised.value.next_moves == ["./xctx audit stock_intelligence_hub"]
+    assert raised.value.next_moves == [
+        "./xctx discover stock_intelligence_hub::equity_filing::search_forms AAPL",
+        "./xctx discover stock_intelligence_hub::market_data_gateway::search_entity_instrument AAPL",
+    ]
 
 
 def test_domain_affordance_collision_with_subdomain_id_fails_closed() -> None:
@@ -65,7 +68,10 @@ def test_domain_affordance_collision_with_subdomain_id_fails_closed() -> None:
 
     with pytest.raises(XctxError, match="ambiguous scoped target") as raised:
         discover_payload(store, "stock_intelligence_hub::equity_filing", [])
-    assert raised.value.next_moves == ["./xctx audit stock_intelligence_hub"]
+    assert raised.value.next_moves == [
+        "./xctx discover stock_intelligence_hub::equity_filing",
+        "./xctx discover stock_intelligence_hub::market_data_gateway::search_entity_instrument",
+    ]
 
 
 def test_live_audit_checks_are_normalised_fail_closed() -> None:

@@ -44,21 +44,21 @@ actions:
     entrypoint_command: search
     query_required: true
     desc: Search company name, ticker, CIK, issuer id, instrument id, or alias.
-    run_cmd: ./xctx discover stock_intelligence_hub::market_data_gateway search_entity_instrument <company|ticker|CIK|alias>
+    run_cmd: ./xctx discover stock_intelligence_hub::market_data_gateway::search_entity_instrument <company|ticker|CIK|alias>
   search_market_series:
     domain_affordance: true
     priority: 25
     entrypoint_command: search-market-series
     query_required: true
     desc: Discover bundled read-only OHLCV market-series objects by ticker, issuer, provider, or local series id without returning bar values.
-    run_cmd: ./xctx discover stock_intelligence_hub::market_data_gateway search_market_series <ticker|issuer|provider|text>
+    run_cmd: ./xctx discover stock_intelligence_hub::market_data_gateway::search_market_series <ticker|issuer|provider|text>
   latest_price:
     domain_affordance: true
     priority: 27
     entrypoint_command: latest-price
     query_required: true
     desc: latest_price discovers the latest available bundled price point; observe returns the price data. Not a live quote feed.
-    run_cmd: ./xctx discover stock_intelligence_hub::market_data_gateway latest_price <ticker|instrument_id|CIK|market_series:ticker:daily>
+    run_cmd: ./xctx discover stock_intelligence_hub::market_data_gateway::latest_price <ticker|instrument_id|CIK|market_series:ticker:daily>
   list_instruments:
     priority: 30
     entrypoint_command: list
@@ -88,13 +88,13 @@ actions:
       - "[--security-type TYPE]"
     examples:
       - query: list default compact instrument page
-        run_cmd: ./xctx discover stock_intelligence_hub::market_data_gateway list_instruments
+        run_cmd: ./xctx discover stock_intelligence_hub::market_data_gateway::list_instruments
       - query: list next compact page with explicit limit
-        run_cmd: ./xctx discover stock_intelligence_hub::market_data_gateway list_instruments --limit 10 --cursor 10
+        run_cmd: ./xctx discover stock_intelligence_hub::market_data_gateway::list_instruments --limit 10 --cursor 10
       - query: list full detail instrument records explicitly
-        run_cmd: ./xctx discover stock_intelligence_hub::market_data_gateway list_instruments --limit 10 --projection full
+        run_cmd: ./xctx discover stock_intelligence_hub::market_data_gateway::list_instruments --limit 10 --projection full
     returns: market_data_gateway_instrument_list
-    run_cmd: ./xctx discover stock_intelligence_hub::market_data_gateway list_instruments [--limit N] [--cursor CURSOR] [--projection compact|full] [--status STATUS] [--exchange EXCHANGE] [--security-type TYPE]
+    run_cmd: ./xctx discover stock_intelligence_hub::market_data_gateway::list_instruments [--limit N] [--cursor CURSOR] [--projection compact|full] [--status STATUS] [--exchange EXCHANGE] [--security-type TYPE]
   observe:
     priority: 40
     entrypoint_command: observe

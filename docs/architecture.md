@@ -27,7 +27,6 @@ yaml_dynamic_config:
     - statuses
     - actions
     - scoped_options
-    - observe_routes
 connector_supervisor_and_adapters:
   role: live_data_boundary
   owns:
@@ -55,10 +54,10 @@ process:
   redaction: shared_protocol_facing_secret_masking
 domain:
   core: domain_subdomain_lookup
-  routing: structural_ref_and_observe_route_selection
+  routing: structural_ref_parsing_and_scoped_option_encoding
   actions: configured_action_resolution
   discovery: root_domain_subdomain_action_payloads
-  observation: read_only_observe_routing
+  observation: explicit_scoped_read_only_observation
   audit: fail_closed_health_payloads
   repair: offline_and_maintenance_guidance
   planning: deterministic_plan_receipts

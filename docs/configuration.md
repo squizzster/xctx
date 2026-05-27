@@ -28,8 +28,7 @@ forbidden:
   - identity_resolution
   - root_affordances
   - command_shortcuts
-  - agent_routing.discovery_fallback
-  - agent_routing.default_observe_route
+  - agent_routing
 ```
 
 ## Domain Affordances
@@ -42,6 +41,18 @@ constraints:
   - unique_within_domain
   - must_not_equal_subdomain_id
   - unscoped_equivalent_must_fail_or_guidance_to_scoped_command
+ambiguity_behavior:
+  - duplicate_or_colliding_shortcuts_fail_closed
+  - next_moves_offer_fully_qualified_domain_subdomain_action_commands
+runtime_response:
+  domain_shortcut_discloses:
+    - agent_domain
+    - agent_subdomain
+    - implemented_by
+    - implemented_by_run_cmd
+  direct_subdomain_action_discloses:
+    - domain_action_name
+    - domain_affordance_run_cmd
 ```
 
 ## Actions
