@@ -122,6 +122,7 @@ def assert_root_universe_command_surface() -> None:
     assert root_domains == {
         "stock_intelligence_hub",
         "file_manager",
+        "guess_the_number_game",
         "macro_intelligence_hub",
         "crypto_intelligence_hub",
         "options_intelligence_hub",
@@ -479,7 +480,7 @@ def assert_repair_results() -> None:
 def assert_plan_execute_binding() -> None:
     print("[pressure] plan/execute binding", flush=True)
     random_short = run_engine(["execute", "abcde", "--commit"], code=1)
-    assert random_short["error"] == "unknown_plan_receipt"
+    assert random_short["error"] == "plan_id_required"
     random_full = run_engine(["execute", "plan:sha256:" + "a" * 64, "--commit"], code=1)
     assert random_full["error"] == "unknown_plan_receipt"
 
@@ -493,8 +494,6 @@ def assert_plan_execute_binding() -> None:
     assert no_commit["error"] == "commit_required"
     execute_full = run_engine(["--max", "execute", results["plan_id"], "--commit"])
     assert execute_full["results"]["planner_binding"]["verified"] is True
-    execute_short = run_engine(["--max", "execute", results["receipt_sha5"], "--commit"])
-    assert execute_short["results"]["planner_binding"]["receipt_sha256"] == results["receipt_sha256"]
 
 def assert_extension_lane_discipline() -> None:
     print("[pressure] extension lane discipline", flush=True)
@@ -516,10 +515,9 @@ def assert_real_cli_launcher_and_ledger_probe() -> None:
     root = run_engine(["discover"])
     assert_cmd(root, record_type="discovery", level="root")
     unknown = run_engine(["execute", "abcde", "--commit"], code=1)
-    assert unknown["error"] == "unknown_plan_receipt"
+    assert unknown["error"] == "plan_id_required"
     plan = run_engine(["plan", "bring_online", "stock_intelligence_hub::market_data_gateway"])
-    short = plan["results"]["receipt_sha5"]
-    executed = run_engine(["--max", "execute", short, "--commit"])
+    executed = run_engine(["--max", "execute", plan["results"]["plan_id"], "--commit"])
     assert executed["results"]["planner_binding"]["verified"] is True
 
     out = io.StringIO()

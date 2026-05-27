@@ -1,0 +1,83 @@
+id: choose_random_number
+kind: agent_subdomain
+status: online
+basic_description: Capability for creating and remembering the hidden number for a game.
+full_description: >-
+  This subdomain owns the write boundary that starts a Guess the Number game by
+  choosing a random hidden number inside declared bounds. The committed result
+  handle confirms game creation without exposing the hidden number.
+data_description: >-
+  Development-only JSON state under XCTX_RUNTIME_DIR or .xctx_runtime. This is
+  a smoke implementation, not a production game database.
+entrypoint:
+  file: connector_supervisor.py
+  protocol: json_stdout
+  timeout_seconds: 10
+connector:
+  kind: external_command
+  adapter_scope: domain
+  timeout_seconds: 5
+  max_output_bytes: 20000
+data:
+  storage_engine: xctx_runtime_json_smoke
+  read_only: false
+planning_defaults:
+  result_ttl_seconds: 900
+  writes_to_db: true
+  can_be_reversed: false
+  can_be_repaired: false
+actions:
+  discover:
+    priority: 10
+    entrypoint_command: discover
+    desc: Discover the number-creation planning capability and lawful commit path.
+    run_cmd: ./xctx discover guess_the_number_game::choose_random_number
+  choose_between_bounds:
+    priority: 20
+    entrypoint_command: choose-between-bounds
+    desc: Plan and commit creation of a hidden random number between configured bounds.
+    run_cmd: ./xctx plan guess_the_number_game::choose_random_number::choose_between_bounds --minimum 1 --maximum 1000
+    planning:
+      mode: planned_effect
+      planned_effect: true
+      commit_adapter_command: choose-between-bounds
+      writes_to_db: true
+      can_be_reversed: false
+      can_be_repaired: false
+      result_ttl_seconds: 900
+      description_of_what_will_happen: The system will roll a hidden number between {{minimum}} and {{maximum}}, remember it as game state, and return the game handle in {{result_id}}.
+      running_heartbeat:
+        phase: choosing_random_number
+        message: Commit accepted; the hidden number is being created.
+      complete_heartbeat:
+        phase: game_ready
+        message: Game is ready; submit guess plans against this result handle.
+      blocked_paths:
+        - affordance: reveal_hidden_number
+          reason: The hidden number is not exposed; use committed guess plans for higher/lower/yes feedback.
+    cli_options:
+      - flags:
+          - --minimum
+        dest: minimum
+        type: int
+        min: 0
+        required: true
+        commands:
+          - plan
+        adapter_arg: --minimum
+        desc: Lower inclusive bound for the hidden number.
+      - flags:
+          - --maximum
+        dest: maximum
+        type: int
+        min: 0
+        required: true
+        commands:
+          - plan
+        adapter_arg: --maximum
+        desc: Upper inclusive bound for the hidden number.
+  observe:
+    priority: 30
+    entrypoint_command: observe
+    desc: Observe number-creation subdomain status. Game results are observed with ./xctx observe result:<sha256>.
+    run_cmd: ./xctx observe guess_the_number_game::choose_random_number <status>

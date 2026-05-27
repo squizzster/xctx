@@ -274,6 +274,7 @@ def assert_root_domain_subdomain_discovery() -> None:
     assert set(domains) == {
         "stock_intelligence_hub",
         "file_manager",
+        "guess_the_number_game",
         "macro_intelligence_hub",
         "crypto_intelligence_hub",
         "options_intelligence_hub",
@@ -865,18 +866,13 @@ def assert_plan_execute_other_and_output() -> None:
     assert execute_full["ok"] is True
     assert execute_full["results"]["mutations_applied"] == 0
 
-    execute_short = one(["--max", "execute", results["receipt_sha5"], "--commit"])
-    assert execute_short["ok"] is True
-    assert execute_short["results"]["planner_binding"]["verified"] is True
-    assert execute_short["results"]["planner_binding"]["receipt_sha256"] == results["receipt_sha256"]
-
     refused = one(["execute", "not-a-plan", "--commit"], expected_code=1)
     assert refused["ok"] is False
-    assert refused["error"] == "invalid_plan_receipt"
+    assert refused["error"] == "plan_id_required"
 
     unknown_short_receipt = one(["execute", "abcde", "--commit"], expected_code=1)
     assert unknown_short_receipt["ok"] is False
-    assert unknown_short_receipt["error"] == "unknown_plan_receipt"
+    assert unknown_short_receipt["error"] == "plan_id_required"
 
     no_commit = one(["execute", results["plan_id"]], expected_code=1)
     assert no_commit["ok"] is False

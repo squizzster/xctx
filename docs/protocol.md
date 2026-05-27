@@ -110,7 +110,7 @@ redaction: required
 
 ```yaml
 plan_id: plan:sha256:<sha256>
-receipt_sha5: debug_prefix_only_if_unique_recorded_plan
+receipt_sha5: debug_prefix_only_not_executable
 execute_requires:
   - one_plan_token
   - --commit

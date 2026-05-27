@@ -1,0 +1,25 @@
+id: guess_the_number_game
+kind: agent_domain
+status: online
+health: online
+basic_description: Planned-write smoke domain for the Guess the Number game.
+full_description: >-
+  guess_the_number_game is a fast development smoke domain for planned effects:
+  one committed plan creates a hidden random number, and later committed guess
+  plans observe only higher/lower/yes feedback through result handles.
+canonical_identity_policy:
+  trusted_id_scope: guess_the_number_game
+  game_result_format: result:<sha256>
+  rule: The hidden number is domain state created by a committed plan and is not exposed by xctx core.
+planning_defaults:
+  result_ttl_seconds: 900
+  writes_to_db: true
+  can_be_reversed: false
+  can_be_repaired: false
+agent_subdomains:
+  choose_random_number:
+    path: subdomains/choose_random_number/subdomain.yaml
+    priority: 10
+  guess_number:
+    path: subdomains/guess_number/subdomain.yaml
+    priority: 20

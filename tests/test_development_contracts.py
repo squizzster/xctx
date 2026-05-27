@@ -20,7 +20,7 @@ def test_execute_accepts_exactly_one_plan_identifier() -> None:
     assert payload["record_type"] == "execution_result"
     assert payload["ok"] is False
     assert payload["error"] == "invalid_execute_command"
-    assert payload["results"]["next_move"] == "./xctx execute <PLAN_ID|SHA256|SHA5> --commit"
+    assert payload["results"]["next_move"] == "./xctx execute <PLAN_ID> --commit"
 
 
 def test_repair_finding_prefix_must_match_current_state() -> None:
@@ -64,7 +64,7 @@ def test_execute_rejects_plan_recorded_against_stale_config_context(tmp_path, mo
     stored["planner_context"]["config_sha256"] = "0" * 64
     path.write_text(json.dumps(stored, sort_keys=True, indent=2) + "\n", encoding="utf-8")
 
-    result = execute_payload([plan["receipt_sha256"]], True, store)
+    result = execute_payload([plan["plan_id"]], True, store)
 
     assert result["ok"] is False
     assert result["error"] == "stale_plan_context"

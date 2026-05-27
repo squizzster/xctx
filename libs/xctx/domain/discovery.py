@@ -23,6 +23,7 @@ from xctx.protocol.descriptions import detail_enabled, selected_description, wit
 from xctx.protocol.detail import detail_at_least, is_max
 from xctx.protocol.guidance import command_hint, command_hints, root_protocol_next_moves
 from xctx.protocol.option_surface import target_option_surface
+from xctx.store.runtime_artifacts import is_runtime_ref, runtime_artifact_discovery_payload
 
 
 ## Protocol boundary: discovery exposes configured/live affordances and routes
@@ -282,6 +283,10 @@ def discover_payload(
 ) -> tuple[str, dict[str, Any]]:
     if target is None:
         return "root", root_discovery_payload(store)
+    if any(is_runtime_ref(kind, target) for kind in ("master_plan", "sub_plan", "commit")):
+        if query_parts:
+            raise XctxError(f"runtime artifact discovery does not accept extra arguments: {target}")
+        return "root", runtime_artifact_discovery_payload(store, target)
     scoped_domain_id, scoped_action_name, scoped_action = parse_scoped_action(store, target, action_args=query_parts)
     if scoped_domain_id and scoped_action_name and scoped_action:
         return "agent_subdomain", scoped_action_discovery_payload(

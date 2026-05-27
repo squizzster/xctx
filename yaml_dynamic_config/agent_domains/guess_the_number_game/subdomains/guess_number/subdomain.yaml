@@ -1,0 +1,84 @@
+id: guess_number
+kind: agent_subdomain
+status: online
+basic_description: Capability for submitting guesses against an existing game result handle.
+full_description: >-
+  This subdomain owns committed guess attempts. A guess plan references the
+  original game result handle, commits one guess, and returns higher, lower, or
+  yes feedback plus a lawful next plan command when more guessing is needed.
+data_description: >-
+  Development-only JSON state under XCTX_RUNTIME_DIR or .xctx_runtime. Guess
+  attempts update the smoke game state behind the connector boundary.
+entrypoint:
+  file: connector_supervisor.py
+  protocol: json_stdout
+  timeout_seconds: 10
+connector:
+  kind: external_command
+  adapter_scope: domain
+  timeout_seconds: 5
+  max_output_bytes: 20000
+data:
+  storage_engine: xctx_runtime_json_smoke
+  read_only: false
+planning_defaults:
+  result_ttl_seconds: 900
+  writes_to_db: true
+  can_be_reversed: false
+  can_be_repaired: false
+actions:
+  discover:
+    priority: 10
+    entrypoint_command: discover
+    desc: Discover the guess planning capability and result-handle contract.
+    run_cmd: ./xctx discover guess_the_number_game::guess_number
+  submit_guess:
+    priority: 20
+    entrypoint_command: submit-guess
+    desc: Plan and commit one guess against a previously created game result handle.
+    run_cmd: ./xctx plan guess_the_number_game::guess_number::submit_guess --game-result result:<sha256> --guess 500
+    planning:
+      mode: planned_effect
+      planned_effect: true
+      commit_adapter_command: submit-guess
+      writes_to_db: true
+      can_be_reversed: false
+      can_be_repaired: false
+      result_ttl_seconds: 900
+      description_of_what_will_happen: The system will submit guess {{guess}} against {{game_result}} and return higher, lower, or yes in {{result_id}}.
+      running_heartbeat:
+        phase: checking_guess
+        message: Commit accepted; the guess is being checked.
+      complete_heartbeat:
+        phase: feedback_ready
+        message: Guess feedback is ready.
+      blocked_paths:
+        - affordance: guess_without_game_result
+          reason: Every guess must reference the committed result handle that created the hidden number.
+        - affordance: reveal_hidden_number
+          reason: The hidden number remains hidden until the correct guess returns yes.
+    cli_options:
+      - flags:
+          - --game-result
+        dest: game_result
+        type: str
+        required: true
+        commands:
+          - plan
+        adapter_arg: --game-result
+        desc: Original result:<sha256> handle returned by the number-creation commit.
+      - flags:
+          - --guess
+        dest: guess
+        type: int
+        min: 0
+        required: true
+        commands:
+          - plan
+        adapter_arg: --guess
+        desc: Candidate number to check.
+  observe:
+    priority: 30
+    entrypoint_command: observe
+    desc: Observe guess subdomain status. Guess attempt results are observed with ./xctx observe result:<sha256>.
+    run_cmd: ./xctx observe guess_the_number_game::guess_number <status>
