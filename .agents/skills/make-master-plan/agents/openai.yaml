@@ -1,0 +1,5 @@
+interface:
+  display_name: "Make Master Plan"
+  short_description: "Good-faith xctx master plans with lawful commits."
+policy:
+  allow_implicit_invocation: true
