@@ -7,12 +7,12 @@ from typing import Any
 from xctx.config.paths import as_project_path
 from xctx.domain.actions import domain_affordance_config_check
 from xctx.domain.routing import parse_ref
-from xctx.store.fingerprints import config_fingerprint_payload
 from xctx.errors import XctxError
 from xctx.ports.external_command import call_external_command
 from xctx.process.redaction import redact_preview
 from xctx.protocol.command_policy import command_surface_check
 from xctx.protocol.option_surface import option_config_checks
+from xctx.store.fingerprints import config_fingerprint_payload
 
 VALID_AUDIT_CHECK_STATUSES = frozenset({"pass", "fail", "warn", "warning", "skip"})
 
@@ -70,6 +70,7 @@ def availability_findings(store: dict[str, Any], scope: str = "root") -> list[di
                 )
     return findings
 
+
 def _known_audit_scope_next_moves(store: dict[str, Any], domain_id: str | None = None) -> list[str]:
     if domain_id and domain_id in store.get("agent_domains", {}):
         subdomains = sorted((store["agent_domains"][domain_id].get("_subdomains") or {}).keys())
@@ -77,6 +78,7 @@ def _known_audit_scope_next_moves(store: dict[str, Any], domain_id: str | None =
     domains = sorted(store.get("agent_domains", {}).keys())
     examples = ["root", *domains[:5]]
     return [f"./xctx audit {example}" for example in examples]
+
 
 def audit_domain_level(store: dict[str, Any], scope: str) -> str:
     scope = scope or "root"
@@ -98,6 +100,7 @@ def audit_domain_level(store: dict[str, Any], scope: str) -> str:
     if scope not in domains:
         raise XctxError(f"unknown audit scope: {scope}", next_moves=_known_audit_scope_next_moves(store))
     return "agent_domain"
+
 
 def _live_audit_subdomains(store: dict[str, Any], scope: str) -> list[tuple[str, str, dict[str, Any]]]:
     parsed_domain, parsed_subdomain = parse_ref(store, scope)
@@ -187,6 +190,26 @@ def _normalise_live_audit_checks(
     return normalised
 
 
+def _summary(scope: str, checks: list[dict[str, Any]], findings: list[dict[str, Any]]) -> dict[str, Any]:
+    pass_count = sum(1 for check in checks if str(check.get("status", "")).lower() == "pass")
+    warn_count = sum(1 for check in checks if str(check.get("status", "")).lower() in {"warn", "warning"})
+    fail_count = sum(1 for check in checks if audit_check_failed(check))
+    skip_count = sum(1 for check in checks if str(check.get("status", "")).lower() == "skip")
+    return {
+        "scope": scope,
+        "checks_total": len(checks),
+        "pass": pass_count,
+        "warn": warn_count,
+        "fail": fail_count,
+        "skip": skip_count,
+        "findings": len(findings),
+        "repairable_findings": sum(1 for finding in findings if finding.get("repairable")),
+        "terminal_maintenance_findings": sum(
+            1 for finding in findings if finding.get("status") == "down_for_maintenance"
+        ),
+    }
+
+
 def audit_payload(store: dict[str, Any], scope: str) -> dict[str, Any]:
     scope = scope or "root"
     audit_domain_level(store, scope)
@@ -223,16 +246,12 @@ def audit_payload(store: dict[str, Any], scope: str) -> dict[str, Any]:
             continue
         checks.extend(_normalise_live_audit_checks(domain_id, subdomain_id, live))
 
+    summary = _summary(scope, checks, findings)
+    audit_status = "failed" if summary["fail"] else "warnings_present" if summary["warn"] else "findings_present" if findings else "pass"
     return {
         "scope": scope,
-        "summary": {
-            "checks": len(checks),
-            "findings": len(findings),
-            "repairable_findings": sum(1 for finding in findings if finding.get("repairable")),
-            "terminal_maintenance_findings": sum(
-                1 for finding in findings if finding.get("status") == "down_for_maintenance"
-            ),
-        },
+        "audit_status": audit_status,
+        "summary": summary,
         "checks": checks,
         "findings": findings,
     }

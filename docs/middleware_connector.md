@@ -19,21 +19,21 @@ middleware:
     - structured_failure_payloads
 ```
 
-## Shape Guarantee
+## Payload Contract
 
 ```yaml
 external_command:
   contract: always_json_object
   xctx_receives: single_json_object_for_live_data
-  success_shape: domain_object
-  failure_shape: xctx_connector_error
+  success_payload: domain_object
+  failure_payload: xctx_connector_error
   raw_external_output: never_returned_unparsed
   stdout_stderr: summarized_in_command_status_when_useful
 xctx_native_passthrough:
   contract: pass_through_json_object
   xctx_receives: single_json_object_for_live_data
-  success_shape: target_adapter_object
-  failure_shape: xctx_native_passthrough_error
+  success_payload: target_adapter_object
+  failure_payload: xctx_native_passthrough_error
 ```
 
 ## Failure Rules

@@ -19,7 +19,7 @@ def test_execute_accepts_exactly_one_plan_identifier() -> None:
     assert rc == 1
     assert payload["record_type"] == "execution_result"
     assert payload["ok"] is False
-    assert payload["error"] == "invalid_execute_shape"
+    assert payload["error"] == "invalid_execute_command"
     assert payload["results"]["next_move"] == "./xctx execute <PLAN_ID|SHA256|SHA5> --commit"
 
 
@@ -72,7 +72,7 @@ def test_execute_rejects_plan_recorded_against_stale_config_context(tmp_path, mo
 
 
 def test_root_audit_exposes_loaded_config_fingerprint() -> None:
-    rc, payload = run_runtime_json(["audit", "root"])
+    rc, payload = run_runtime_json(["--max", "audit", "root"])
 
     assert rc == 0
     checks = payload["results"]["checks"]

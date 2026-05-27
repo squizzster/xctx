@@ -51,6 +51,19 @@ SECRET_ARG_NAMES = frozenset(
 )
 NORMALIZED_SECRET_NAMES = frozenset(name.replace("_", "-") for name in SECRET_ARG_NAMES)
 
+ARGV_LIKE_KEYS = frozenset(
+    {
+        "argv",
+        "args",
+        "requested_args",
+        "command_args",
+        "target_args",
+        "action_args",
+        "plan_args",
+        "execute_args",
+    }
+)
+
 
 def _normalise_secret_name(value: str) -> str:
     return value.strip().lower().lstrip("-").replace("_", "-")
@@ -64,14 +77,25 @@ def is_secret_argument_name(value: str) -> bool:
 
 
 def is_secret_key(value: str) -> bool:
-    """Return true for exact secret-bearing mapping keys.
-
-    This intentionally avoids broad substring matching so protocol fields such as
-    ``operation_token`` keep their non-secret value.
-    """
+    """Return true for exact secret-bearing mapping keys."""
 
     normalized = value.strip().lower().replace("_", "-")
     return normalized in NORMALIZED_SECRET_NAMES
+
+
+def redact_text(value: Any) -> str:
+    """Return text with common credential shapes masked, without truncation."""
+
+    text = str(value)
+    for pattern in SECRET_PATTERNS:
+        text = pattern.sub(lambda match: f"{match.group('prefix')}<redacted>", text)
+    return text
+
+
+def redact_preview(value: Any, limit: int = 500) -> str:
+    """Return a bounded text preview with common credential shapes masked."""
+
+    return redact_text(str(value)[:limit])
 
 
 def redact_argv_values(argv: list[Any] | tuple[Any, ...]) -> list[Any]:
@@ -97,7 +121,7 @@ def redact_argv_values(argv: list[Any] | tuple[Any, ...]) -> list[Any]:
             redacted.append(raw)
             redact_next = True
             continue
-        redacted.append(redact_preview(raw))
+        redacted.append(redact_text(raw))
     return redacted
 
 
@@ -107,34 +131,23 @@ def redact_argv(argv: list[Any] | tuple[Any, ...]) -> str:
     return shlex.join(str(item) for item in redact_argv_values(argv))
 
 
-def redact_preview(value: Any, limit: int = 500) -> str:
-    """Return a bounded text preview with common credential shapes masked."""
-
-    preview = str(value)[:limit]
-    for pattern in SECRET_PATTERNS:
-        preview = pattern.sub(lambda match: f"{match.group('prefix')}<redacted>", preview)
-    return preview
-
-
-def redact_value(value: Any, limit: int = 500) -> Any:
-    """Recursively redact common credential shapes in protocol-facing values."""
+def redact_value(value: Any) -> Any:
+    """Recursively redact common credential shapes without truncating data."""
 
     if isinstance(value, str):
-        return redact_preview(value, limit=limit)
+        return redact_text(value)
     if isinstance(value, list):
-        if all(isinstance(item, str) for item in value):
-            return [redact_preview(str(item), limit=limit) for item in redact_argv_values(value)]
-        return [redact_value(item, limit=limit) for item in value]
+        return [redact_value(item) for item in value]
     if isinstance(value, tuple):
-        if all(isinstance(item, str) for item in value):
-            return [redact_preview(str(item), limit=limit) for item in redact_argv_values(value)]
-        return [redact_value(item, limit=limit) for item in value]
+        return [redact_value(item) for item in value]
     if isinstance(value, dict):
         redacted: dict[Any, Any] = {}
         for key, item in value.items():
             if isinstance(key, str) and is_secret_key(key):
                 redacted[key] = "<redacted>"
+            elif isinstance(key, str) and key in ARGV_LIKE_KEYS and isinstance(item, (list, tuple)):
+                redacted[key] = redact_argv_values(item)
             else:
-                redacted[key] = redact_value(item, limit=limit)
+                redacted[key] = redact_value(item)
         return redacted
     return value

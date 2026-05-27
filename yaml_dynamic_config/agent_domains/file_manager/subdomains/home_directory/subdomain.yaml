@@ -14,7 +14,6 @@ data_description: >-
 entrypoint:
   file: connector_supervisor.py
   protocol: json_stdout
-  compact_flag: --compact
   timeout_seconds: 10
 connector:
   kind: external_command
@@ -33,24 +32,24 @@ actions:
   discover:
     priority: 10
     entrypoint_command: discover
-    desc: Discover filesystem object shapes, concrete object metadata, connector status, and next discovery commands.
-    discovery_shapes:
-      default_shape: compact
-      shapes:
+    desc: Discover filesystem object patterns, concrete object metadata, connector status, and next discovery commands.
+    projections:
+      default: compact
+      allowed:
         - compact
         - full
-    argument_shapes:
+    argument_patterns:
       - "[file:<relative_path>|directory:<relative_path>]"
-      - "[--shape compact|full]"
+      - "[--projection compact|full]"
     examples:
       - query: compact file-manager discovery
         run_cmd: ./xctx discover file_manager::home_directory
       - query: discover concrete file metadata
         run_cmd: ./xctx discover file_manager::home_directory file:README.txt
-      - query: full file-manager discovery
-        run_cmd: ./xctx discover file_manager::home_directory --shape full
+      - query: full-projection file-manager discovery
+        run_cmd: ./xctx discover file_manager::home_directory --projection full
     returns: external_command_filesystem_discovery
-    run_cmd: ./xctx discover file_manager::home_directory [file:<relative_path>|directory:<relative_path>] [--shape compact|full]
+    run_cmd: ./xctx discover file_manager::home_directory [file:<relative_path>|directory:<relative_path>] [--projection compact|full]
   list_files:
     priority: 20
     entrypoint_command: list-files
@@ -63,22 +62,22 @@ actions:
       max_limit: 50
       cursor: optional
       cursor_type: opaque
-      default_shape: compact
-      item_shapes:
+      default: compact
+      item_projections:
         - compact
         - full
-    argument_shapes:
+    argument_patterns:
       - "[directory:<relative_path>]"
       - "[--limit N]"
       - "[--cursor CURSOR]"
-      - "[--shape compact|full]"
+      - "[--projection compact|full]"
     examples:
       - query: list root files
         run_cmd: ./xctx discover file_manager::home_directory list_files
       - query: list files under docs
         run_cmd: ./xctx discover file_manager::home_directory list_files directory:docs
     returns: external_command_filesystem_file_list
-    run_cmd: ./xctx discover file_manager::home_directory list_files [directory:<relative_path>] [--limit N] [--cursor CURSOR] [--shape compact|full]
+    run_cmd: ./xctx discover file_manager::home_directory list_files [directory:<relative_path>] [--limit N] [--cursor CURSOR] [--projection compact|full]
   list_directories:
     priority: 30
     entrypoint_command: list-directories
@@ -91,26 +90,26 @@ actions:
       max_limit: 50
       cursor: optional
       cursor_type: opaque
-      default_shape: compact
-      item_shapes:
+      default: compact
+      item_projections:
         - compact
         - full
-    argument_shapes:
+    argument_patterns:
       - "[directory:<relative_path>]"
       - "[--limit N]"
       - "[--cursor CURSOR]"
-      - "[--shape compact|full]"
+      - "[--projection compact|full]"
     examples:
       - query: list root directories
         run_cmd: ./xctx discover file_manager::home_directory list_directories
     returns: external_command_filesystem_directory_list
-    run_cmd: ./xctx discover file_manager::home_directory list_directories [directory:<relative_path>] [--limit N] [--cursor CURSOR] [--shape compact|full]
+    run_cmd: ./xctx discover file_manager::home_directory list_directories [directory:<relative_path>] [--limit N] [--cursor CURSOR] [--projection compact|full]
   observe:
     priority: 40
     entrypoint_command: observe
     mode_kind: observe
     desc: Observe a discovered file:<relative_path> or directory:<relative_path> object through the connector supervisor; safe text files include bounded contents.
-    argument_shapes:
+    argument_patterns:
       - "file:<relative_path>"
       - "directory:<relative_path>"
     examples:

@@ -9,7 +9,6 @@ data_description: >-
 entrypoint:
   file: connector_supervisor.py
   protocol: json_stdout
-  compact_flag: --compact
   timeout_seconds: 30
 connector:
   kind: xctx_native_passthrough
@@ -25,20 +24,20 @@ actions:
   discover:
     priority: 10
     entrypoint_command: discover
-    desc: Discover market-data gateway modes, observable object shapes, and next discovery commands.
-    discovery_shapes:
-      default_shape: compact
-      shapes:
+    desc: Discover market-data gateway modes, observable object patterns, and next discovery commands.
+    projections:
+      default: compact
+      allowed:
         - compact
         - full
-    argument_shapes:
-      - "[--shape compact|full]"
+    argument_patterns:
+      - "[--projection compact|full]"
     examples:
       - query: compact market-data gateway discovery
         run_cmd: ./xctx discover stock_intelligence_hub::market_data_gateway
       - query: full market-data gateway discovery
-        run_cmd: ./xctx discover stock_intelligence_hub::market_data_gateway --shape full
-    run_cmd: ./xctx discover stock_intelligence_hub::market_data_gateway [--shape compact|full]
+        run_cmd: ./xctx discover stock_intelligence_hub::market_data_gateway --projection full
+    run_cmd: ./xctx discover stock_intelligence_hub::market_data_gateway [--projection compact|full]
   search_entity_instrument:
     domain_affordance: true
     priority: 20
@@ -72,18 +71,18 @@ actions:
       max_limit: 100
       cursor: optional
       cursor_type: opaque
-      default_shape: compact
-      item_shapes:
+      default: compact
+      item_projections:
         - compact
         - full
       filters:
         - --status
         - --exchange
         - --security-type
-    argument_shapes:
+    argument_patterns:
       - "[--limit N]"
       - "[--cursor CURSOR]"
-      - "[--shape compact|full]"
+      - "[--projection compact|full]"
       - "[--status STATUS]"
       - "[--exchange EXCHANGE]"
       - "[--security-type TYPE]"
@@ -93,9 +92,9 @@ actions:
       - query: list next compact page with explicit limit
         run_cmd: ./xctx discover stock_intelligence_hub::market_data_gateway list_instruments --limit 10 --cursor 10
       - query: list full detail instrument records explicitly
-        run_cmd: ./xctx discover stock_intelligence_hub::market_data_gateway list_instruments --limit 10 --shape full
+        run_cmd: ./xctx discover stock_intelligence_hub::market_data_gateway list_instruments --limit 10 --projection full
     returns: market_data_gateway_instrument_list
-    run_cmd: ./xctx discover stock_intelligence_hub::market_data_gateway list_instruments [--limit N] [--cursor CURSOR] [--shape compact|full] [--status STATUS] [--exchange EXCHANGE] [--security-type TYPE]
+    run_cmd: ./xctx discover stock_intelligence_hub::market_data_gateway list_instruments [--limit N] [--cursor CURSOR] [--projection compact|full] [--status STATUS] [--exchange EXCHANGE] [--security-type TYPE]
   observe:
     priority: 40
     entrypoint_command: observe

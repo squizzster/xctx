@@ -126,7 +126,7 @@ cli_options:
   root_publication: forbidden
   wrong_target: fail_before_wrong_adapter
 collection:
-  optional_controls: [--limit, --cursor, --shape]
+  optional_controls: [--limit, --cursor, --projection]
   cursor_semantics: adapter_owned
 ```
 
@@ -172,10 +172,10 @@ forbidden_connector_keys:
 adapter_paths:
   domain: libs/xctx_connectors/domains/<domain>/external_command_adapter.py
   subdomain: libs/xctx_connectors/domains/<domain>/subdomains/<subdomain>/external_command_adapter.py
-shape_guarantee:
+payload_contract:
   xctx_receives: single_json_object_for_live_data
   raw_external_output: never_returned_unparsed
-failure_shapes:
+failure_payloads:
   - xctx_connector_error
   - xctx_native_passthrough_error
 ```

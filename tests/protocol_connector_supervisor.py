@@ -33,11 +33,11 @@ MARKET_ADAPTER_ENTRYPOINT = "examples/stock_intelligence_hub/adapters/market_dat
 FILE_MANAGER_README = ROOT / "data" / "file_manager_home" / "README.txt"
 
 
-def assert_shape_guarantee(connector: dict, *, contract: str, failure_shape: str) -> None:
-    guarantee = connector["shape_guarantee"]
+def assert_payload_contract(connector: dict, *, contract: str, failure_payload: str) -> None:
+    guarantee = connector["payload_contract"]
     assert guarantee["contract"] == contract
     assert guarantee["xctx_receives"] == "single_json_object_for_live_data"
-    assert guarantee["failure_shape"] == failure_shape
+    assert guarantee["failure_payload"] == failure_payload
     assert guarantee["raw_external_output"] == "never_returned_unparsed"
     assert guarantee["stdout_stderr"] == "summarized_in_command_status_when_useful"
 
@@ -72,7 +72,7 @@ def test_middleware_returns_json_without_xctx_env() -> None:
     payload = json.loads(proc.stdout)
     assert payload["object_type"] == "xctx_connector_error"
     assert payload["found"] is False
-    assert_shape_guarantee(payload["connector"], contract="always_json_object", failure_shape="xctx_connector_error")
+    assert_payload_contract(payload["connector"], contract="always_json_object", failure_payload="xctx_connector_error")
     assert "XCTX_AGENT_DOMAIN" in payload["command_status"]["error"]
 
 
@@ -244,7 +244,7 @@ def test_xctx_native_passthrough_stays_transparent() -> None:
     assert filing_live["id"] == "form:10-K"
 
 
-def test_xctx_native_passthrough_failure_has_shape_guarantee() -> None:
+def test_xctx_native_passthrough_failure_has_payload_contract() -> None:
     env = os.environ.copy()
     env["XCTX_AGENT_DOMAIN"] = "stock_intelligence_hub"
     env["XCTX_AGENT_SUBDOMAIN"] = "market_data_gateway"
@@ -262,14 +262,14 @@ def test_xctx_native_passthrough_failure_has_shape_guarantee() -> None:
     payload = json.loads(proc.stdout)
     assert payload["object_type"] == "xctx_native_passthrough_error"
     assert payload["found"] is False
-    assert_shape_guarantee(
+    assert_payload_contract(
         payload["connector"],
         contract="pass_through_json_object",
-        failure_shape="xctx_native_passthrough_error",
+        failure_payload="xctx_native_passthrough_error",
     )
 
 
-def test_xctx_native_passthrough_failure_hides_argv_until_full_shape() -> None:
+def test_xctx_native_passthrough_failure_hides_argv_until_max_detail() -> None:
     compact = run_engine(
         ["discover", "stock_intelligence_hub::market_data_gateway", "list_instruments", "--cursor", "nope"],
         code=1,
@@ -278,19 +278,16 @@ def test_xctx_native_passthrough_failure_hides_argv_until_full_shape() -> None:
     assert compact["error"] == "--cursor requires an integer"
     compact_live = compact["results"]["live_data"]
     assert compact_live["object_type"] == "xctx_native_passthrough_error"
-    assert compact_live["command_status"]["ok"] is False
-    assert compact_live["command_status"]["error"] == "--cursor requires an integer"
-    assert "argv" not in compact_live["command_status"]
+    assert "command_status" not in compact_live
 
     full = run_engine(
         [
+            "--max",
             "discover",
             "stock_intelligence_hub::market_data_gateway",
             "list_instruments",
             "--cursor",
             "nope",
-            "--shape",
-            "full",
         ],
         code=1,
     )
@@ -302,18 +299,18 @@ def test_xctx_native_passthrough_failure_hides_argv_until_full_shape() -> None:
 
 
 def test_external_command_filesystem_discovery_and_observation() -> None:
-    discovery = run_engine(["discover", "file_manager::home_directory"])
+    discovery = run_engine(["--max", "discover", "file_manager::home_directory"])
     live = discovery["results"]["live_data"]
     assert live["object_type"] == "external_command_filesystem_discovery"
     assert live["connector"]["kind"] == "external_command"
     assert live["connector"]["adapter_scope"] == "domain"
-    assert_shape_guarantee(live["connector"], contract="always_json_object", failure_shape="xctx_connector_error")
-    assert live["observable_objects"]["file"]["id_shape"] == "file:<relative_path>"
+    assert_payload_contract(live["connector"], contract="always_json_object", failure_payload="xctx_connector_error")
+    assert live["observable_objects"]["file"]["id_pattern"] == "file:<relative_path>"
 
     files = run_engine(["discover", "file_manager::home_directory", "list_files", "--limit", "5"])
     file_live = files["results"]["live_data"]
     assert file_live["object_type"] == "external_command_filesystem_file_list"
-    assert_shape_guarantee(file_live["connector"], contract="always_json_object", failure_shape="xctx_connector_error")
+    assert "connector" not in file_live
     assert file_live["files"][0]["id"] == "file:README.txt"
     assert file_live["files"][0]["observe_cmd"] == "./xctx observe file_manager::home_directory file:README.txt"
     assert "pagination" not in file_live
@@ -321,9 +318,9 @@ def test_external_command_filesystem_discovery_and_observation() -> None:
     assert "command_status" not in file_live
     assert "This is a bundled file-manager demo fixture" not in json.dumps(file_live)
 
-    files_full = run_engine(["discover", "file_manager::home_directory", "list_files", "--limit", "1", "--shape", "full"])
+    files_full = run_engine(["--max", "discover", "file_manager::home_directory", "list_files", "--limit", "1", "--projection", "full"])
     files_full_live = files_full["results"]["live_data"]
-    assert files_full_live["shape"] == "full"
+    assert files_full_live["projection"] == "full"
     assert files_full_live["pagination"]["total_count"] == 1
     assert files_full_live["pagination"]["returned_count"] == 1
     assert files_full_live["command_status"]["argv"][0] == "ls"
@@ -331,7 +328,7 @@ def test_external_command_filesystem_discovery_and_observation() -> None:
     discovered_file = run_engine(["discover", "file_manager::home_directory", "file:README.txt"])
     discovered_file_live = discovered_file["results"]["live_data"]
     assert discovered_file_live["object_type"] == "external_command_filesystem_file_discovery"
-    assert_shape_guarantee(discovered_file_live["connector"], contract="always_json_object", failure_shape="xctx_connector_error")
+    assert "connector" not in discovered_file_live
     assert discovered_file_live["id"] == "file:README.txt"
     expected_readme_bytes = len(FILE_MANAGER_README.read_bytes())
     assert discovered_file_live["type"] == "ASCII text"
@@ -345,9 +342,9 @@ def test_external_command_filesystem_discovery_and_observation() -> None:
     assert "This is a bundled file-manager demo fixture" not in json.dumps(discovered_file_live)
     assert "configured_action_index" not in discovered_file["results"]
 
-    discovered_file_full = run_engine(["discover", "file_manager::home_directory", "file:README.txt", "--shape", "full"])
+    discovered_file_full = run_engine(["--max", "discover", "file_manager::home_directory", "file:README.txt", "--projection", "full"])
     discovered_file_full_live = discovered_file_full["results"]["live_data"]
-    assert discovered_file_full_live["shape"] == "full"
+    assert discovered_file_full_live["projection"] == "full"
     assert re.fullmatch(r"\d{4}-\d{2}-\d{2}T.*\+00:00", discovered_file_full_live["modified_at"])
     assert re.fullmatch(r"[A-Z][a-z]{2} [ 0-9]\d \d{2}:\d{2}", discovered_file_full_live["modified_display"])
     assert discovered_file_full_live["command_status"]["stat_line"]["argv"][0] == "ls"
@@ -359,11 +356,11 @@ def test_external_command_filesystem_discovery_and_observation() -> None:
     assert discovered_directory_live["id"] == "directory:docs"
     assert discovered_directory_live["child_count"] == 1
 
-    observed = run_engine(["observe", "file:README.txt"])
+    observed = run_engine(["--max", "observe", "file:README.txt"])
     observed_live = observed["results"]["live_data"]
     assert observed["results"]["agent_domain"] == "file_manager"
     assert observed_live["object_type"] == "external_command_filesystem_file_observation"
-    assert_shape_guarantee(observed_live["connector"], contract="always_json_object", failure_shape="xctx_connector_error")
+    assert_payload_contract(observed_live["connector"], contract="always_json_object", failure_payload="xctx_connector_error")
     assert observed_live["command_status"]["ok"] is True
     assert observed_live["file_type"]
     assert observed_live["content"]["available"] is True
@@ -372,21 +369,21 @@ def test_external_command_filesystem_discovery_and_observation() -> None:
 
 
 def test_external_command_filesystem_always_shapes_failures() -> None:
-    escaped = run_engine(["observe", "file:../README.md"], code=1)
+    escaped = run_engine(["--max", "observe", "file:../README.md"], code=1)
     assert escaped["ok"] is False
     assert escaped["error"] == "path escapes configured safe root"
     live = escaped["results"]["live_data"]
     assert live["object_type"] == "xctx_connector_error"
     assert live["found"] is False
-    assert_shape_guarantee(live["connector"], contract="always_json_object", failure_shape="xctx_connector_error")
+    assert_payload_contract(live["connector"], contract="always_json_object", failure_payload="xctx_connector_error")
     assert live["command_status"]["ok"] is False
     assert "safe root" in live["command_status"]["error"]
 
-    unknown = run_engine(["observe", "file:missing.txt"])
+    unknown = run_engine(["--max", "observe", "file:missing.txt"])
     assert unknown["ok"] is True
     unknown_live = unknown["results"]["live_data"]
     assert unknown_live["object_type"] == "external_command_filesystem_observation"
-    assert_shape_guarantee(unknown_live["connector"], contract="always_json_object", failure_shape="xctx_connector_error")
+    assert_payload_contract(unknown_live["connector"], contract="always_json_object", failure_payload="xctx_connector_error")
     assert unknown_live["found"] is False
     assert unknown_live["status"] == "not_found"
     assert unknown_live["command_status"]["ok"] is True
@@ -402,8 +399,8 @@ def main() -> int:
     test_generic_connector_runtime_has_no_file_manager_implementation()
     test_root_audit_does_not_import_scoped_external_command_adapter()
     test_xctx_native_passthrough_stays_transparent()
-    test_xctx_native_passthrough_failure_has_shape_guarantee()
-    test_xctx_native_passthrough_failure_hides_argv_until_full_shape()
+    test_xctx_native_passthrough_failure_has_payload_contract()
+    test_xctx_native_passthrough_failure_hides_argv_until_max_detail()
     test_external_command_filesystem_discovery_and_observation()
     test_external_command_filesystem_always_shapes_failures()
 

@@ -11,14 +11,18 @@ stdout:
     command: cmdline_arg
     record_type: record_type
     ok: ok
+    detail_level: detail_level
     domain_level: domain_level
     payload: results
     error: error
+detail_levels:
+  basic: Operational answer. Minimal lawful payload; diagnostics suppressed.
+  more: Navigation and learning payload. Adds affordance context and examples.
+  max: Forensic developer payload. Adds diagnostics, provenance, and full definitions.
 record_types:
   help: Machine-readable root command interface.
   version: Version and root executable-context metadata.
   discovery: Discovery records describing root, agent-domain, agent-subdomain, or named affordance surfaces.
-  result: Discovery and non-mutating command result records.
   observation: Read-only observation of a discovered object or domain surface.
   plan: Non-mutating plan or refusal-to-plan record.
   execution_result: Execute command outcome. Mutation can be gated behind explicit commit semantics.

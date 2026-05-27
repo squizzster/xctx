@@ -55,7 +55,7 @@ list_add:
   probes:
     - ./xctx --json discover <domain_id>::<subdomain_id> list_<objects>
     - ./xctx --json discover <domain_id>::<subdomain_id> list_<objects> --limit 2
-    - ./xctx --json discover <domain_id>::<subdomain_id> list_<objects> --shape full
+    - ./xctx --json discover <domain_id>::<subdomain_id> list_<objects> --projection full
 option_add:
   probes:
     - ./xctx --json discover <domain_id>::<owning_subdomain>
@@ -70,12 +70,12 @@ middleware_add:
   assert:
     - one_json_object
     - structured_failure
-    - shape_guarantee_present_when_connector_metadata_present
+    - payload_contract_present_when_connector_metadata_present
 removal:
   probes:
     - rg '<removed_id_or_flag>' yaml_dynamic_config docs tests README.md || true
-    - ./xctx --json discover <old_shape> || true
+    - ./xctx --json discover <old_projection> || true
   assert:
     - stale_refs_removed
-    - old_shape_refused
+    - old_projection_refused
 ```

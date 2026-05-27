@@ -11,7 +11,9 @@ import yaml
 from xctx.io.stdout import write_stdout_record
 from xctx.process.redaction import redact_value
 from xctx.protocol.accessors import key_for, protocol_version
+from xctx.protocol.detail import detail_level
 from xctx.protocol.guidance import normalize_guidance
+from xctx.protocol.projection import project_output_envelope, project_record_payload
 
 
 def now_ms() -> int:
@@ -61,14 +63,23 @@ def emit_record(
     cmdline_arg: str | None = None,
     domain_level: str | None = None,
 ) -> None:
+    public_payload = project_record_payload(
+        store,
+        record_type,
+        payload,
+        command=command,
+        cmdline_arg=cmdline_arg or command,
+        domain_level=domain_level,
+    )
     envelope: dict[str, Any] = {}
     for logical_key, default, value in (
         ("version", "version_xctx", protocol_version(store)),
         ("command", "cmdline_arg", cmdline_arg or command),
         ("record_type", None, record_type),
         ("ok", "ok", ok),
+        ("detail_level", "detail_level", detail_level(store)),
         ("domain_level", None, domain_level),
-        ("payload", "results", payload),
+        ("payload", "results", public_payload),
     ):
         output_key = key_for(store, logical_key, default)
         if output_key and value is not None:
@@ -77,11 +88,15 @@ def emit_record(
         envelope[key_for(store, "error", "error")] = error
     if next_moves:
         envelope["next_moves"] = next_moves
-    write_stdout_record(redact_value(normalize_guidance(envelope)), store.get("output_format", "jsonl"))
+    public_envelope = project_output_envelope(store, envelope)
+    write_stdout_record(redact_value(normalize_guidance(public_envelope)), store.get("output_format", "jsonl"))
 
 
 def emit_raw_for_store(store: dict[str, Any], payload: dict[str, Any]) -> None:
-    write_stdout_record(redact_value(normalize_guidance(payload)), store.get("output_format", "jsonl"))
+    raw = dict(payload)
+    raw.setdefault("detail_level", detail_level(store))
+    public_raw = project_output_envelope(store, raw)
+    write_stdout_record(redact_value(normalize_guidance(public_raw)), store.get("output_format", "jsonl"))
 
 
 def emit_minimal_error(
@@ -96,6 +111,7 @@ def emit_minimal_error(
         "cmdline_arg": command,
         "record_type": "error",
         "ok": False,
+        "detail_level": "basic",
         "results": {},
         "error": str(message),
     }

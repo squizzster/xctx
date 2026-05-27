@@ -71,11 +71,11 @@ libs/xctx:
     - argv_parsing
     - command_admission
     - envelopes
-    - generic_reference_shapes
+    - generic_reference_patterns
     - option_syntax
-    - audit_shape
+    - audit_contract
     - plan_receipts
-    - repair_shape
+    - repair_contract
   forbids:
     - provider_semantics
     - ticker_semantics
@@ -105,7 +105,7 @@ checks:
     question: Does every domain operation require explicit domain or subdomain scope?
   - id: core_purity
     question: Did domain vocabulary avoid libs/xctx generic runtime?
-  - id: error_shape
+  - id: error_contract
     question: Is error text in error and recovery guidance in next_moves?
   - id: audit_fail_closed
     question: Do malformed checks and adapter failures become failing audit checks?

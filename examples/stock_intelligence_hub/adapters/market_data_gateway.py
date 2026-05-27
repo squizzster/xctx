@@ -44,24 +44,24 @@ from xctx_live.instruments import (  # noqa: E402
 
 
 def parse_discover_args(args: list[str]) -> tuple[str, str]:
-    shape = "compact"
+    projection = "compact"
     query_parts: list[str] = []
     index = 0
     while index < len(args):
         token = args[index]
-        if token == "--shape":
+        if token == "--projection":
             if index + 1 >= len(args):
-                raise ValueError("--shape requires a value")
-            shape = args[index + 1]
-            if shape not in {"compact", "full"}:
-                raise ValueError("--shape must be compact or full")
+                raise ValueError("--projection requires a value")
+            projection = args[index + 1]
+            if projection not in {"compact", "full"}:
+                raise ValueError("--projection must be compact or full")
             index += 2
             continue
         if token.startswith("--"):
-            raise ValueError("supported discover argument shape: [--shape compact|full]")
+            raise ValueError("supported discover argument projection: [--projection compact|full]")
         query_parts.append(token)
         index += 1
-    return joined_query(query_parts), shape
+    return joined_query(query_parts), projection
 
 
 def parse_observe_args(args: list[str]) -> tuple[str, dict[str, object] | None]:
@@ -107,10 +107,10 @@ def main(argv: list[str] | None = None) -> int:
 
     if command == "discover":
         try:
-            query, shape = parse_discover_args(rest)
+            query, projection = parse_discover_args(rest)
         except ValueError as exc:
             return usage_error(str(exc))
-        payload = instrument_search_payload(ROOT, query) if query else instrument_registry_discovery(ROOT, shape=shape)
+        payload = instrument_search_payload(ROOT, query) if query else instrument_registry_discovery(ROOT, projection=projection)
     elif command in {"search", "search_entity_instrument", "search-instruments", "search-instrument", "search_entity"}:
         query = joined_query(rest)
         if not query:

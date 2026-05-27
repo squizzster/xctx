@@ -17,7 +17,7 @@ from xctx.process.limits import (
     validated_max_output_bytes,
     validated_timeout,
 )
-from xctx.process.redaction import redact_preview, redact_value
+from xctx.process.redaction import redact_argv_values, redact_preview, redact_value
 from xctx.protocol.guidance import command_hints
 
 
@@ -31,6 +31,7 @@ class ConnectorContext:
     subdomain_id: str
     subdomain_config: Mapping[str, Any]
     connector_config: Mapping[str, Any]
+    detail_level: str = "basic"
 
     @property
     def adapter_ref(self) -> str:
@@ -41,7 +42,7 @@ def readonly_mapping(value: Mapping[str, Any]) -> Mapping[str, Any]:
     return MappingProxyType(dict(value))
 
 
-def shape_guarantee(kind: str) -> dict[str, str]:
+def payload_contract(kind: str) -> dict[str, str]:
     base = {
         "xctx_receives": "single_json_object_for_live_data",
         "raw_external_output": "never_returned_unparsed",
@@ -51,21 +52,21 @@ def shape_guarantee(kind: str) -> dict[str, str]:
         return {
             **base,
             "contract": "always_json_object",
-            "success_shape": "domain_object",
-            "failure_shape": "xctx_connector_error",
+            "success_payload": "domain_object",
+            "failure_payload": "xctx_connector_error",
         }
     if kind == "xctx_native_passthrough":
         return {
             **base,
             "contract": "pass_through_json_object",
-            "success_shape": "target_adapter_object",
-            "failure_shape": "xctx_native_passthrough_error",
+            "success_payload": "target_adapter_object",
+            "failure_payload": "xctx_native_passthrough_error",
         }
     return {
         **base,
         "contract": "always_json_object",
-        "success_shape": "connector_object",
-        "failure_shape": "xctx_connector_error",
+        "success_payload": "connector_object",
+        "failure_payload": "xctx_connector_error",
     }
 
 
@@ -82,7 +83,7 @@ def connector_meta(
         "kind": kind,
         "agent_domain": domain_id,
         "agent_subdomain": subdomain_id,
-        "shape_guarantee": shape_guarantee(kind),
+        "payload_contract": payload_contract(kind),
     }
     if domain_id and subdomain_id:
         payload["adapter_ref"] = f"{domain_id}::{subdomain_id}"
@@ -108,7 +109,7 @@ def command_status(
         "timed_out": timed_out,
     }
     if argv is not None:
-        payload["argv"] = redact_value(argv)
+        payload["argv"] = redact_argv_values(argv)
     if error:
         payload["error"] = redact_preview(error)
     if stdout is not None:
@@ -169,13 +170,19 @@ def connector_error_payload(
     return payload
 
 
+def detail_is_max(context: ConnectorContext | None) -> bool:
+    return bool(context and context.detail_level == "max")
+
+
 def parse_controls(args: list[str], *, default_limit: int, max_limit: int) -> tuple[list[str], dict[str, Any]]:
     rest: list[str] = []
-    controls: dict[str, Any] = {"limit": default_limit, "cursor": 0, "shape": "compact"}
+    controls: dict[str, Any] = {"limit": default_limit, "cursor": 0, "projection": "compact"}
     index = 0
     while index < len(args):
         token = args[index]
-        if token in {"--limit", "--cursor", "--shape"}:
+        if token == "--shape":
+            raise ValueError("unsupported --shape; use --projection compact|full")
+        if token in {"--limit", "--cursor", "--projection"}:
             if index + 1 >= len(args):
                 raise ValueError(f"{token} requires a value")
             value = args[index + 1]
@@ -183,16 +190,18 @@ def parse_controls(args: list[str], *, default_limit: int, max_limit: int) -> tu
                 limit = int(value)
                 if limit < 1:
                     raise ValueError("--limit must be at least 1")
-                controls["limit"] = min(limit, max_limit)
+                if limit > max_limit:
+                    raise ValueError(f"--limit exceeds maximum {max_limit}")
+                controls["limit"] = limit
             elif token == "--cursor":
                 cursor = int(value)
                 if cursor < 0:
                     raise ValueError("--cursor cannot be negative")
                 controls["cursor"] = cursor
-            elif token == "--shape":
+            elif token == "--projection":
                 if value not in {"compact", "full"}:
-                    raise ValueError("--shape must be compact or full")
-                controls["shape"] = value
+                    raise ValueError("--projection must be compact or full")
+                controls["projection"] = value
             index += 2
             continue
         rest.append(token)

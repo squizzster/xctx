@@ -30,7 +30,7 @@ def _plan_context(store: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def plan_payload(args: list[str], store: dict[str, Any]) -> dict[str, Any]:
+def _plan_full_payload(args: list[str], store: dict[str, Any]) -> dict[str, Any]:
     request = parse_plan_request(args)
     context = _plan_context(store)
     operation = request.operation_text
@@ -59,7 +59,7 @@ def plan_payload(args: list[str], store: dict[str, Any]) -> dict[str, Any]:
         "receipt_note": "receipt_sha5 is accepted only when it resolves uniquely to a recorded plan in the local xctx plan ledger; receipt_sha256 is the canonical deterministic receipt.",
         "planner_context": context,
         "planner_ledger": as_project_path(store["root"], plan_store_dir(store)),
-        "accepted_execute_shape": f"./xctx execute {plan_id} --commit",
+        "accepted_execute_cmd": f"./xctx execute {plan_id} --commit",
         "lawful_next_moves": command_hints(
             [
                 "./xctx discover",
@@ -74,6 +74,9 @@ def plan_payload(args: list[str], store: dict[str, Any]) -> dict[str, Any]:
     return payload
 
 
+def plan_payload(args: list[str], store: dict[str, Any]) -> dict[str, Any]:
+    return _plan_full_payload(args, store)
+
 def _context_match(store: dict[str, Any], plan: dict[str, Any] | None) -> tuple[bool, str | None, str | None]:
     if not plan:
         return False, None, _plan_context(store)["config_sha256"]
@@ -85,7 +88,7 @@ def _context_match(store: dict[str, Any], plan: dict[str, Any] | None) -> tuple[
     return planned == current, str(planned) if planned else None, current
 
 
-def execute_payload(args: list[str], commit: bool, store: dict[str, Any]) -> dict[str, Any]:
+def _execute_full_payload(args: list[str], commit: bool, store: dict[str, Any]) -> dict[str, Any]:
     cleaned = [str(arg).strip() for arg in args if str(arg).strip()]
     if not cleaned:
         return {
@@ -100,7 +103,7 @@ def execute_payload(args: list[str], commit: bool, store: dict[str, Any]) -> dic
     if len(cleaned) != 1:
         return {
             "ok": False,
-            "error": "invalid_execute_shape",
+            "error": "invalid_execute_command",
             "requested_plan": " ".join(cleaned),
             "commit_requested": commit,
             "status": "refused",
@@ -167,3 +170,7 @@ def execute_payload(args: list[str], commit: bool, store: dict[str, Any]) -> dic
         ),
         "next_move": "./xctx audit root" if accepted else "./xctx plan <operation> <target>",
     }
+
+
+def execute_payload(args: list[str], commit: bool, store: dict[str, Any]) -> dict[str, Any]:
+    return _execute_full_payload(args, commit, store)

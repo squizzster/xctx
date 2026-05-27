@@ -360,7 +360,7 @@ def main() -> int:
                 )
 
     try:
-        root_audit = _json_payload_for_xctx(["audit", "root"])
+        root_audit = _json_payload_for_xctx(["--max", "audit", "root"])
         for token in (
             "external_command:",
             "aapl_latest_price_resolves",

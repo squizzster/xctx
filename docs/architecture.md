@@ -8,13 +8,13 @@ libs/xctx:
   owns:
     - process_argv
     - command_policy
-    - parser_shape
+    - parser_contract
     - envelopes
     - generic_ref_parsing
     - option_syntax
-    - audit_shape
+    - audit_contract
     - plan_execute_receipts
-    - repair_shape
+    - repair_contract
   forbids:
     - domain_semantics
     - adapter_imports
@@ -50,7 +50,7 @@ old_command_aliases: forbidden
 ```yaml
 process:
   runtime: top_level_dispatch_and_errors
-  parser: argparse_shape_only
+  parser: argparse_contract_only
   capture: bounded_subprocess_capture
   redaction: shared_protocol_facing_secret_masking
 domain:

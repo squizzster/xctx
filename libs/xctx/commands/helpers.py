@@ -11,7 +11,7 @@ def cmdline_arg(args: argparse.Namespace, command: str) -> str:
 
 
 def live_payload_failed(payload: Any) -> bool:
-    """Return true when a shaped live payload represents connector failure."""
+    """Return true when a structured live payload represents connector failure."""
     if not isinstance(payload, dict):
         return False
     object_type = str(payload.get("object_type", "")).lower()

@@ -9,7 +9,7 @@ from xctx.domain.actions import (
     compact_action_index,
     iter_domain_action_configs,
     parse_scoped_subdomain_mode_ref,
-    selected_action_shape,
+    selected_action_projection,
     subdomain_action_config,
     validate_declared_action_args,
 )
@@ -20,6 +20,7 @@ from xctx.errors import XctxError
 from xctx.ports.external_command import call_external_command
 from xctx.protocol.accessors import command_map_for_group, protocol_version
 from xctx.protocol.descriptions import detail_enabled, selected_description, with_description
+from xctx.protocol.detail import detail_at_least, is_max
 from xctx.protocol.guidance import command_hint, command_hints, root_protocol_next_moves
 from xctx.protocol.option_surface import target_option_surface
 
@@ -63,7 +64,7 @@ def universe_discovery_payload(store: dict[str, Any]) -> dict[str, Any]:
     domains = store.get("agent_domains", {})
     compact_domains = [compact_domain(store, domain) for domain in domains.values()]
     next_move_context = agent_domain_scope_guidance(store, compact_domains)
-    return {
+    payload = {
         "id": universe.get("name", "xctx_universe"),
         "kind": "xctx_universe",
         "version_xctx": protocol_version(store),
@@ -82,23 +83,26 @@ def universe_discovery_payload(store: dict[str, Any]) -> dict[str, Any]:
                 1 for domain in domains.values() if domain.get("status") == "down_for_maintenance"
             ),
         },
-        "command_surface": {
-            "xctx": command_map_for_group(store, "xctx", "main"),
-        },
-        "next_move_context": next_move_context,
+        "agent_domains": compact_domains,
         "next_moves": root_protocol_next_moves(store),
     }
+    if detail_at_least(store, "more"):
+        payload["command_surface"] = {"xctx": command_map_for_group(store, "xctx", "main")}
+        payload["next_move_context"] = next_move_context
+    return payload
 
 def root_discovery_payload(store: dict[str, Any]) -> dict[str, Any]:
     root = store.get("universe", {}).get("root", {})
     domains = [compact_domain(store, domain) for domain in store.get("agent_domains", {}).values()]
     next_move_context = agent_domain_scope_guidance(store, domains)
-    return {
+    payload = {
         "description": selected_description(store, root),
         "agent_domains": domains,
-        "next_move_context": next_move_context,
         "next_moves": root_protocol_next_moves(store),
     }
+    if detail_at_least(store, "more"):
+        payload["next_move_context"] = next_move_context
+    return payload
 
 def domain_discovery_payload(store: dict[str, Any], domain_id: str) -> dict[str, Any]:
     domain = resolve_domain(store, domain_id)
@@ -107,10 +111,19 @@ def domain_discovery_payload(store: dict[str, Any], domain_id: str) -> dict[str,
         compact_subdomain(store, domain_id, subdomain)
         for subdomain in sorted(domain.get("_subdomains", {}).values(), key=lambda item: item.get("_priority", 9999))
     ]
-    payload["domain_affordances"] = {
-        name: {key: value for key, value in config.items() if not key.startswith("_")}
-        for name, config in iter_domain_action_configs(store, domain_id)
-    }
+    if detail_at_least(store, "more"):
+        payload["domain_affordances"] = {
+            name: {key: value for key, value in config.items() if not key.startswith("_")}
+            for name, config in iter_domain_action_configs(store, domain_id)
+        }
+    else:
+        affordance_cmds = [
+            str(config.get("run_cmd"))
+            for _name, config in iter_domain_action_configs(store, domain_id)
+            if config.get("run_cmd")
+        ]
+        if affordance_cmds:
+            payload["affordance_count"] = len(affordance_cmds)
     payload["next_moves"] = command_hints(
         [f"./xctx discover {domain_id}::{sub['id']}" for sub in domain.get("_subdomains", {}).values()]
     )
@@ -134,7 +147,7 @@ def subdomain_discovery_payload(
         index = 0
         while index < len(parts):
             token = parts[index]
-            if token == "--shape":
+            if token == "--projection":
                 index += 2
                 continue
             return True
@@ -156,23 +169,27 @@ def subdomain_discovery_payload(
     _discover_action_name, discover_action = subdomain_action_config(subdomain, "discover")
     if discover_action:
         validate_declared_action_args(discover_action, query_parts)
-    shape = selected_action_shape(discover_action, query_parts)
+    projection = selected_action_projection(discover_action, query_parts)
     live = call_external_command(store, subdomain, ["discover", *query_parts])
     actions = subdomain.get("actions", {})
     payload = {
         "agent_domain": domain_id,
         "agent_subdomain": compact_subdomain(store, domain_id, subdomain),
         "description": selected_description(store, subdomain),
-        "configured_options": target_option_surface(store, subdomain),
         "live_data": live,
     }
-    if shape:
-        payload["shape"] = shape
+    if detail_at_least(store, "more"):
+        payload["configured_options"] = target_option_surface(store, subdomain)
+    if projection:
+        payload["projection"] = projection
     concrete_query = has_concrete_discovery_query(query_parts)
-    if shape == "compact" and not concrete_query:
-        payload["configured_action_index"] = compact_action_index(actions)
-    elif shape != "compact" and not concrete_query:
-        payload["configured_actions"] = actions
+    if not concrete_query:
+        if is_max(store):
+            payload["configured_actions"] = actions
+        elif detail_at_least(store, "more"):
+            payload["configured_action_index"] = compact_action_index(actions)
+        else:
+            payload["configured_action_count"] = len(actions)
     if detail_enabled(store) and subdomain.get("data_description"):
         payload["data_description"] = subdomain["data_description"]
     return payload

@@ -565,12 +565,12 @@ def parse_list_options(args: list[str]) -> dict[str, Any]:
         "status": None,
         "exchange": None,
         "security_type": None,
-        "shape": "compact",
+        "projection": "compact",
     }
     index = 0
     while index < len(args):
         token = args[index]
-        if token in {"--limit", "--cursor", "--status", "--exchange", "--security-type", "--shape"}:
+        if token in {"--limit", "--cursor", "--status", "--exchange", "--security-type", "--projection"}:
             if index + 1 >= len(args):
                 raise ValueError(f"{token} requires a value")
             value = args[index + 1]
@@ -581,10 +581,10 @@ def parse_list_options(args: list[str]) -> dict[str, Any]:
                 options["limit"] = min(limit, LIST_MAX_LIMIT)
             elif token == "--cursor":
                 options["cursor"] = _parse_positive_int(value, token)
-            elif token == "--shape":
+            elif token == "--projection":
                 if value not in {"compact", "full"}:
-                    raise ValueError("--shape must be compact or full")
-                options["shape"] = value
+                    raise ValueError("--projection must be compact or full")
+                options["projection"] = value
             elif token == "--security-type":
                 options["security_type"] = value
             else:
@@ -615,8 +615,8 @@ def _list_run_cmd(options: dict[str, Any], cursor: int | None = None) -> str:
         parts.append(f"--exchange {options['exchange']}")
     if options.get("security_type"):
         parts.append(f"--security-type {options['security_type']}")
-    if options.get("shape") != "compact":
-        parts.append(f"--shape {options['shape']}")
+    if options.get("projection") != "compact":
+        parts.append(f"--projection {options['projection']}")
     return " ".join(parts)
 
 
@@ -646,8 +646,8 @@ def list_instruments(root: Path, args: list[str]) -> dict[str, Any]:
     payload = {
         "object_type": "market_data_gateway_instrument_list",
         "description": f"Compact canonical instrument index currently known to the {scoped_ref()} subdomain.",
-        "shape": options["shape"],
-        "observe_shape": f"./xctx observe {scoped_ref()} <instrument_id|ticker|CIK|market_series:ticker:daily>",
+        "projection": options["projection"],
+        "observe_cmd_pattern": f"./xctx observe {scoped_ref()} <instrument_id|ticker|CIK|market_series:ticker:daily>",
         "total_count": len(instruments),
         "filtered_count": len(filtered),
         "returned_count": len(page),
@@ -663,7 +663,7 @@ def list_instruments(root: Path, args: list[str]) -> dict[str, Any]:
         ),
         "filters": filters,
         "instruments": [
-            public_instrument(item) if options["shape"] == "full" else compact_public_instrument(item)
+            public_instrument(item) if options["projection"] == "full" else compact_public_instrument(item)
             for item in page
         ],
     }
@@ -1271,7 +1271,7 @@ def market_series_observation(root: Path, identifier: str) -> dict[str, Any]:
     return payload
 
 
-def instrument_registry_discovery(root: Path, *, shape: str = "compact") -> dict[str, Any]:
+def instrument_registry_discovery(root: Path, *, projection: str = "compact") -> dict[str, Any]:
     instruments = load_all_instruments(root)
     mstats = market_stats(root)
     stats_payload = {
@@ -1282,10 +1282,10 @@ def instrument_registry_discovery(root: Path, *, shape: str = "compact") -> dict
         "market_series_namespace": "market_series:<lowercase_ticker>:daily",
         **mstats,
     }
-    if shape == "compact":
+    if projection == "compact":
         return {
             "object_type": "market_data_gateway_discovery",
-            "shape": "compact",
+            "projection": "compact",
             "context_state": "without_equity",
             "description": "Discover instrument identity and market-series modes.",
             "stats": {
@@ -1296,44 +1296,47 @@ def instrument_registry_discovery(root: Path, *, shape: str = "compact") -> dict
             },
             "observable_objects": {
                 "instrument": {
-                    "id_shape": "instrument:<lowercase_primary_ticker>",
-                    "observe_shape": f"./xctx observe {scoped_ref()} instrument:<ticker>",
+                    "id_pattern": "instrument:<lowercase_primary_ticker>",
+                    "observe_cmd_pattern": f"./xctx observe {scoped_ref()} instrument:<ticker>",
                 },
                 "issuer": {
-                    "id_shape": "issuer:cik:<10_digit_cik>",
-                    "observe_shape": f"./xctx observe {scoped_ref()} issuer:cik:<CIK>",
+                    "id_pattern": "issuer:cik:<10_digit_cik>",
+                    "observe_cmd_pattern": f"./xctx observe {scoped_ref()} issuer:cik:<CIK>",
                 },
                 "market_series": {
-                    "id_shape": "market_series:<lowercase_ticker>:daily",
-                    "observe_shape": f"./xctx observe {scoped_ref()} market_series:<ticker>:daily",
+                    "id_pattern": "market_series:<lowercase_ticker>:daily",
+                    "observe_cmd_pattern": f"./xctx observe {scoped_ref()} market_series:<ticker>:daily",
                 },
             },
             "discoverable_modes": [
                 {
                     "id": "search_entity_instrument",
                     "mode_kind": "search",
-                    "query_shape": "<company|ticker|CIK|alias>",
+                    "query_pattern": "<company|ticker|CIK|alias>",
                     "run_cmd": f"./xctx discover {scoped_ref()} search_entity_instrument <query>",
                 },
                 {
                     "id": "search_market_series",
                     "mode_kind": "search",
-                    "query_shape": "<ticker|issuer|provider|text>",
+                    "query_pattern": "<ticker|issuer|provider|text>",
                     "run_cmd": f"./xctx discover {scoped_ref()} search_market_series <query>",
                 },
                 {
                     "id": "latest_price",
                     "mode_kind": "search",
-                    "query_shape": "<ticker|instrument_id|CIK|market_series:ticker:daily>",
+                    "query_pattern": "<ticker|instrument_id|CIK|market_series:ticker:daily>",
                     "run_cmd": latest_price_discovery_cmd("<query>"),
                 },
                 {
                     "id": "list_instruments",
                     "mode_kind": "list",
-                    "run_cmd": f"./xctx discover {scoped_ref()} list_instruments [--limit N] [--shape compact|full]",
+                    "run_cmd": f"./xctx discover {scoped_ref()} list_instruments [--limit N] [--projection compact|full]",
                 },
             ],
-            "full_shape_cmd": f"./xctx discover {scoped_ref()} --shape full",
+            "projection_controls": {
+                "current": "compact",
+                "available": [{"projection": "full", "run_cmd": f"./xctx discover {scoped_ref()} --projection full"}],
+            },
             "next_moves": [
                 f"./xctx discover {scoped_ref()} search_entity_instrument <company|ticker|CIK|alias>",
                 f"./xctx discover {scoped_ref()} search_market_series <ticker|issuer|provider|text>",
@@ -1343,7 +1346,7 @@ def instrument_registry_discovery(root: Path, *, shape: str = "compact") -> dict
         }
     return {
         "object_type": "market_data_gateway_discovery",
-        "shape": "full",
+        "projection": "full",
         "context_state": "without_equity",
         "description": "Search this subdomain first when an agent has a company, ticker, CIK, or alias and needs the canonical local ID or a bundled OHLCV series.",
         "data_description": "Bundled read-only canonical instrument seed set plus bundled read-only mini_stocks SQLite market-series fixture.",
@@ -1368,7 +1371,7 @@ def instrument_registry_discovery(root: Path, *, shape: str = "compact") -> dict
             "list_instruments": {
                 "priority": 20,
                 "desc": "Enumerate a compact canonical instrument index without guessing a company name or ticker.",
-                "run_cmd": f"./xctx discover {scoped_ref()} list_instruments [--limit N] [--cursor CURSOR] [--shape compact|full] [--status STATUS] [--exchange EXCHANGE] [--security-type TYPE]",
+                "run_cmd": f"./xctx discover {scoped_ref()} list_instruments [--limit N] [--cursor CURSOR] [--projection compact|full] [--status STATUS] [--exchange EXCHANGE] [--security-type TYPE]",
             },
             "observe_instrument_or_series": {
                 "priority": 30,
@@ -1481,7 +1484,7 @@ def instrument_audit(root: Path) -> dict[str, Any]:
             "value": len(set(ids)),
         },
         {
-            "id": "audit:market_data_gateway:cik_shape",
+            "id": "audit:market_data_gateway:cik_pattern",
             "status": "pass" if all(isinstance(cik, str) and len(cik) == 10 and cik.isdigit() for cik in ciks) else "fail",
             "value": len(ciks),
         },

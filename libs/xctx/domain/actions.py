@@ -8,7 +8,7 @@ from xctx.errors import XctxError
 from xctx.protocol.actions import action_matches, action_tokens
 
 
-## Protocol boundary: action names, aliases, controls, and shapes are declared
+## Protocol boundary: action names, aliases, controls, and projections are declared
 ## by scoped YAML packs. This module validates declared structure, not meaning.
 def _domain_action_name(action_name: str, action: dict[str, Any]) -> str:
     return str(action.get("domain_action_name") or action_name)
@@ -143,7 +143,7 @@ def parse_scoped_subdomain_mode_ref(
     token: str | None,
 ) -> tuple[str | None, str | None, str | None, dict[str, Any] | None]:
     """Parse <agent_domain>::<agent_subdomain>::<mode> structurally."""
-    ## Boundary guard: this parser validates only configured reference shape.
+    ## Boundary guard: this parser validates only configured reference grammar.
     ## The resolved mode's meaning is owned by YAML metadata and its adapter.
     if not token or "::" not in token:
         return None, None, None, None
@@ -172,43 +172,42 @@ def _collection_contract(action: dict[str, Any]) -> dict[str, Any]:
 def _has_collection_cursor(collection: dict[str, Any]) -> bool:
     return str(collection.get("cursor", "none")).lower() not in {"", "none", "false", "no"}
 
-def _action_shape_contract(action: dict[str, Any]) -> dict[str, Any]:
-    for key in ("discovery_shapes", "output_shapes", "shapes"):
-        raw = action.get(key)
-        if isinstance(raw, dict):
-            return raw
-        if isinstance(raw, list):
-            return {"shapes": raw}
+def _action_projection_contract(action: dict[str, Any]) -> dict[str, Any]:
+    raw = action.get("projections")
+    if isinstance(raw, dict):
+        return raw
+    if isinstance(raw, list):
+        return {"allowed": raw}
     collection = _collection_contract(action)
     if collection:
         return {
-            "default_shape": collection.get("default_shape"),
-            "shapes": collection.get("item_shapes", collection.get("shapes", [])),
+            "default": collection.get("default_projection", collection.get("default")),
+            "allowed": collection.get("item_projections", collection.get("projections", [])),
         }
     return {}
 
-def _action_shapes(action: dict[str, Any]) -> set[str]:
-    contract = _action_shape_contract(action)
-    raw = contract.get("item_shapes", contract.get("shapes", [])) or []
+def _action_projections(action: dict[str, Any]) -> set[str]:
+    contract = _action_projection_contract(action)
+    raw = contract.get("item_projections", contract.get("allowed", contract.get("projections", []))) or []
     if isinstance(raw, str):
         raw = [raw]
     return {str(item) for item in raw}
 
-def selected_action_shape(action: dict[str, Any] | None, action_args: list[str]) -> str | None:
+def selected_action_projection(action: dict[str, Any] | None, action_args: list[str]) -> str | None:
     if not action:
         return None
-    contract = _action_shape_contract(action)
+    contract = _action_projection_contract(action)
     if not contract:
         return None
-    shape = contract.get("default_shape", contract.get("default"))
+    projection = contract.get("default_projection", contract.get("default"))
     index = 0
     while index < len(action_args):
-        if action_args[index] == "--shape" and index + 1 < len(action_args):
-            shape = action_args[index + 1]
+        if action_args[index] == "--projection" and index + 1 < len(action_args):
+            projection = action_args[index + 1]
             index += 2
             continue
         index += 1
-    return str(shape) if shape else None
+    return str(projection) if projection else None
 
 def compact_action_index(actions: dict[str, Any]) -> dict[str, dict[str, Any]]:
     out: dict[str, dict[str, Any]] = {}
@@ -229,12 +228,14 @@ def compact_action_index(actions: dict[str, Any]) -> dict[str, dict[str, Any]]:
 
 def validate_declared_action_args(action: dict[str, Any], action_args: list[str]) -> None:
     ## Protocol boundary: validate generic controls only when a scoped pack
-    ## declares them. Cursor and shape values stay opaque to xctx.
+    ## declares them. Cursor and projection values stay opaque to xctx.
     collection = _collection_contract(action)
     index = 0
     while index < len(action_args):
         token = action_args[index]
-        if token not in {"--limit", "--cursor", "--shape"}:
+        if token == "--shape":
+            raise XctxError("unsupported --shape; use --projection compact|full")
+        if token not in {"--limit", "--cursor", "--projection"}:
             index += 1
             continue
         if index + 1 >= len(action_args):
@@ -245,12 +246,12 @@ def validate_declared_action_args(action: dict[str, Any], action_args: list[str]
                 raise XctxError(f"unsupported collection control for this action: {token}")
             if not _has_collection_cursor(collection):
                 raise XctxError("--cursor is not supported by this collection")
-        elif token == "--shape":
-            shapes = _action_shapes(action)
-            if not shapes:
-                raise XctxError("--shape is not supported by this action")
-            if value not in shapes:
-                raise XctxError(f"unsupported --shape value: {value} (allowed: {'|'.join(sorted(shapes))})")
+        elif token == "--projection":
+            projections = _action_projections(action)
+            if not projections:
+                raise XctxError("--projection is not supported by this action")
+            if value not in projections:
+                raise XctxError(f"unsupported --projection value: {value} (allowed: {'|'.join(sorted(projections))})")
         elif token == "--limit":
             if not collection:
                 raise XctxError(f"unsupported collection control for this action: {token}")

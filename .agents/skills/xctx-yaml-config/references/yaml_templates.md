@@ -40,14 +40,14 @@ actions:
     priority: 10
     entrypoint_command: discover
     query_required: false
-    desc: Discover modes, observable object shapes, concrete object metadata, and next commands.
-    discovery_shapes:
-      default_shape: compact
-      shapes: [compact, full]
-    argument_shapes:
+    desc: Discover modes, observable object patterns, concrete object metadata, and next commands.
+    projections:
+      default: compact
+      allowed: [compact, full]
+    argument_patterns:
       - "[<object>:<id>]"
-      - "[--shape compact|full]"
-    run_cmd: ./xctx discover <domain_id>::<subdomain_id> [<object>:<id>] [--shape compact|full]
+      - "[--projection compact|full]"
+    run_cmd: ./xctx discover <domain_id>::<subdomain_id> [<object>:<id>] [--projection compact|full]
 ```
 
 Parent registration:
@@ -65,7 +65,6 @@ agent_subdomains:
 entrypoint:
   file: connector_supervisor.py
   protocol: json_stdout
-  compact_flag: --compact
   timeout_seconds: 30
 connector:
   kind: xctx_native_passthrough
@@ -79,7 +78,6 @@ External command:
 entrypoint:
   file: connector_supervisor.py
   protocol: json_stdout
-  compact_flag: --compact
   timeout_seconds: 10
 connector:
   kind: external_command
@@ -99,7 +97,7 @@ actions:
     query_required: true
     mode_kind: search
     desc: Discover <object> records by <query>; use observe for materialized data.
-    argument_shapes:
+    argument_patterns:
       - "<exact id>"
       - "<descriptive text>"
     examples:
@@ -147,13 +145,13 @@ actions:
       max_limit: 100
       cursor: optional
       cursor_type: opaque
-      default_shape: compact
-      item_shapes: [compact, full]
-    argument_shapes:
+      default: compact
+      item_projections: [compact, full]
+    argument_patterns:
       - "[--limit N]"
       - "[--cursor CURSOR]"
-      - "[--shape compact|full]"
-    run_cmd: ./xctx discover <domain_id>::<subdomain_id> list_<objects> [--limit N] [--cursor CURSOR] [--shape compact|full]
+      - "[--projection compact|full]"
+    run_cmd: ./xctx discover <domain_id>::<subdomain_id> list_<objects> [--limit N] [--cursor CURSOR] [--projection compact|full]
 ```
 
 ## CLI Option

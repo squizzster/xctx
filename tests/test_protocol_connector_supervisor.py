@@ -50,12 +50,12 @@ def test_xctx_native_passthrough_stays_transparent() -> None:
     connector.test_xctx_native_passthrough_stays_transparent()
 
 
-def test_xctx_native_passthrough_failure_has_shape_guarantee() -> None:
-    connector.test_xctx_native_passthrough_failure_has_shape_guarantee()
+def test_xctx_native_passthrough_failure_has_payload_contract() -> None:
+    connector.test_xctx_native_passthrough_failure_has_payload_contract()
 
 
-def test_xctx_native_passthrough_failure_hides_argv_until_full_shape() -> None:
-    connector.test_xctx_native_passthrough_failure_hides_argv_until_full_shape()
+def test_xctx_native_passthrough_failure_hides_argv_until_max_detail() -> None:
+    connector.test_xctx_native_passthrough_failure_hides_argv_until_max_detail()
 
 
 def test_external_command_filesystem_discovery_and_observation() -> None:

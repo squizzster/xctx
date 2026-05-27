@@ -58,7 +58,7 @@ collection_controls:
   optional:
     - --limit
     - --cursor
-    - --shape
+    - --projection
   owner: action.collection
   cursor_meaning: adapter_owned
 ```
@@ -98,4 +98,30 @@ external_command_adapter_path:
 
 ```bash
 python3 .agents/skills/xctx-yaml-config/scripts/check_xctx_yaml_surface.py
+```
+
+
+## Output Detail
+
+```yaml
+detail_level:
+  owner: xctx_framework_envelope
+  values: [basic, more, max]
+  default:
+    naked_orientation_surfaces: more
+    scoped_and_named_surfaces: basic
+  controls:
+    - protocol_guidance
+    - framework_diagnostics
+    - provenance
+  never_controls:
+    - domain_row_projection
+    - pagination
+    - output_format
+    - permission
+    - commit_boundary
+projection:
+  owner: scoped_domain_action
+  values: domain_declared
+  example: --projection compact|full
 ```

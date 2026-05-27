@@ -49,37 +49,37 @@ from xctx_live.filings import (  # noqa: E402
 
 
 def parse_discover_args(args: list[str]) -> tuple[str, str]:
-    shape = "compact"
+    projection = "compact"
     query_parts: list[str] = []
     index = 0
     while index < len(args):
         token = args[index]
-        if token == "--shape":
+        if token == "--projection":
             if index + 1 >= len(args):
-                raise ValueError("--shape requires a value")
-            shape = args[index + 1]
-            if shape not in {"compact", "full"}:
-                raise ValueError("--shape must be compact or full")
+                raise ValueError("--projection requires a value")
+            projection = args[index + 1]
+            if projection not in {"compact", "full"}:
+                raise ValueError("--projection must be compact or full")
             index += 2
             continue
         if token.startswith("--"):
-            raise ValueError("supported discover argument shape: [--shape compact|full]")
+            raise ValueError("supported discover argument projection: [--projection compact|full]")
         query_parts.append(token)
         index += 1
-    return joined_query(query_parts), shape
+    return joined_query(query_parts), projection
 
 
 def parse_list_args(args: list[str], *, cursor_supported: bool = False) -> dict[str, int | str]:
     options: dict[str, int | str] = {
         "limit": LIST_DEFAULT_LIMIT,
         "cursor": 0,
-        "shape": "compact",
+        "projection": "compact",
     }
     index = 0
     while index < len(args):
         token = args[index]
-        if token not in {"--limit", "--cursor", "--shape"}:
-            raise ValueError("supported list argument shape: [--limit N] [--cursor CURSOR] [--shape compact|full]")
+        if token not in {"--limit", "--cursor", "--projection"}:
+            raise ValueError("supported list argument projection: [--limit N] [--cursor CURSOR] [--projection compact|full]")
         if index + 1 >= len(args):
             raise ValueError(f"{token} requires a value")
         value = args[index + 1]
@@ -101,10 +101,10 @@ def parse_list_args(args: list[str], *, cursor_supported: bool = False) -> dict[
             if cursor < 0:
                 raise ValueError("--cursor cannot be negative")
             options["cursor"] = cursor
-        elif token == "--shape":
+        elif token == "--projection":
             if value not in {"compact", "full"}:
-                raise ValueError("--shape must be compact or full")
-            options["shape"] = value
+                raise ValueError("--projection must be compact or full")
+            options["projection"] = value
         index += 2
     return options
 
@@ -117,10 +117,10 @@ def main(argv: list[str] | None = None) -> int:
 
     if command == "discover":
         try:
-            query, shape = parse_discover_args(rest)
+            query, projection = parse_discover_args(rest)
         except ValueError as exc:
             return usage_error(str(exc))
-        payload = discover_with_query(ROOT, query) if query else filing_taxonomy_discovery(ROOT, shape=shape)
+        payload = discover_with_query(ROOT, query) if query else filing_taxonomy_discovery(ROOT, projection=projection)
     elif command == "search-forms":
         query = joined_query(rest)
         matches = search_forms(ROOT, query)
@@ -140,7 +140,7 @@ def main(argv: list[str] | None = None) -> int:
                 ROOT,
                 limit=int(list_options["limit"]),
                 cursor=int(list_options["cursor"]),
-                shape=str(list_options["shape"]),
+                projection=str(list_options["projection"]),
             )
         except ValueError as exc:
             return usage_error(str(exc))
@@ -151,14 +151,14 @@ def main(argv: list[str] | None = None) -> int:
                 ROOT,
                 limit=int(list_options["limit"]),
                 cursor=int(list_options["cursor"]),
-                shape=str(list_options["shape"]),
+                projection=str(list_options["projection"]),
             )
         except ValueError as exc:
             return usage_error(str(exc))
     elif command == "list-priority-buckets":
         try:
             list_options = parse_list_args(rest)
-            payload = list_priority_buckets(ROOT, limit=int(list_options["limit"]), shape=str(list_options["shape"]))
+            payload = list_priority_buckets(ROOT, limit=int(list_options["limit"]), projection=str(list_options["projection"]))
         except ValueError as exc:
             return usage_error(str(exc))
     elif command == "observe":

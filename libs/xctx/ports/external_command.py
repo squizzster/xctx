@@ -58,10 +58,21 @@ def _lawful_argument_run_cmd(subdomain: dict[str, Any], args: list[str]) -> str 
     return None
 
 
-def _adapter_env(subdomain: dict[str, Any]) -> dict[str, str | None]:
+def _adapter_env(store: dict[str, Any], subdomain: dict[str, Any] | None = None) -> dict[str, str | None]:
+    """Return the sanitized connector environment for a scoped subdomain.
+
+    ``store`` is the framework runtime store; ``subdomain`` is the resolved
+    scoped subdomain. A single-argument call is tolerated for isolated private
+    helper tests and is treated as ``subdomain`` with default basic detail.
+    """
+
+    if subdomain is None:
+        subdomain = store
+        store = {}
     return {
         "XCTX_AGENT_DOMAIN": str(subdomain["_domain_id"]) if subdomain.get("_domain_id") else None,
         "XCTX_AGENT_SUBDOMAIN": str(subdomain["id"]) if subdomain.get("id") else None,
+        "XCTX_DETAIL_LEVEL": str(store.get("detail_level") or "basic"),
         "XCTX_RUNTIME_DIR": os.environ.get("XCTX_RUNTIME_DIR"),
     }
 
@@ -114,7 +125,7 @@ def _call_python_entrypoint_subprocess(
         captured = capture_process(
             python_entrypoint_argv(command_path, args),
             cwd=store["root"],
-            env=sanitized_env(_adapter_env(subdomain)),
+            env=sanitized_env(_adapter_env(store, subdomain)),
             timeout=timeout,
             max_output_bytes=max_output_bytes,
         )
@@ -134,7 +145,7 @@ def call_external_command(
     args: list[str],
 ) -> dict[str, Any]:
     ## Boundary guard: adapter args are selected by YAML routing before this
-    ## point. This function executes the declared port and validates JSON shape.
+    ## point. This function executes the declared port and validates the JSON object contract.
     entrypoint = subdomain.get("entrypoint") or {}
     executable = entrypoint.get("file")
     if not executable:
@@ -143,12 +154,9 @@ def call_external_command(
 
     command_path = _resolve_entrypoint(store["root"], executable)
 
-    compact_flag = entrypoint.get("compact_flag", "--compact")
     timeout = _validated_timeout(entrypoint.get("timeout_seconds", 30))
     max_output_bytes = _validated_max_output_bytes(entrypoint.get("max_output_bytes", DEFAULT_MAX_OUTPUT_BYTES))
     command_args = [*args]
-    if compact_flag:
-        command_args.append(str(compact_flag))
 
     returncode, stdout, stderr = _call_python_entrypoint_subprocess(
         store,

@@ -9,7 +9,6 @@ data_description: >-
 entrypoint:
   file: connector_supervisor.py
   protocol: json_stdout
-  compact_flag: --compact
   timeout_seconds: 30
 connector:
   kind: xctx_native_passthrough
@@ -23,20 +22,20 @@ actions:
   discover:
     priority: 10
     entrypoint_command: discover
-    desc: Discover filing taxonomy modes, observable object shapes, and next discovery commands.
-    discovery_shapes:
-      default_shape: compact
-      shapes:
+    desc: Discover filing taxonomy modes, observable object patterns, and next discovery commands.
+    projections:
+      default: compact
+      allowed:
         - compact
         - full
-    argument_shapes:
-      - "[--shape compact|full]"
+    argument_patterns:
+      - "[--projection compact|full]"
     examples:
       - query: compact filing taxonomy discovery
         run_cmd: ./xctx discover stock_intelligence_hub::equity_filing
       - query: full filing taxonomy discovery
-        run_cmd: ./xctx discover stock_intelligence_hub::equity_filing --shape full
-    run_cmd: ./xctx discover stock_intelligence_hub::equity_filing [--shape compact|full]
+        run_cmd: ./xctx discover stock_intelligence_hub::equity_filing --projection full
+    run_cmd: ./xctx discover stock_intelligence_hub::equity_filing [--projection compact|full]
   search_forms:
     domain_affordance: true
     domain_action_name: search_filing_form
@@ -45,7 +44,7 @@ actions:
     query_required: true
     mode_kind: search
     desc: Search SEC/EDGAR filing form types. Exact form-code queries return the exact form and direct amendment only.
-    argument_shapes:
+    argument_patterns:
       - "<form code>"
       - "<form name text>"
       - "<family text>"
@@ -76,26 +75,26 @@ actions:
       max_limit: 100
       cursor: optional
       cursor_type: opaque
-      default_shape: compact
-      item_shapes:
+      default: compact
+      item_projections:
         - compact
         - full
-    argument_shapes:
+    argument_patterns:
       - "[--limit N]"
       - "[--cursor CURSOR]"
-      - "[--shape compact|full]"
+      - "[--projection compact|full]"
     examples:
       - query: list default bounded form set
         run_cmd: ./xctx discover stock_intelligence_hub::equity_filing list_forms
       - query: list a smaller bounded form set
         run_cmd: ./xctx discover stock_intelligence_hub::equity_filing list_forms --limit 10
       - query: list full detail records explicitly
-        run_cmd: ./xctx discover stock_intelligence_hub::equity_filing list_forms --limit 10 --shape full
+        run_cmd: ./xctx discover stock_intelligence_hub::equity_filing list_forms --limit 10 --projection full
     related_commands:
       - ./xctx discover stock_intelligence_hub::equity_filing::search_forms
       - ./xctx discover stock_intelligence_hub::equity_filing search_forms 10-K
     returns: equity_filing_form_list
-    run_cmd: ./xctx discover stock_intelligence_hub::equity_filing list_forms [--limit N] [--cursor CURSOR] [--shape compact|full]
+    run_cmd: ./xctx discover stock_intelligence_hub::equity_filing list_forms [--limit N] [--cursor CURSOR] [--projection compact|full]
   search_families:
     domain_affordance: true
     domain_action_name: search_filing_family
@@ -104,7 +103,7 @@ actions:
     query_required: true
     mode_kind: search
     desc: Search canonical filing families. Exact family-code queries return the exact family only.
-    argument_shapes:
+    argument_patterns:
       - "<family code>"
       - "<family name text>"
       - "<descriptive text>"
@@ -130,24 +129,24 @@ actions:
       max_limit: 100
       cursor: optional
       cursor_type: opaque
-      default_shape: compact
-      item_shapes:
+      default: compact
+      item_projections:
         - compact
         - full
-    argument_shapes:
+    argument_patterns:
       - "[--limit N]"
       - "[--cursor CURSOR]"
-      - "[--shape compact|full]"
+      - "[--projection compact|full]"
     examples:
       - query: list canonical filing families
         run_cmd: ./xctx discover stock_intelligence_hub::equity_filing list_families
       - query: list full detail family records explicitly
-        run_cmd: ./xctx discover stock_intelligence_hub::equity_filing list_families --shape full
+        run_cmd: ./xctx discover stock_intelligence_hub::equity_filing list_families --projection full
     related_commands:
       - ./xctx discover stock_intelligence_hub::equity_filing::search_families
       - ./xctx discover stock_intelligence_hub::equity_filing search_families ANNUAL_REPORT
     returns: equity_filing_family_list
-    run_cmd: ./xctx discover stock_intelligence_hub::equity_filing list_families [--limit N] [--cursor CURSOR] [--shape compact|full]
+    run_cmd: ./xctx discover stock_intelligence_hub::equity_filing list_families [--limit N] [--cursor CURSOR] [--projection compact|full]
   search_priority_buckets:
     domain_affordance: true
     domain_action_name: search_priority_bucket
@@ -156,7 +155,7 @@ actions:
     query_required: true
     mode_kind: search
     desc: Search filing priority buckets. Exact priority-code queries return the exact bucket only.
-    argument_shapes:
+    argument_patterns:
       - "<priority code>"
       - "<priority name text>"
     examples:
@@ -180,29 +179,29 @@ actions:
       default_limit: 25
       max_limit: 100
       cursor: none
-      default_shape: compact
-      item_shapes:
+      default: compact
+      item_projections:
         - compact
         - full
-    argument_shapes:
+    argument_patterns:
       - "[--limit N]"
-      - "[--shape compact|full]"
+      - "[--projection compact|full]"
     examples:
       - query: list priority buckets
         run_cmd: ./xctx discover stock_intelligence_hub::equity_filing list_priority_buckets
       - query: list full detail priority records explicitly
-        run_cmd: ./xctx discover stock_intelligence_hub::equity_filing list_priority_buckets --shape full
+        run_cmd: ./xctx discover stock_intelligence_hub::equity_filing list_priority_buckets --projection full
     related_commands:
       - ./xctx discover stock_intelligence_hub::equity_filing::search_priority_buckets
       - ./xctx discover stock_intelligence_hub::equity_filing search_priority_buckets critical_always
     returns: equity_filing_priority_bucket_list
-    run_cmd: ./xctx discover stock_intelligence_hub::equity_filing list_priority_buckets [--limit N] [--shape compact|full]
+    run_cmd: ./xctx discover stock_intelligence_hub::equity_filing list_priority_buckets [--limit N] [--projection compact|full]
   observe:
     priority: 60
     entrypoint_command: observe
     mode_kind: observe
     desc: Observe form:<code>, family:<code>, priority:<code>, or instrument:<ticker> context.
-    argument_shapes:
+    argument_patterns:
       - "form:<form_code>"
       - "family:<canonical_family_code>"
       - "priority:<priority_bucket_code>"

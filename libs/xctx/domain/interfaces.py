@@ -40,7 +40,7 @@ def scoped_mode_interface_payload(
         "mode",
         "mode_kind",
         "grammar",
-        "argument_shapes",
+        "argument_patterns",
         "accepted_arguments",
         "examples",
         "example_queries",
@@ -48,10 +48,10 @@ def scoped_mode_interface_payload(
         "related_modes",
         "returns",
         "collection",
-        "discovery_shapes",
-        "output_shapes",
+        "projections",
+        "output_projections",
         "valid_targets",
-        "valid_identity_shapes",
+        "valid_identity_patterns",
     ):
         if key in public_action:
             payload[key] = public_action[key]

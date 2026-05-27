@@ -44,7 +44,7 @@ must_fail:
   - ./xctx discover market_data_gateway
   - ./xctx discover file:README.txt
   - ./xctx observe form:10-K --bars 5
-error_shape:
+error_contract:
   record_type: error
   error: actual_error
   next_moves: structured_guidance_when_known

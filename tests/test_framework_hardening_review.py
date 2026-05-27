@@ -161,7 +161,7 @@ def test_redaction_handles_argv_secret_values_without_masking_protocol_tokens() 
         "--token=tok456",
         "--access-token",
         "access789",
-        "--shape",
+        "--projection",
         "full",
     ]
     redacted = redact_argv_values(argv)
@@ -173,7 +173,7 @@ def test_redaction_handles_argv_secret_values_without_masking_protocol_tokens() 
         "--token=<redacted>",
         "--access-token",
         "<redacted>",
-        "--shape",
+        "--projection",
         "full",
     ]
     joined = redact_argv(argv)

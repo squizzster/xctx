@@ -193,7 +193,7 @@ def assert_protocol_is_config_driven() -> None:
     assert market_subdomain["actions"]["search_entity_instrument"]["domain_affordance"] is True
     assert market_subdomain["actions"]["latest_price"]["domain_affordance"] is True
     assert market_subdomain["actions"]["latest_price"]["entrypoint_command"] == "latest-price"
-    assert market_subdomain["actions"]["discover"]["discovery_shapes"]["default_shape"] == "compact"
+    assert market_subdomain["actions"]["discover"]["projections"]["default"] == "compact"
     observe_flags = [option["flags"][0] for option in market_subdomain["actions"]["observe"]["cli_options"]]
     assert observe_flags == ["--bars", "--calendar-days", "--export"]
     filing_subdomain = yaml.safe_load((ROOT / "yaml_dynamic_config" / "agent_domains" / "stock_intelligence_hub" / "subdomains" / "equity_filing" / "subdomain.yaml").read_text())
@@ -202,10 +202,10 @@ def assert_protocol_is_config_driven() -> None:
     assert filing_subdomain["connector"]["target_entrypoint"] == "examples/stock_intelligence_hub/adapters/equity_filings.py"
     assert filing_subdomain["actions"]["search_forms"]["domain_affordance"] is True
     assert filing_subdomain["actions"]["search_forms"]["domain_action_name"] == "search_filing_form"
-    assert filing_subdomain["actions"]["discover"]["discovery_shapes"]["default_shape"] == "compact"
+    assert filing_subdomain["actions"]["discover"]["projections"]["default"] == "compact"
     assert filing_subdomain["actions"]["list_forms"]["entrypoint_command"] == "list-forms"
     assert filing_subdomain["actions"]["list_forms"]["query_required"] is False
-    assert filing_subdomain["actions"]["list_forms"]["collection"]["default_shape"] == "compact"
+    assert filing_subdomain["actions"]["list_forms"]["collection"]["default"] == "compact"
     assert filing_subdomain["actions"]["list_forms"]["collection"]["cursor"] == "optional"
     assert market_subdomain["actions"]["list_instruments"]["collection"]["cursor"] == "optional"
 
@@ -340,7 +340,7 @@ def assert_root_domain_subdomain_discovery() -> None:
         assert all(isinstance(move, dict) and "run_cmd" in move for move in bare["next_moves"])
         assert "free_text_discovery_routed_to_configured_fallback" not in json.dumps(bare, sort_keys=True)
 
-    domain = one(["discover", "stock_intelligence_hub::"])
+    domain = one(["--more", "discover", "stock_intelligence_hub::"])
     assert domain["domain_level"] == "agent_domain"
     subdomains = {item["id"]: item for item in domain["results"]["agent_subdomains"]}
     assert subdomains["market_data_gateway"]["status"] == "online"
@@ -353,12 +353,12 @@ def assert_root_domain_subdomain_discovery() -> None:
     domain_without_colons = one(["discover", "stock_intelligence_hub"])
     assert domain_without_colons["domain_level"] == "agent_domain"
 
-    filing = one(["discover", "stock_intelligence_hub::equity_filing"])
+    filing = one(["--more", "discover", "stock_intelligence_hub::equity_filing"])
     assert filing["domain_level"] == "agent_subdomain"
     filing_live = filing["results"]["live_data"]
     assert filing_live["object_type"] == "equity_filing_discovery"
-    assert filing["results"]["shape"] == "compact"
-    assert filing_live["shape"] == "compact"
+    assert filing["results"]["projection"] == "compact"
+    assert filing_live["projection"] == "compact"
     assert "configured_action_index" in filing["results"]
     assert "configured_actions" not in filing["results"]
     assert filing_live["stats"]["total_lookup_filings"] == 412
@@ -377,22 +377,22 @@ def assert_root_domain_subdomain_discovery() -> None:
         move["run_cmd"] == "./xctx discover stock_intelligence_hub::equity_filing list_forms"
         for move in filing_live["next_moves"]
     )
-    filing_full = one(["discover", "stock_intelligence_hub::equity_filing", "--shape", "full"])
+    filing_full = one(["--max", "discover", "stock_intelligence_hub::equity_filing", "--projection", "full"])
     filing_full_live = filing_full["results"]["live_data"]
-    assert filing_full["results"]["shape"] == "full"
+    assert filing_full["results"]["projection"] == "full"
     assert "configured_actions" in filing_full["results"]
-    assert filing_full_live["shape"] == "full"
+    assert filing_full_live["projection"] == "full"
     assert "modes" in filing_full_live
     assert filing_full_live["command_grammar"]["mode_discovery"].endswith("::equity_filing::<mode>")
-    bad_shape = one(["discover", "stock_intelligence_hub::equity_filing", "--shape", "wide"], expected_code=1)
-    assert bad_shape["error"] == "unsupported --shape value: wide (allowed: compact|full)"
+    bad_shape = one(["discover", "stock_intelligence_hub::equity_filing", "--projection", "wide"], expected_code=1)
+    assert bad_shape["error"] == "unsupported --projection value: wide (allowed: compact|full)"
 
-    market = one(["discover", "stock_intelligence_hub::market_data_gateway"])
+    market = one(["--max", "discover", "stock_intelligence_hub::market_data_gateway"])
     assert market["domain_level"] == "agent_subdomain"
     market_live = market["results"]["live_data"]
     assert market_live["object_type"] == "market_data_gateway_discovery"
-    assert market["results"]["shape"] == "compact"
-    assert market_live["shape"] == "compact"
+    assert market["results"]["projection"] == "compact"
+    assert market_live["projection"] == "compact"
     assert market_live["stats"]["canonical_instruments"] >= 100
     observe_options = market["results"]["configured_options"]["observe"]
     assert [item["flags"][0] for item in observe_options] == ["--bars", "--calendar-days", "--export"]
@@ -403,10 +403,10 @@ def assert_root_domain_subdomain_discovery() -> None:
         "latest_price",
         "list_instruments",
     }
-    market_full = one(["discover", "stock_intelligence_hub::market_data_gateway", "--shape", "full"])
+    market_full = one(["--max", "discover", "stock_intelligence_hub::market_data_gateway", "--projection", "full"])
     market_full_live = market_full["results"]["live_data"]
-    assert market_full["results"]["shape"] == "full"
-    assert market_full_live["shape"] == "full"
+    assert market_full["results"]["projection"] == "full"
+    assert market_full_live["projection"] == "full"
     assert market_full_live["stats"]["reference_universe_snapshots"] == 100
     sample_series_ids = [item["market_series_id"] for item in market_full_live["sample_market_series"]]
     assert len(sample_series_ids) == len(set(sample_series_ids)), sample_series_ids
@@ -415,12 +415,12 @@ def assert_root_domain_subdomain_discovery() -> None:
     file_domain = one(["discover", "file_manager::"])
     assert file_domain["domain_level"] == "agent_domain"
     assert file_domain["results"]["agent_subdomains"][0]["id"] == "home_directory"
-    file_subdomain = one(["discover", "file_manager::home_directory"])
+    file_subdomain = one(["--max", "discover", "file_manager::home_directory"])
     assert file_subdomain["domain_level"] == "agent_subdomain"
     file_live = file_subdomain["results"]["live_data"]
     assert file_live["object_type"] == "external_command_filesystem_discovery"
     assert file_live["connector"]["kind"] == "external_command"
-    assert file_live["observable_objects"]["file"]["id_shape"] == "file:<relative_path>"
+    assert file_live["observable_objects"]["file"]["id_pattern"] == "file:<relative_path>"
     assert {item["id"] for item in file_live["discoverable_modes"]} == {"list_files", "list_directories"}
 
 
@@ -459,28 +459,28 @@ def assert_scoped_affordance_routing() -> None:
     form_mode = one(["discover", "stock_intelligence_hub::equity_filing::search_forms"])
     assert form_mode["results"]["object_type"] == "xctx_action_discovery_interface"
     assert form_mode["results"]["action"] == "search_forms"
-    assert form_mode["results"]["argument_shapes"]
+    assert form_mode["results"]["argument_patterns"]
     assert form_mode["results"]["examples"][0]["run_cmd"].endswith("search_forms 10-K")
 
     form_mode_alt = one(["discover", "stock_intelligence_hub::equity_filing", "search_forms"])
     assert form_mode_alt["results"]["object_type"] == "xctx_action_discovery_interface"
-    assert form_mode_alt["results"]["argument_shapes"] == form_mode["results"]["argument_shapes"]
+    assert form_mode_alt["results"]["argument_patterns"] == form_mode["results"]["argument_patterns"]
 
     list_forms = one(["discover", "stock_intelligence_hub::equity_filing", "list_forms"])
     assert list_forms["results"]["action"] == "list_forms"
     assert list_forms["results"]["live_data"]["object_type"] == "equity_filing_form_list"
     assert list_forms["results"]["live_data"]["returned_count"] > 0
     list_forms_live = list_forms["results"]["live_data"]
-    assert list_forms_live["shape"] == "compact"
+    assert list_forms_live["projection"] == "compact"
     assert list_forms_live["pagination"]["has_more"] is True
     assert list_forms_live["forms"][0]["id"].startswith("form:")
     assert "canonical_family" not in list_forms_live["forms"][0]
     assert "priority_bucket" not in list_forms_live["forms"][0]
     assert "run_cmd" not in list_forms_live["forms"][0]
 
-    list_forms_full = one(["discover", "stock_intelligence_hub::equity_filing", "list_forms", "--limit", "2", "--shape", "full"])
+    list_forms_full = one(["discover", "stock_intelligence_hub::equity_filing", "list_forms", "--limit", "2", "--projection", "full"])
     full_live = list_forms_full["results"]["live_data"]
-    assert full_live["shape"] == "full"
+    assert full_live["projection"] == "full"
     assert full_live["pagination"]["returned_count"] == 2
     assert "canonical_family" in full_live["forms"][0]
     assert "run_cmd" in full_live["forms"][0]
@@ -579,15 +579,15 @@ def assert_scoped_affordance_routing() -> None:
     assert "Known instrument MSFT was resolved" in msft_latest["results"]["live_data"]["empty_result_guidance"]
     instruments_page = one(["discover", "stock_intelligence_hub::market_data_gateway", "list_instruments", "--limit", "2"])
     instruments_live = instruments_page["results"]["live_data"]
-    assert instruments_live["shape"] == "compact"
+    assert instruments_live["projection"] == "compact"
     assert instruments_live["pagination"]["returned_count"] == 2
     assert instruments_live["pagination"]["next_cursor"] == "2"
     assert "run_cmd" not in instruments_live["instruments"][0]
     assert "next_moves" not in instruments_live["instruments"][0]
 
-    instruments_full = one(["discover", "stock_intelligence_hub::market_data_gateway", "list_instruments", "--limit", "2", "--shape", "full"])
+    instruments_full = one(["discover", "stock_intelligence_hub::market_data_gateway", "list_instruments", "--limit", "2", "--projection", "full"])
     full_instruments_live = instruments_full["results"]["live_data"]
-    assert full_instruments_live["shape"] == "full"
+    assert full_instruments_live["projection"] == "full"
     assert "run_cmd" in full_instruments_live["instruments"][0]
     assert "next_moves" in full_instruments_live["instruments"][0]
     broad_series = one(["discover", "stock_intelligence_hub::market_data_gateway", "search_market_series", "A"])
@@ -731,7 +731,7 @@ def assert_scoped_filing_affordance_routing() -> None:
 
     list_forms = one(["discover", "stock_intelligence_hub::equity_filing", "list_forms"])
     assert list_forms["results"]["live_data"]["object_type"] == "equity_filing_form_list"
-    assert list_forms["results"]["live_data"]["shape"] == "compact"
+    assert list_forms["results"]["live_data"]["projection"] == "compact"
 
 
 def assert_scoped_market_affordance_routing() -> None:
@@ -780,7 +780,7 @@ def assert_audit_repair() -> None:
 
 def assert_connector_supervisor_middleware() -> None:
     def guarantee(connector: dict) -> dict:
-        value = connector["shape_guarantee"]
+        value = connector["payload_contract"]
         assert value["xctx_receives"] == "single_json_object_for_live_data"
         assert value["raw_external_output"] == "never_returned_unparsed"
         return value
@@ -788,24 +788,25 @@ def assert_connector_supervisor_middleware() -> None:
     files = one(["discover", "file_manager::home_directory", "list_files", "--limit", "2"])
     live_files = files["results"]["live_data"]
     assert live_files["object_type"] == "external_command_filesystem_file_list"
-    assert live_files["connector"]["adapter_ref"] == "file_manager::home_directory"
-    assert guarantee(live_files["connector"])["contract"] == "always_json_object"
+    assert "connector" not in live_files
     assert "external_command" not in live_files
     assert "command_status" not in live_files
     assert "pagination" not in live_files
     assert live_files["files"][0]["id"] == "file:README.txt"
     assert "This is a bundled file-manager demo fixture" not in json.dumps(live_files)
 
-    full_files = one(["discover", "file_manager::home_directory", "list_files", "--limit", "1", "--shape", "full"])
+    full_files = one(["--max", "discover", "file_manager::home_directory", "list_files", "--limit", "1", "--projection", "full"])
     full_files_live = full_files["results"]["live_data"]
-    assert guarantee(full_files_live["connector"])["failure_shape"] == "xctx_connector_error"
+    assert guarantee(full_files_live["connector"])["failure_payload"] == "xctx_connector_error"
     assert full_files_live["pagination"]["returned_count"] == 1
     assert full_files_live["command_status"]["argv"][0] == "ls"
 
     discovered_file = one(["discover", "file_manager::home_directory", "file:README.txt"])
     discovered_file_live = discovered_file["results"]["live_data"]
     assert discovered_file_live["object_type"] == "external_command_filesystem_file_discovery"
-    assert guarantee(discovered_file_live["connector"])["success_shape"] == "domain_object"
+    assert "connector" not in discovered_file_live
+    discovered_file_full = one(["--max", "discover", "file_manager::home_directory", "file:README.txt", "--projection", "full"])
+    assert guarantee(discovered_file_full["results"]["live_data"]["connector"])["success_payload"] == "domain_object"
     assert discovered_file_live["id"] == "file:README.txt"
     expected_readme_bytes = len(FILE_MANAGER_README.read_bytes())
     assert discovered_file_live["type"] == "ASCII text"
@@ -823,7 +824,7 @@ def assert_connector_supervisor_middleware() -> None:
     directory_ids = {item["id"] for item in live_directories["directories"]}
     assert {"directory:docs", "directory:reports", "directory:archive"} <= directory_ids
 
-    observed_file = one(["observe", "file_manager::home_directory", "file:README.txt"])
+    observed_file = one(["--max", "observe", "file_manager::home_directory", "file:README.txt"])
     file_live = observed_file["results"]["live_data"]
     assert file_live["object_type"] == "external_command_filesystem_file_observation"
     assert guarantee(file_live["connector"])["stdout_stderr"] == "summarized_in_command_status_when_useful"
@@ -840,13 +841,13 @@ def assert_connector_supervisor_middleware() -> None:
     assert directory_live["directory_id"] == "directory:docs"
     assert directory_live["sample_children"][0]["id"] == "file:docs/manual.txt"
 
-    escaped = one(["observe", "file:../README.md"], expected_code=1)
+    escaped = one(["--max", "observe", "file:../README.md"], expected_code=1)
     assert escaped["ok"] is False
     assert escaped["error"] == "path escapes configured safe root"
     escaped_live = escaped["results"]["live_data"]
     assert escaped_live["object_type"] == "xctx_connector_error"
     assert escaped_live["found"] is False
-    assert guarantee(escaped_live["connector"])["failure_shape"] == "xctx_connector_error"
+    assert guarantee(escaped_live["connector"])["failure_payload"] == "xctx_connector_error"
     assert escaped_live["command_status"]["ok"] is False
     assert "safe root" in escaped_live["command_status"]["error"]
 
@@ -865,7 +866,7 @@ def assert_plan_execute_other_and_output() -> None:
     assert execute_full["ok"] is True
     assert execute_full["results"]["mutations_applied"] == 0
 
-    execute_short = one(["execute", results["receipt_sha5"], "--commit"])
+    execute_short = one(["--max", "execute", results["receipt_sha5"], "--commit"])
     assert execute_short["ok"] is True
     assert execute_short["results"]["planner_binding"]["verified"] is True
     assert execute_short["results"]["planner_binding"]["receipt_sha256"] == results["receipt_sha256"]

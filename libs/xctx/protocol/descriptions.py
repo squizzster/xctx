@@ -4,9 +4,11 @@ from __future__ import annotations
 
 from typing import Any
 
+from xctx.protocol.detail import is_more_or_max
+
 
 def detail_enabled(store: dict[str, Any]) -> bool:
-    return bool(store.get("detail"))
+    return is_more_or_max(store)
 
 
 def selected_description(store: dict[str, Any], mapping: dict[str, Any]) -> str:

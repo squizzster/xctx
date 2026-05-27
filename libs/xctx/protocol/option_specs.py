@@ -1,6 +1,6 @@
 """CLI option declaration parsing for the xctx protocol surface.
 
-This module owns *shape*, not domain meaning: YAML can declare flags,
+This module owns generic option grammar, not domain meaning: YAML can declare flags,
 destinations, primitive types, choices, and target scoping. The values are only
 interpreted after routing has resolved a concrete domain/subdomain/action.
 """

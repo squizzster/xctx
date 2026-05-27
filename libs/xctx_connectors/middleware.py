@@ -68,6 +68,7 @@ def _context_from_subdomain(root: Path, subdomain: dict[str, Any]) -> runtime.Co
         subdomain_id=subdomain_id,
         subdomain_config=runtime.readonly_mapping(subdomain),
         connector_config=runtime.readonly_mapping(connector),
+        detail_level=str(os.environ.get("XCTX_DETAIL_LEVEL") or "basic"),
     )
 
 
@@ -88,16 +89,8 @@ def _resolve_workspace_entrypoint(root: Path, raw: Any, *, label: str) -> Path:
     return resolved
 
 
-def _full_shape_requested(args: list[str]) -> bool:
-    shape: str | None = None
-    index = 0
-    while index < len(args):
-        if args[index] == "--shape" and index + 1 < len(args):
-            shape = args[index + 1]
-            index += 2
-            continue
-        index += 1
-    return shape == "full"
+def _include_command_argv(context: runtime.ConnectorContext) -> bool:
+    return context.detail_level == "max"
 
 
 def _passthrough(context: runtime.ConnectorContext, args: list[str], *, compact: bool) -> dict[str, Any]:
@@ -107,7 +100,7 @@ def _passthrough(context: runtime.ConnectorContext, args: list[str], *, compact:
     timeout = runtime.validated_timeout(connector.get("timeout_seconds", 30))
     max_output_bytes = runtime.validated_max_output_bytes(connector.get("max_output_bytes", runtime.DEFAULT_MAX_OUTPUT_BYTES))
     argv = python_entrypoint_argv(target_path, args)
-    include_argv = _full_shape_requested(args)
+    include_argv = _include_command_argv(context)
     if compact and "--compact" not in argv:
         argv.append("--compact")
     result = runtime.run_external(argv, cwd=context.workspace_root, timeout=timeout, max_output_bytes=max_output_bytes)
@@ -210,9 +203,9 @@ def _external_command_adapter(context: runtime.ConnectorContext, command: str, r
         raise ValueError(f"external command adapter returned non-object payload: {module_name}")
     if "connector" in payload:
         raise ValueError(f"external command adapter must not construct connector metadata: {module_name}")
-    shaped = dict(payload)
-    shaped["connector"] = runtime.connector_meta(context)
-    return shaped
+    payload_with_connector = dict(payload)
+    payload_with_connector["connector"] = runtime.connector_meta(context)
+    return payload_with_connector
 
 
 def _run_with_context(
@@ -239,7 +232,10 @@ def run(argv: list[str], *, root: Path | None = None, compact: bool = True) -> d
 
 def main(argv: list[str] | None = None) -> int:
     raw = list(sys.argv[1:] if argv is None else argv)
-    compact, args = _take_flag(raw, "--compact")
+    # Connector stdout is compact internal transport by default. Public xctx
+    # verbosity is carried by XCTX_DETAIL_LEVEL, not a middleware flag.
+    compact = True
+    args = raw
     root = _project_root()
     context: runtime.ConnectorContext | None = None
     connector: dict[str, Any] | None = None

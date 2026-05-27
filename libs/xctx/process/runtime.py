@@ -16,14 +16,16 @@ from xctx.domain.interface_payloads import build_version_payload
 from xctx.errors import XctxError
 from xctx.process.argv import extract_global_options
 from xctx.process.parser import build_parser
+from xctx.process.redaction import redact_argv
 from xctx.process.signals import configure_sigpipe
 from xctx.protocol.accessors import canonical_command, configured_command_names, help_aliases
+from xctx.protocol.detail import select_detail_level
 from xctx.protocol.emitter import emit_final_stderr, emit_minimal_error, emit_record, emit_stderr_event
 from xctx.protocol.guidance import root_protocol_next_moves
 
 
 ## Protocol boundary: this module owns process-level xctx mechanics only.
-## It may recognize configured reference shapes, but not domain-pack meaning.
+## It may recognize configured reference patterns, but not domain-pack meaning.
 
 
 def _stdout_is_tty() -> bool:
@@ -59,6 +61,7 @@ def _with_discover_shortcut(store: dict, argv: list[str]) -> list[str]:
     the first token is already a scoped xctx reference. Unknown natural-language
     phrases are refused instead of guessed.
     """
+
     ## Boundary guard: this is structural shorthand only. Do not inspect or infer
     ## business vocabulary here; scoped packs own that through config/adapters.
     if not argv or argv[0] in configured_command_names(store) or argv[0] in help_aliases(store):
@@ -72,22 +75,30 @@ def _with_discover_shortcut(store: dict, argv: list[str]) -> list[str]:
     return argv
 
 
+def _select_detail(store: dict, argv: list[str], explicit: str | None) -> str:
+    return select_detail_level(store, argv, explicit)
+
+
 def run(argv: Sequence[str] | None = None, root: Path | None = None) -> int:
     """Run an xctx command in-process. Useful for tests and the CLI launcher."""
+
     raw_argv = list(argv or [])
     selection = extract_global_options(raw_argv)
     store = load_store(root=root)
     store["output_format"] = select_output_format(store, selection.output_format)
-    store["detail"] = selection.detail
+    normalized_argv = _with_discover_shortcut(store, selection.argv)
+    store["detail_level"] = _select_detail(store, normalized_argv, selection.detail_level)
+    if selection.output_error and not selection.detail_level:
+        store["detail_level"] = "basic"
     if selection.output_error:
         raise XctxError(selection.output_error)
 
     handlers = command_handlers()
     selection = selection.__class__(
-        argv=_with_discover_shortcut(store, selection.argv),
+        argv=normalized_argv,
         output_format=selection.output_format,
         output_error=selection.output_error,
-        detail=selection.detail,
+        detail_level=selection.detail_level,
         cmdline_arg=selection.cmdline_arg,
     )
     if not selection.argv:
@@ -144,13 +155,16 @@ def _emit_process_error(
     root: Path | None = None,
     next_moves: list | None = None,
 ) -> None:
-    command = " ".join(raw_argv) if raw_argv else "help"
+    command = redact_argv(list(raw_argv)) if raw_argv else "help"
     moves = list(next_moves or [])
     try:
         selection = extract_global_options(list(raw_argv))
         fallback_store = load_store(root=root)
         fallback_store["output_format"] = select_output_format(fallback_store, selection.output_format)
-        fallback_store["detail"] = selection.detail
+        normalized_argv = _with_discover_shortcut(fallback_store, selection.argv)
+        fallback_store["detail_level"] = _select_detail(fallback_store, normalized_argv, selection.detail_level)
+        if selection.output_error and not selection.detail_level:
+            fallback_store["detail_level"] = "basic"
         emit_stderr_event(fallback_store, command, "error", message)
         emit_record(
             fallback_store,
