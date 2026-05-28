@@ -1,0 +1,5 @@
+interface:
+  display_name: "Make Master Plan"
+  short_description: "Result-free xctx master plans with possible steps."
+policy:
+  allow_implicit_invocation: true

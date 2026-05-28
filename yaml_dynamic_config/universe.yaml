@@ -28,6 +28,8 @@ xctx_interface:
 agent_domains:
   - id: file_manager
     path: agent_domains/file_manager/domain.yaml
+  - id: guess_the_number_game
+    path: agent_domains/guess_the_number_game/domain.yaml
   - id: stock_intelligence_hub
     path: agent_domains/stock_intelligence_hub/domain.yaml
   - id: macro_intelligence_hub

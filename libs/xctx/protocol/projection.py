@@ -277,15 +277,26 @@ def _project_plan(store: dict[str, Any], payload: Mapping[str, Any], *, cmdline_
         "target",
         "planner_id",
         "plan_id",
+        "master_plan_id",
+        "sub_plan_id",
+        "expected_commit_id",
+        "expected_result_id",
         "status",
+        "execution_status",
         "decision",
+        "description_of_what_will_happen",
+        "writes_to_db",
+        "can_be_reversed",
+        "can_be_repaired",
         "receipt_sha256",
         "receipt_sha5",
         "accepted_execute_cmd",
+        "discover_master_plan_cmd",
+        "observe_result_cmd",
         "lawful_next_moves",
     ]
     out = {key: payload[key] for key in keys if key in payload}
-    out.setdefault("domain_mutations_planned", 0)
+    out.setdefault("domain_mutations_planned", 1 if payload.get("writes_to_db") else 0)
     out.setdefault("protocol_local_effects", ["plan_recorded"])
     if detail_level(store) == "more":
         for key in ("description", "receipt_note"):
@@ -307,7 +318,16 @@ def _project_plan(store: dict[str, Any], payload: Mapping[str, Any], *, cmdline_
 def _project_execute(store: dict[str, Any], payload: Mapping[str, Any], *, cmdline_arg: str | None) -> dict[str, Any]:
     if is_max(store):
         return dict(payload)
-    keys = ["requested_plan", "commit_requested", "status", "mutations_applied", "next_move"]
+    keys = [
+        "requested_plan",
+        "commit_requested",
+        "status",
+        "commit_id",
+        "result_id",
+        "observe_result_cmd",
+        "mutations_applied",
+        "next_move",
+    ]
     out = {key: payload[key] for key in keys if key in payload}
     if detail_level(store) == "more":
         if "description" in payload:

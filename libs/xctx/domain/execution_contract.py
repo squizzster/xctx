@@ -33,7 +33,7 @@ class ExecuteRequest:
 
 
 PLAN_USAGE = "./xctx plan <operation> <target>"
-EXECUTE_USAGE = "./xctx execute <PLAN_ID|SHA256|SHA5> --commit"
+EXECUTE_USAGE = "./xctx execute <PLAN_ID> --commit"
 
 
 def parse_plan_request(args: list[str]) -> PlanRequest:
