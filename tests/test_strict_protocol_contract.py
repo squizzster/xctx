@@ -208,13 +208,13 @@ def test_basic_instrument_observation_omits_expanded_market_series_data() -> Non
     assert expanded_live["latest_available_price"]["is_live_quote"] is False
 
 
-def test_repair_plan_next_move_declares_protocol_ledger_write() -> None:
+def test_repair_next_moves_use_current_read_only_protocol_commands() -> None:
     rc, payload = run_runtime_json(["repair", "offline:macro_intelligence_hub"])
     assert rc == 0
     moves = payload["results"]["next_moves"]
     assert moves[0] == {
-        "run_cmd": "./xctx plan bring_online macro_intelligence_hub",
-        "writes_protocol_ledger": True,
+        "run_cmd": "./xctx --more repair offline:macro_intelligence_hub",
+        "writes_protocol_ledger": False,
         "domain_mutation": False,
     }
     assert moves[1] == {

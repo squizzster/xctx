@@ -89,6 +89,54 @@ def _midpoint(low: int, high: int) -> int | None:
     return None if low > high else (low + high) // 2
 
 
+def _bounds(game: dict[str, Any], key: str) -> tuple[int, int]:
+    payload = game.get(key) or {}
+    if not isinstance(payload, dict):
+        raise ValueError(f"invalid game {key}")
+    return int(payload["min"]), int(payload["max"])
+
+
+def _next_plan_command(game_result: str, next_guess: int | None) -> str | None:
+    if next_guess is None:
+        return None
+    return (
+        "./xctx plan guess_the_number_game::guess_number::submit_guess "
+        f"--game-result {game_result} --guess {next_guess}"
+    )
+
+
+def _validate_guess_against_game(game: dict[str, Any], guess: int) -> None:
+    if game.get("status") != "active":
+        raise ValueError("game is already solved")
+    range_min, range_max = _bounds(game, "range")
+    if guess < range_min or guess > range_max:
+        raise ValueError(f"--guess must be between {range_min} and {range_max} for this game")
+    current_min, current_max = _bounds(game, "current_range")
+    if guess < current_min or guess > current_max:
+        raise ValueError(f"--guess must be within current unresolved range {current_min}..{current_max}")
+
+
+def _public_game_state(game: dict[str, Any]) -> dict[str, Any]:
+    game_result = str(game["game_result_id"])
+    status = str(game.get("status") or "unknown")
+    attempts = list(game.get("attempts") or [])
+    current_min, current_max = _bounds(game, "current_range")
+    next_guess = _midpoint(current_min, current_max) if status == "active" else None
+    payload = {
+        "object_type": "guess_the_number_game_state",
+        "game_result_id": game_result,
+        "status": status,
+        "range": game.get("range"),
+        "current_range": game.get("current_range"),
+        "attempt_count": len(attempts),
+        "last_feedback": attempts[-1].get("feedback") if attempts else None,
+        "next_guess": next_guess,
+        "next_plan_command": _next_plan_command(game_result, next_guess),
+        "data_boundary": "Current game state is owned by the guess_the_number_game adapter; the hidden number is never exposed.",
+    }
+    return payload
+
+
 def _discover(context: Any) -> dict[str, Any]:
     ref = context.adapter_ref
     if context.subdomain_id == "choose_random_number":
@@ -159,12 +207,8 @@ def _choose_between_bounds(context: Any, args: list[str]) -> dict[str, Any]:
         "range": {"min": low, "max": high},
         "attempt_count": 0,
         "next_guess": first_guess,
-        "next_plan_command": (
-            f"./xctx plan guess_the_number_game::guess_number::submit_guess "
-            f"--game-result {result_id} --guess {first_guess}"
-            if first_guess is not None
-            else None
-        ),
+        "current_state_observe_cmd": f"./xctx observe guess_the_number_game::choose_random_number {result_id}",
+        "next_plan_command": _next_plan_command(result_id, first_guess),
         "data_boundary": "The hidden number is remembered by the domain adapter and is not returned in this payload.",
     }
 
@@ -188,6 +232,7 @@ def _submit_guess(context: Any, args: list[str]) -> dict[str, Any]:
     guess = _int_option(args, "--guess")
     xctx = _xctx_context(args)
     game = _read_game(context, game_result)
+    _validate_guess_against_game(game, guess)
     secret = int(game["secret_number"])
     current = dict(game.get("current_range") or game.get("range") or {})
     low = int(current.get("min", game.get("range", {}).get("min", 0)))
@@ -224,14 +269,7 @@ def _submit_guess(context: Any, args: list[str]) -> dict[str, Any]:
     _write_json(_game_path(context, game_result), game)
 
     next_guess = None if correct else _midpoint(int(next_range["min"]), int(next_range["max"]))
-    next_plan_command = (
-        None
-        if next_guess is None
-        else (
-            "./xctx plan guess_the_number_game::guess_number::submit_guess "
-            f"--game-result {game_result} --guess {next_guess}"
-        )
-    )
+    next_plan_command = _next_plan_command(game_result, next_guess)
     return {
         "object_type": "guess_the_number_guess_feedback",
         "game_result_id": game_result,
@@ -252,8 +290,9 @@ def _validate_submit_guess(context: Any, args: list[str]) -> dict[str, Any]:
     try:
         game_result = str(_option(args, "--game-result"))
         _result_digest(game_result)
-        _read_game(context, game_result)
-        _int_option(args, "--guess")
+        game = _read_game(context, game_result)
+        guess = _int_option(args, "--guess")
+        _validate_guess_against_game(game, guess)
     except ValueError as exc:
         return {
             "ok": False,
@@ -267,13 +306,17 @@ def _validate_submit_guess(context: Any, args: list[str]) -> dict[str, Any]:
 
 def _observe(context: Any, args: list[str]) -> dict[str, Any]:
     target = " ".join(args).strip() or "status"
+    if target.startswith("result:"):
+        game = _read_game(context, target)
+        return _public_game_state(game)
     return {
         "object_type": "guess_the_number_status",
         "target": target,
         "agent_subdomain": context.subdomain_id,
-        "message": "Use protocol-local result handles for game creation and guess feedback.",
+        "message": "Use protocol-local result handles for immutable results, or observe this scoped adapter with a game result handle for current game state.",
         "next_moves": [
             "./xctx observe result:<sha256>",
+            f"./xctx observe guess_the_number_game::{context.subdomain_id} result:<sha256>",
             "./xctx plan guess_the_number_game::choose_random_number::choose_between_bounds --minimum 1 --maximum 1000",
         ],
     }

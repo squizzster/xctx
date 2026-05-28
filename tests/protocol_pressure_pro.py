@@ -472,7 +472,8 @@ def assert_repair_results() -> None:
     print("[pressure] repair results", flush=True)
     repaired = run_engine(["repair", "offline:macro_intelligence_hub"])
     assert_cmd(repaired, record_type="repair_result", level="agent_domain")
-    assert repaired["results"]["next_moves"][0]["writes_protocol_ledger"] is True
+    assert repaired["results"]["next_moves"][0]["run_cmd"] == "./xctx --more repair offline:macro_intelligence_hub"
+    assert repaired["results"]["next_moves"][0]["writes_protocol_ledger"] is False
     assert repaired["results"]["next_moves"][0]["domain_mutation"] is False
     terminal = run_engine(["--max", "repair", "down_for_maintenance:stock_intelligence_hub::fundamentals_gateway"], code=1)
     assert terminal["error"] == "down_for_maintenance"

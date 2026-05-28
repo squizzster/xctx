@@ -80,5 +80,5 @@ actions:
   observe:
     priority: 30
     entrypoint_command: observe
-    desc: Observe number-creation subdomain status. Game results are observed with ./xctx observe result:<sha256>.
-    run_cmd: ./xctx observe guess_the_number_game::choose_random_number <status>
+    desc: Observe number-creation subdomain status, or pass result:<sha256> to inspect current adapter-owned game state without exposing the hidden number.
+    run_cmd: ./xctx observe guess_the_number_game::choose_random_number <status|result:sha256>

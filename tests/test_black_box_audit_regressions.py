@@ -138,6 +138,40 @@ def test_live_audit_declares_that_availability_findings_are_excluded() -> None:
 # Adapter/game-planned-effect tests
 
 
+def _plan_game(minimum: int = 1, maximum: int = 1) -> dict:
+    rc, payload = run_runtime_json(
+        [
+            "plan",
+            "guess_the_number_game::choose_random_number::choose_between_bounds",
+            "--minimum",
+            str(minimum),
+            "--maximum",
+            str(maximum),
+        ]
+    )
+    assert rc == 0, payload
+    return payload["results"]
+
+
+def _commit_plan(plan_id: str) -> dict:
+    rc, payload = run_runtime_json(["execute", plan_id, "--commit"])
+    assert rc == 0, payload
+    return payload["results"]
+
+
+def _plan_guess(game_result: str, guess: int) -> tuple[int, dict]:
+    return run_runtime_json(
+        [
+            "plan",
+            "guess_the_number_game::guess_number::submit_guess",
+            "--game-result",
+            game_result,
+            "--guess",
+            str(guess),
+        ]
+    )
+
+
 def test_choose_bounds_rejected_at_plan_time_before_ledger(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     monkeypatch.setenv("XCTX_RUNTIME_DIR", str(tmp_path))
 
@@ -200,6 +234,122 @@ def test_unknown_game_result_rejected_at_plan_time(monkeypatch: pytest.MonkeyPat
     assert payload["ok"] is False
     assert payload["error"] == f"unknown game result handle: {bogus}"
     assert "plan_id" not in json.dumps(payload)
+
+
+def test_solved_game_rejects_later_guess_plan_before_ledger(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    monkeypatch.setenv("XCTX_RUNTIME_DIR", str(tmp_path))
+    create = _commit_plan(_plan_game(1, 1)["plan_id"])
+    game_result = create["result_id"]
+    rc, first_guess = _plan_guess(game_result, 1)
+    assert rc == 0
+    solved = _commit_plan(first_guess["results"]["plan_id"])
+    rc, solved_result = run_runtime_json(["observe", solved["result_id"]])
+    assert rc == 0
+    assert solved_result["results"]["payload"]["game_status"] == "solved"
+
+    rc, rejected = _plan_guess(game_result, 1)
+
+    assert rc == 1
+    assert rejected["ok"] is False
+    assert rejected["error"] == "game is already solved"
+    assert "plan_id" not in json.dumps(rejected)
+
+
+def test_stale_preplanned_guess_after_solve_fails_without_game_mutation(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    monkeypatch.setenv("XCTX_RUNTIME_DIR", str(tmp_path))
+    create = _commit_plan(_plan_game(1, 1)["plan_id"])
+    game_result = create["result_id"]
+    rc, first_guess = _plan_guess(game_result, 1)
+    assert rc == 0
+    rc, stale_guess = _plan_guess(game_result, 1)
+    assert rc == 0
+
+    _commit_plan(first_guess["results"]["plan_id"])
+    rc, stale_commit = run_runtime_json(["execute", stale_guess["results"]["plan_id"], "--commit"])
+
+    assert rc == 1
+    assert stale_commit["ok"] is False
+    assert stale_commit["error"] == "planned_effect_commit_failed"
+    assert stale_commit["results"]["mutations_applied"] == 0
+    rc, scoped_state = run_runtime_json(["observe", "guess_the_number_game::guess_number", game_result])
+    assert rc == 0
+    live = scoped_state["results"]["live_data"]
+    assert live["status"] == "solved"
+    assert live["attempt_count"] == 1
+    assert "secret_number" not in json.dumps(live)
+
+
+def test_guess_outside_original_game_range_rejected_before_ledger(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    monkeypatch.setenv("XCTX_RUNTIME_DIR", str(tmp_path))
+    create = _commit_plan(_plan_game(1, 1)["plan_id"])
+
+    rc, payload = _plan_guess(create["result_id"], 2)
+
+    assert rc == 1
+    assert payload["ok"] is False
+    assert payload["error"] == "--guess must be between 1 and 1 for this game"
+    assert "plan_id" not in json.dumps(payload)
+
+
+def test_guess_outside_current_unresolved_range_rejected_before_ledger(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    monkeypatch.setenv("XCTX_RUNTIME_DIR", str(tmp_path))
+    digest = "b" * 64
+    game_result = f"result:{digest}"
+    game_dir = tmp_path / "guess_the_number_game" / "games"
+    game_dir.mkdir(parents=True)
+    (game_dir / f"{digest}.json").write_text(
+        json.dumps(
+            {
+                "game_result_id": game_result,
+                "created_at": "2026-05-28T00:00:00Z",
+                "range": {"min": 1, "max": 4},
+                "current_range": {"min": 3, "max": 4},
+                "secret_number": 4,
+                "attempts": [{"guess": 2, "feedback": "higher", "correct": False}],
+                "status": "active",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    rc, rejected = _plan_guess(game_result, 1)
+
+    assert rc == 1
+    assert rejected["ok"] is False
+    assert rejected["error"] == "--guess must be within current unresolved range 3..4"
+    assert "plan_id" not in json.dumps(rejected)
+
+
+def test_scoped_game_observe_reports_current_state_without_secret(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    monkeypatch.setenv("XCTX_RUNTIME_DIR", str(tmp_path))
+    create = _commit_plan(_plan_game(1, 1)["plan_id"])
+    game_result = create["result_id"]
+    rc, guess = _plan_guess(game_result, 1)
+    assert rc == 0
+    _commit_plan(guess["results"]["plan_id"])
+
+    rc, scoped_state = run_runtime_json(["observe", "guess_the_number_game::choose_random_number", game_result])
+
+    assert rc == 0
+    live = scoped_state["results"]["live_data"]
+    assert live["object_type"] == "guess_the_number_game_state"
+    assert live["status"] == "solved"
+    assert live["attempt_count"] == 1
+    assert live["next_plan_command"] is None
+    assert "secret_number" not in json.dumps(live)
 
 
 # Adapter/file-manager tests
@@ -424,3 +574,120 @@ def test_market_bars_expose_volume_units_and_normalized_volume() -> None:
     assert "volume_raw" in bar
     assert bar["volume_unit"] == "shares"
     assert bar["volume_scale"] in {1, 1000}
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "instrument:../../aapl",
+        "instrument:aapl/../msft",
+        "issuer:cik:../../0000320193",
+        "market_series:../../aapl:daily",
+        "market_series:aapl:daily/../../msft",
+        "ohlcv_series:../../1",
+        "ticker:../../aapl",
+    ],
+)
+def test_malformed_stock_reserved_identifiers_do_not_resolve_in_instrument_search(query: str) -> None:
+    rc, payload = run_runtime_json(
+        [
+            "discover",
+            "stock_intelligence_hub::market_data_gateway::search_entity_instrument",
+            query,
+        ]
+    )
+
+    assert rc == 0
+    live = payload["results"]["live_data"]
+    assert live["total_matches"] == 0
+    assert live["matches_returned"] == 0
+    matches = json.dumps(live["matches"]).lower()
+    assert "instrument:aapl" not in matches
+    assert "instrument:msft" not in matches
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "instrument:../../aapl",
+        "issuer:cik:../../0000320193",
+        "market_series:../../aapl:daily",
+        "ohlcv_series:../../1",
+    ],
+)
+def test_malformed_stock_reserved_identifiers_do_not_resolve_market_series(query: str) -> None:
+    rc, payload = run_runtime_json(
+        [
+            "discover",
+            "stock_intelligence_hub::market_data_gateway::search_market_series",
+            query,
+        ]
+    )
+
+    assert rc == 0
+    live = payload["results"]["live_data"]
+    assert live["matches_returned"] == 0
+    assert live["matches"] == []
+    assert "market_series:aapl:daily" not in json.dumps(live).lower()
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "instrument:../../aapl",
+        "issuer:cik:../../0000320193",
+        "market_series:../../aapl:daily",
+    ],
+)
+def test_malformed_stock_reserved_identifiers_do_not_resolve_latest_price(query: str) -> None:
+    rc, payload = run_runtime_json(["discover", "stock_intelligence_hub::latest_price", query])
+
+    assert rc == 0
+    live = payload["results"]["live_data"]
+    assert live["found"] is False
+    assert live["candidate_instruments"] == []
+    assert live["candidate_series"] == []
+    assert "instrument:aapl" not in json.dumps(live).lower()
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "instrument:../../aapl",
+        "issuer:cik:../../0000320193",
+        "market_series:../../aapl:daily",
+    ],
+)
+def test_malformed_stock_reserved_identifiers_do_not_resolve_observe(query: str) -> None:
+    rc, payload = run_runtime_json(["observe", "stock_intelligence_hub::market_data_gateway", query])
+
+    assert rc == 0
+    live = payload["results"]["live_data"]
+    assert live["found"] is False
+    assert live.get("candidate_instruments", []) == []
+    assert live.get("candidate_market_series", live.get("candidate_series", [])) == []
+    candidates = json.dumps(
+        {
+            "candidate_instruments": live.get("candidate_instruments", []),
+            "candidate_market_series": live.get("candidate_market_series", []),
+            "candidate_series": live.get("candidate_series", []),
+        }
+    ).lower()
+    assert "instrument:aapl" not in candidates
+
+
+@pytest.mark.parametrize(
+    ("query", "expected"),
+    [
+        ("instrument:aapl", "instrument:aapl"),
+        ("issuer:cik:0000320193", "instrument:aapl"),
+        ("market_series:aapl:daily", "market_series:aapl:daily"),
+    ],
+)
+def test_well_formed_stock_reserved_identifiers_still_resolve(query: str, expected: str) -> None:
+    rc, payload = run_runtime_json(["observe", "stock_intelligence_hub::market_data_gateway", query])
+
+    assert rc == 0
+    live = payload["results"]["live_data"]
+    assert live["found"] is True
+    assert expected in json.dumps(live).lower()

@@ -1662,6 +1662,9 @@ def test_core_hook_points_do_not_contain_game_domain_vocabulary() -> None:
     generic_files = [
         "libs/xctx/domain/planning.py",
         "libs/xctx/domain/observation.py",
+        "libs/xctx/domain/planning_planned_effect_adapter.py",
+        "libs/xctx/domain/planning_planned_effect_execution.py",
+        "libs/xctx/domain/planning_planned_effect_terminal.py",
         "libs/xctx/store/runtime_artifacts.py",
     ]
     forbidden = ("guess_the_number_game", "choose_random_number", "guess_number", "secret_number")

@@ -706,7 +706,8 @@ def assert_observe_audit_repair() -> None:
     assert repairable["record_type"] == "repair_result"
     assert repairable["ok"] is True
     assert repairable["results"]["repair_steps"]
-    assert repairable["results"]["next_moves"][0]["writes_protocol_ledger"] is True
+    assert repairable["results"]["next_moves"][0]["run_cmd"] == "./xctx --more repair offline:macro_intelligence_hub"
+    assert repairable["results"]["next_moves"][0]["writes_protocol_ledger"] is False
 
     maintenance = one(["repair", "down_for_maintenance:stock_intelligence_hub::fundamentals_gateway"], expected_code=1)
     assert maintenance["ok"] is False
@@ -782,7 +783,8 @@ def assert_audit_repair() -> None:
     repaired = one(["repair", "offline:macro_intelligence_hub"])
     assert repaired["record_type"] == "repair_result"
     assert repaired["domain_level"] == "agent_domain"
-    assert repaired["results"]["next_moves"][0]["writes_protocol_ledger"] is True
+    assert repaired["results"]["next_moves"][0]["run_cmd"] == "./xctx --more repair offline:macro_intelligence_hub"
+    assert repaired["results"]["next_moves"][0]["writes_protocol_ledger"] is False
 
 
 def assert_connector_supervisor_middleware() -> None:

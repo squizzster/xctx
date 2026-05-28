@@ -38,6 +38,21 @@ BAR_CSV_COLUMNS = [
 ]
 DAILY_BAR_MULTIPLIER = 1
 DAILY_BAR_TIMESPAN_CODE = 1
+TICKER_TOKEN_PATTERN = r"[a-z0-9][a-z0-9.\-]{0,15}"
+INSTRUMENT_ID_RE = re.compile(rf"^instrument:({TICKER_TOKEN_PATTERN})$")
+TICKER_ID_RE = re.compile(rf"^ticker:({TICKER_TOKEN_PATTERN})$")
+MARKET_SERIES_ID_RE = re.compile(rf"^market_series:({TICKER_TOKEN_PATTERN}):daily$")
+ISSUER_CIK_ID_RE = re.compile(r"^issuer:cik:(\d{10})$")
+CIK_ID_RE = re.compile(r"^cik:(\d{1,10})$")
+OHLCV_SERIES_ID_RE = re.compile(r"^ohlcv_series:(\d+)$")
+RESERVED_IDENTIFIER_PREFIXES = (
+    "instrument:",
+    "ticker:",
+    "market_series:",
+    "issuer:cik:",
+    "cik:",
+    "ohlcv_series:",
+)
 
 EXCHANGE_NAMES = {
     "XNAS": "Nasdaq",
@@ -175,6 +190,30 @@ def _digits_only(value: Any) -> str:
     return re.sub(r"\D+", "", str(value or ""))
 
 
+def _reserved_identifier_prefix(value: Any) -> str | None:
+    text = str(value or "").strip().lower()
+    return next((prefix for prefix in RESERVED_IDENTIFIER_PREFIXES if text.startswith(prefix)), None)
+
+
+def _malformed_reserved_identifier(value: Any) -> bool:
+    text = str(value or "").strip().lower()
+    if not _reserved_identifier_prefix(text):
+        return False
+    if text.startswith("instrument:"):
+        return INSTRUMENT_ID_RE.fullmatch(text) is None
+    if text.startswith("ticker:"):
+        return TICKER_ID_RE.fullmatch(text) is None
+    if text.startswith("market_series:"):
+        return MARKET_SERIES_ID_RE.fullmatch(text) is None
+    if text.startswith("issuer:cik:"):
+        return ISSUER_CIK_ID_RE.fullmatch(text) is None
+    if text.startswith("cik:"):
+        return CIK_ID_RE.fullmatch(text) is None
+    if text.startswith("ohlcv_series:"):
+        return OHLCV_SERIES_ID_RE.fullmatch(text) is None
+    return False
+
+
 def _cik_key(value: Any) -> str:
     digits = _digits_only(value)
     return digits.lstrip("0") if digits else ""
@@ -182,13 +221,21 @@ def _cik_key(value: Any) -> str:
 
 def _query_cik_key(value: Any) -> str:
     text = str(value or "").strip().lower()
+    if _malformed_reserved_identifier(text):
+        return ""
+    issuer_match = ISSUER_CIK_ID_RE.fullmatch(text)
+    if issuer_match:
+        return issuer_match.group(1).lstrip("0") or "0"
+    cik_match = CIK_ID_RE.fullmatch(text)
+    if cik_match:
+        return cik_match.group(1).lstrip("0") or "0"
     digits = _digits_only(text)
     if not digits:
         return ""
     alpha = re.sub(r"[^a-z]+", "", text)
     if re.fullmatch(r"0*\d{1,10}", text):
         return digits.lstrip("0") or "0"
-    if alpha in {"cik", "issuercik"} or text.startswith(("issuer:cik:", "cik:")):
+    if alpha in {"cik", "issuercik"}:
         return digits.lstrip("0") or "0"
     return ""
 
@@ -203,14 +250,28 @@ def _alias_symbols(record: dict[str, Any]) -> list[str]:
     return _unique_text(aliases)
 
 
-def _instrument_lookup_token(identifier: str) -> str:
+def _instrument_lookup_token(identifier: str) -> str | None:
     lowered = identifier.strip().lower()
-    if lowered.startswith("market_series:"):
-        parts = lowered.split(":")
-        if len(parts) >= 2 and parts[1]:
-            return parts[1]
-    if lowered.startswith("ticker:"):
-        return lowered.replace("ticker:", "", 1)
+    if _malformed_reserved_identifier(lowered):
+        return None
+    market_series = MARKET_SERIES_ID_RE.fullmatch(lowered)
+    if market_series:
+        return market_series.group(1)
+    instrument = INSTRUMENT_ID_RE.fullmatch(lowered)
+    if instrument:
+        return instrument.group(1)
+    ticker = TICKER_ID_RE.fullmatch(lowered)
+    if ticker:
+        return ticker.group(1)
+    issuer = ISSUER_CIK_ID_RE.fullmatch(lowered)
+    if issuer:
+        return f"issuer:cik:{issuer.group(1)}"
+    cik = CIK_ID_RE.fullmatch(lowered)
+    if cik:
+        return cik.group(1).lstrip("0") or "0"
+    ohlcv = OHLCV_SERIES_ID_RE.fullmatch(lowered)
+    if ohlcv:
+        return lowered
     return identifier.strip()
 
 
@@ -556,6 +617,8 @@ def _instrument_match_score(record: dict[str, Any], query: str) -> int:
 def search_instruments_with_total(root: Path, query: str, limit: int = DEFAULT_SEARCH_LIMIT) -> tuple[int, list[dict[str, Any]]]:
     query = query.strip()
     if not query:
+        return 0, []
+    if _malformed_reserved_identifier(query):
         return 0, []
     matches: list[dict[str, Any]] = []
     for record in load_all_instruments(root):
@@ -1008,18 +1071,20 @@ def compact_market_series_projection(item: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _series_identifier_where(identifier: str) -> tuple[str, tuple[Any, ...]]:
+def _series_identifier_where(identifier: str) -> tuple[str, tuple[Any, ...]] | None:
     raw = identifier.strip()
     lowered = raw.lower()
-    if lowered.startswith("market_series:"):
-        parts = lowered.split(":")
-        ticker = parts[1] if len(parts) >= 2 else lowered.replace("market_series:", "")
-        return "WHERE lower(s.latest_ticker) = lower(?)", (ticker,)
-    if lowered.startswith("ohlcv_series:"):
-        return "WHERE s.ohlcv_series_id = ?", (lowered.replace("ohlcv_series:", ""),)
-    if lowered.startswith("instrument:"):
-        ticker = lowered.replace("instrument:", "", 1)
-        return "WHERE lower(s.latest_ticker) = lower(?)", (ticker,)
+    if _malformed_reserved_identifier(lowered):
+        return None
+    market_series = MARKET_SERIES_ID_RE.fullmatch(lowered)
+    if market_series:
+        return "WHERE lower(s.latest_ticker) = lower(?)", (market_series.group(1),)
+    ohlcv = OHLCV_SERIES_ID_RE.fullmatch(lowered)
+    if ohlcv:
+        return "WHERE s.ohlcv_series_id = ?", (ohlcv.group(1),)
+    instrument = INSTRUMENT_ID_RE.fullmatch(lowered)
+    if instrument:
+        return "WHERE lower(s.latest_ticker) = lower(?)", (instrument.group(1),)
     q_cik = _query_cik_key(raw)
     if q_cik:
         return "WHERE ltrim(COALESCE(r.cik, ''), '0') = ?", (q_cik,)
@@ -1031,7 +1096,10 @@ def _series_identifier_where(identifier: str) -> tuple[str, tuple[Any, ...]]:
 
 
 def find_market_series(root: Path, identifier: str, *, include_observed_data: bool = True) -> dict[str, Any] | None:
-    where, params = _series_identifier_where(identifier)
+    resolved = _series_identifier_where(identifier)
+    if resolved is None:
+        return None
+    where, params = resolved
     with connect_market(root) as conn:
         row = conn.execute(_series_query_sql(where + " ORDER BY d.max_date_key DESC LIMIT 1"), params).fetchone()
     return _market_series_projection(row, include_observed_data=include_observed_data) if row else None
@@ -1039,6 +1107,8 @@ def find_market_series(root: Path, identifier: str, *, include_observed_data: bo
 
 def search_market_series(root: Path, query: str, limit: int = 20) -> list[dict[str, Any]]:
     query = query.strip()
+    if _malformed_reserved_identifier(query):
+        return []
     with connect_market(root) as conn:
         if not query:
             rows = conn.execute(_series_query_sql("ORDER BY s.latest_ticker LIMIT ?"), (limit,)).fetchall()

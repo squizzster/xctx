@@ -119,8 +119,8 @@ def repair_payload(store: dict[str, Any], target: str) -> tuple[bool, dict[str, 
                 "message": "Repair path exposed. xctx describes the repair; domain tools or operators perform real state changes.",
                 "next_moves": [
                     command_hint(
-                        f"./xctx plan bring_online {resolved.resolved_target}",
-                        writes_protocol_ledger=True,
+                        f"./xctx --more repair {resolved.finding_id or resolved.resolved_target}",
+                        writes_protocol_ledger=False,
                         domain_mutation=False,
                     ),
                     command_hint(
