@@ -51,13 +51,36 @@ def compact_subdomain(store: dict[str, Any], domain_id: str, subdomain: dict[str
         payload["terminal_reason"] = "down_for_maintenance"
     return {key: value for key, value in payload.items() if value is not None}
 
+def agent_subdomain_ref(domain_id: str, subdomain_id: str) -> str:
+    return f"{domain_id}::{subdomain_id}"
+
+def agent_subdomain_identity(store: dict[str, Any], domain_id: str, subdomain: dict[str, Any]) -> dict[str, Any]:
+    subdomain_id = str(subdomain["id"])
+    payload = compact_subdomain(store, domain_id, subdomain)
+    payload["id"] = agent_subdomain_ref(domain_id, subdomain_id)
+    payload["domain_id"] = domain_id
+    payload["subdomain_id"] = subdomain_id
+    return payload
+
+def attach_agent_subdomain_identity(
+    payload: dict[str, Any],
+    store: dict[str, Any],
+    domain_id: str,
+    subdomain: dict[str, Any],
+) -> dict[str, Any]:
+    subdomain_id = str(subdomain["id"])
+    payload["agent_domain"] = domain_id
+    payload["agent_subdomain_id"] = agent_subdomain_ref(domain_id, subdomain_id)
+    payload["agent_subdomain"] = agent_subdomain_identity(store, domain_id, subdomain)
+    return payload
+
 def joined_identifier(parts: list[str | None]) -> str | None:
     text = " ".join(str(part) for part in parts if part).strip()
     return text or None
 
 def offline_subdomain_payload(store: dict[str, Any], domain_id: str, subdomain: dict[str, Any]) -> dict[str, Any]:
     payload = with_description(store, subdomain)
-    payload["agent_domain"] = domain_id
+    attach_agent_subdomain_identity(payload, store, domain_id, subdomain)
     payload["status"] = subdomain.get("status")
     if subdomain.get("status") == "offline" and subdomain.get("repair_path"):
         repair_cmd = subdomain["repair_path"].get("run_cmd")

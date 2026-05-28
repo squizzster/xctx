@@ -28,6 +28,13 @@ class CapturedProcess:
     timed_out: bool
     stdout: str
     stderr: str
+    stdout_truncated: bool = False
+    stderr_truncated: bool = False
+    stdout_captured_bytes: int = 0
+    stderr_captured_bytes: int = 0
+    stdout_total_bytes: int = 0
+    stderr_total_bytes: int = 0
+    max_output_bytes: int = 0
 
     @property
     def exit_code(self) -> int | None:
@@ -43,9 +50,17 @@ def decode_bytes(value: bytes) -> str:
 
 
 def read_limited(stream: BinaryIO, max_output_bytes: int) -> str:
+    return _read_limited_with_metadata(stream, max_output_bytes)[0]
+
+
+def _read_limited_with_metadata(stream: BinaryIO, max_output_bytes: int) -> tuple[str, bool, int, int]:
     stream.flush()
+    stream.seek(0, os.SEEK_END)
+    total_bytes = stream.tell()
     stream.seek(0)
-    return decode_bytes(stream.read(max_output_bytes))
+    raw = stream.read(max_output_bytes)
+    captured_bytes = len(raw)
+    return decode_bytes(raw), total_bytes > captured_bytes, captured_bytes, total_bytes
 
 
 def kill_process_tree(proc: subprocess.Popen[bytes]) -> None:
@@ -116,8 +131,14 @@ def capture_process(
         if timed_out:
             _finish_after_kill(proc)
 
-        stdout = read_limited(stdout_file, max_output_bytes)
-        stderr = read_limited(stderr_file, max_output_bytes)
+        stdout, stdout_truncated, stdout_captured_bytes, stdout_total_bytes = _read_limited_with_metadata(
+            stdout_file,
+            max_output_bytes,
+        )
+        stderr, stderr_truncated, stderr_captured_bytes, stderr_total_bytes = _read_limited_with_metadata(
+            stderr_file,
+            max_output_bytes,
+        )
 
     return CapturedProcess(
         argv=tuple(str(part) for part in argv),
@@ -125,4 +146,11 @@ def capture_process(
         timed_out=timed_out,
         stdout=stdout,
         stderr=stderr,
+        stdout_truncated=stdout_truncated,
+        stderr_truncated=stderr_truncated,
+        stdout_captured_bytes=stdout_captured_bytes,
+        stderr_captured_bytes=stderr_captured_bytes,
+        stdout_total_bytes=stdout_total_bytes,
+        stderr_total_bytes=stderr_total_bytes,
+        max_output_bytes=max_output_bytes,
     )

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from xctx.domain.core import joined_identifier, offline_subdomain_payload, resolve_subdomain
+from xctx.domain.core import attach_agent_subdomain_identity, joined_identifier, offline_subdomain_payload, resolve_subdomain
 from xctx.domain.discovery import domain_discovery_payload
 from xctx.domain.routing import observe_adapter_option_args, parse_ref
 from xctx.errors import XctxError
@@ -42,7 +42,9 @@ def observe_payload(
         else:
             option_args = observe_adapter_option_args(store, subdomain, options)
             live = call_external_command(store, subdomain, ["observe", identifier, *option_args])
-        return "agent_subdomain", {"agent_domain": domain_id, "agent_subdomain": subdomain_id, "live_data": live}
+        payload = {"live_data": live}
+        attach_agent_subdomain_identity(payload, store, domain_id, subdomain)
+        return "agent_subdomain", payload
     if domain_id:
         if options:
             raise XctxError(

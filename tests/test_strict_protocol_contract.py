@@ -98,6 +98,28 @@ def test_subdomain_actions_require_structural_action_refs() -> None:
         assert payload["record_type"] == "discovery"
 
 
+def test_entrypoint_action_token_guidance_uses_canonical_structural_ref() -> None:
+    rc, payload = run_runtime_json(["discover", "stock_intelligence_hub::equity_filing", "list-forms"])
+
+    assert rc == 1
+    assert payload["record_type"] == "error"
+    assert payload["error"] == "non-canonical action token for stock_intelligence_hub::equity_filing: list-forms"
+    assert payload["next_moves"] == [{"run_cmd": "./xctx discover stock_intelligence_hub::equity_filing::list_forms"}]
+    assert "./xctx discover stock_intelligence_hub::equity_filing list_forms" not in _text(payload)
+
+
+def test_domain_action_name_guidance_uses_canonical_structural_ref() -> None:
+    rc, payload = run_runtime_json(["discover", "stock_intelligence_hub::equity_filing", "search_filing_form"])
+
+    assert rc == 1
+    assert payload["record_type"] == "error"
+    assert payload["error"] == (
+        "non-canonical action token for stock_intelligence_hub::equity_filing: search_filing_form"
+    )
+    assert payload["next_moves"] == [{"run_cmd": "./xctx discover stock_intelligence_hub::equity_filing::search_forms"}]
+    assert "./xctx discover stock_intelligence_hub::equity_filing search_forms" not in _text(payload)
+
+
 def test_domain_affordance_shortcuts_are_explicit_mappings() -> None:
     rc, shortcut = run_runtime_json(["discover", "stock_intelligence_hub::search_filing_form", "10-K"])
     assert rc == 0
@@ -106,7 +128,8 @@ def test_domain_affordance_shortcuts_are_explicit_mappings() -> None:
     assert shortcut_results["action"] == "search_filing_form"
     assert shortcut_results["domain_affordance"] is True
     assert shortcut_results["agent_domain"] == "stock_intelligence_hub"
-    assert shortcut_results["agent_subdomain"] == "equity_filing"
+    assert shortcut_results["agent_subdomain_id"] == "stock_intelligence_hub::equity_filing"
+    assert shortcut_results["agent_subdomain"]["subdomain_id"] == "equity_filing"
     assert shortcut_results["implemented_by"] == "stock_intelligence_hub::equity_filing::search_forms"
     assert shortcut_results["implemented_by_run_cmd"] == "./xctx discover stock_intelligence_hub::equity_filing::search_forms"
     assert shortcut_results["implemented_action"] == "search_forms"
@@ -137,6 +160,34 @@ def test_domain_affordance_shortcuts_are_explicit_mappings() -> None:
     assert affordance["implemented_by"] == "stock_intelligence_hub::equity_filing::search_forms"
     assert affordance["implemented_by_run_cmd"] == "./xctx discover stock_intelligence_hub::equity_filing::search_forms"
     assert affordance["run_cmd"].startswith("./xctx discover stock_intelligence_hub::search_filing_form")
+
+
+def test_scoped_payloads_use_object_agent_subdomain_schema() -> None:
+    cases = (
+        ["discover", "stock_intelligence_hub::market_data_gateway"],
+        ["discover", "stock_intelligence_hub::market_data_gateway::search_entity_instrument"],
+        ["discover", "stock_intelligence_hub::search_filing_form"],
+        ["observe", "stock_intelligence_hub::market_data_gateway", "instrument:aapl"],
+    )
+    for args in cases:
+        rc, payload = run_runtime_json(list(args))
+        assert rc == 0
+        results = payload["results"]
+        assert isinstance(results["agent_subdomain"], dict)
+        assert results["agent_subdomain_id"].startswith(results["agent_domain"] + "::")
+        assert results["agent_subdomain"]["id"] == results["agent_subdomain_id"]
+        assert results["agent_subdomain"]["domain_id"] == results["agent_domain"]
+        assert results["agent_subdomain"]["subdomain_id"]
+
+
+def test_agent_subdomain_field_is_not_reused_as_string_in_scoped_payloads() -> None:
+    for args in (
+        ["discover", "file_manager::home_directory::list_files", "--limit", "1"],
+        ["observe", "file_manager::home_directory", "file:README.txt"],
+    ):
+        rc, payload = run_runtime_json(list(args))
+        assert rc == 0
+        assert not isinstance(payload["results"]["agent_subdomain"], str)
 
 
 def test_basic_instrument_observation_omits_expanded_market_series_data() -> None:

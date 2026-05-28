@@ -117,6 +117,9 @@ def run(argv: Sequence[str] | None = None, root: Path | None = None) -> int:
     args, unknown_args = parser.parse_known_args(selection.argv)
     args.cmdline_arg = selection.cmdline_arg or shlex.join(selection.argv)
     canonical = canonical_command(store, args.command)
+    if canonical == "observe":
+        args.observe_args = list(selection.argv[1:])
+        unknown_args = []
     if unknown_args:
         raise XctxError(f"unrecognized arguments: {' '.join(unknown_args)}")
     handler = handlers.get(canonical)
@@ -131,6 +134,7 @@ def _emit_process_error(
     *,
     root: Path | None = None,
     next_moves: list | None = None,
+    error_category: str = "usage_error",
 ) -> None:
     command = redact_argv(list(raw_argv)) if raw_argv else "xctx"
     moves = list(next_moves or [])
@@ -142,7 +146,7 @@ def _emit_process_error(
         fallback_store["detail_level"] = _select_detail(fallback_store, normalized_argv, selection.detail_level)
         if selection.output_error and not selection.detail_level:
             fallback_store["detail_level"] = "basic"
-        emit_stderr_event(fallback_store, command, "error", message)
+        emit_stderr_event(fallback_store, command, "error", message, error_category=error_category)
         emit_record(
             fallback_store,
             command,
@@ -152,10 +156,25 @@ def _emit_process_error(
             error=message,
             next_moves=moves,
             cmdline_arg=command,
+            error_category=error_category,
         )
-        emit_final_stderr(fallback_store, command, False, "error emitted", error=message, next_moves=moves)
+        emit_final_stderr(
+            fallback_store,
+            command,
+            False,
+            "error emitted",
+            error=message,
+            error_category=error_category,
+            next_moves=moves,
+        )
     except Exception:
-        emit_minimal_error(command, message, next_moves=moves, output_format=_minimal_output_format(raw_argv))
+        emit_minimal_error(
+            command,
+            message,
+            next_moves=moves,
+            output_format=_minimal_output_format(raw_argv),
+            error_category=error_category,
+        )
 
 
 def main(argv: Sequence[str] | None = None, root: Path | None = None) -> int:
@@ -164,10 +183,20 @@ def main(argv: Sequence[str] | None = None, root: Path | None = None) -> int:
     raw_argv = list(sys.argv[1:] if argv is None else argv)
     try:
         return run(raw_argv, root=root)
-    except (XctxError, json.JSONDecodeError, yaml.YAMLError, OSError) as exc:
-        next_moves = exc.next_moves if isinstance(exc, XctxError) else []
-        _emit_process_error(raw_argv, str(exc), root=root, next_moves=next_moves)
+    except XctxError as exc:
+        _emit_process_error(raw_argv, str(exc), root=root, next_moves=exc.next_moves, error_category=exc.category)
+        return 1
+    except yaml.YAMLError as exc:
+        _emit_process_error(raw_argv, str(exc), root=root, error_category="config_error")
+        return 1
+    except (json.JSONDecodeError, OSError) as exc:
+        _emit_process_error(raw_argv, str(exc), root=root, error_category="store_error")
         return 1
     except Exception as exc:
-        _emit_process_error(raw_argv, f"unexpected_framework_error: {type(exc).__name__}: {exc}", root=root)
+        _emit_process_error(
+            raw_argv,
+            f"unexpected_framework_error: {type(exc).__name__}: {exc}",
+            root=root,
+            error_category="framework_bug",
+        )
         return 1

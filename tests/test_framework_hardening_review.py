@@ -114,7 +114,7 @@ def test_audit_status_treats_malformed_checks_as_failure(monkeypatch: pytest.Mon
     monkeypatch.setattr(
         audit_command,
         "audit_payload",
-        lambda _store, _scope: {
+        lambda _store, _scope, audit_scope="all": {
             "summary": {},
             "checks": ["not-a-check", {"id": "missing_status"}, {"id": "bad_status", "status": "unknown"}],
             "findings": [],
@@ -216,17 +216,37 @@ def test_runtime_error_envelopes_redact_two_token_cli_secrets() -> None:
 def test_connector_failure_payloads_redact_requested_args_and_do_not_mask_operation_token() -> None:
     secret = "xctx-review-connector-secret-456"
 
-    rc, payload = run_runtime_json(["discover", "stock_intelligence_hub::market_data_gateway", "--api-key", secret])
+    rc, payload = run_runtime_json(
+        [
+            "discover",
+            "stock_intelligence_hub::market_data_gateway::list_instruments",
+            "--cursor",
+            f"api_key={secret}",
+        ]
+    )
     serialized = json.dumps(payload, sort_keys=True)
 
     assert rc == 1
     assert payload["record_type"] == "discovery"
     assert secret not in serialized
-    assert payload["results"]["live_data"]["requested_args"] == ["discover", "--api-key", "<redacted>"]
+    assert payload["results"]["live_data"]["requested_args"] == ["list", "--cursor", "api_key=<redacted>"]
 
     plan_rc, plan_payload = run_runtime_json(["plan", "inspect", "root"])
     assert plan_rc == 0
     assert plan_payload["results"]["operation_token"] == "inspect"
+
+
+def test_undeclared_secret_action_option_is_rejected_before_adapter_and_redacted() -> None:
+    secret = "xctx-review-undeclared-secret-789"
+
+    rc, payload = run_runtime_json(["discover", "stock_intelligence_hub::market_data_gateway", "--api-key", secret])
+    serialized = json.dumps(payload, sort_keys=True)
+
+    assert rc == 1
+    assert payload["record_type"] == "error"
+    assert payload["error"] == "unsupported action option for this action: --api-key"
+    assert secret not in serialized
+    assert "<redacted>" in serialized
 
 
 def test_connector_protocol_error_fields_are_redacted() -> None:

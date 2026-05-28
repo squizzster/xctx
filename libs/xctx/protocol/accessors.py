@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import shlex
 from typing import Any
 
 from xctx.protocol.command_policy import (
@@ -34,20 +35,31 @@ def command_prefix(store: dict[str, Any]) -> str:
     return "./xctx"
 
 
+def _quote_run_cmd_part(part: str) -> str:
+    if "<" in part and ">" in part:
+        return part
+    return shlex.quote(part)
+
+
 def scope_run_cmd(store: dict[str, Any], command: str) -> str:
     """Normalize xctx command hints to the workspace-local executable form."""
     command = str(command).strip()
     if not command:
         return command
 
-    parts = command.split()
+    try:
+        parts = shlex.split(command)
+    except ValueError:
+        return command
+    if not parts:
+        return command
     executable = parts[0]
     if executable not in {"xctx", "./xctx"}:
         return command
 
     scoped_parts = ["./xctx"]
     scoped_parts.extend(parts[1:])
-    return " ".join(scoped_parts)
+    return " ".join(_quote_run_cmd_part(part) for part in scoped_parts)
 
 
 def format_run_cmd(store: dict[str, Any], template: str, **context: Any) -> str:

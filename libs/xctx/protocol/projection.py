@@ -71,6 +71,19 @@ PUBLIC_KEY_RENAMES = {
     "output_shapes": "output_projections",
     "shapes": "projections",
 }
+OPAQUE_ADAPTER_PAYLOAD_KEYS = frozenset({"payload", "failure_payload"})
+LIVE_DATA_DIAGNOSTIC_KEYS = frozenset(
+    {
+        "argv",
+        "command_status",
+        "connector",
+        "external_command",
+        "external_commands",
+        "passthrough_target",
+        "target_payload",
+        "raw_external_output",
+    }
+)
 
 
 def _replace_public_text(value: str) -> str:
@@ -117,7 +130,19 @@ def _relativize_workspace_paths(store: dict[str, Any], value: Any) -> Any:
         if isinstance(item, tuple):
             return [convert(child) for child in item]
         if isinstance(item, Mapping):
-            return {key: convert(child) for key, child in item.items()}
+            out: dict[Any, Any] = {}
+            for key, child in item.items():
+                if isinstance(key, str) and key in OPAQUE_ADAPTER_PAYLOAD_KEYS:
+                    out[key] = child
+                    continue
+                if key == "live_data" and isinstance(child, Mapping):
+                    out[key] = {
+                        live_key: convert(live_child) if live_key in LIVE_DATA_DIAGNOSTIC_KEYS else live_child
+                        for live_key, live_child in child.items()
+                    }
+                    continue
+                out[key] = convert(child)
+            return out
         return item
 
     return convert(value)
@@ -134,6 +159,17 @@ def _normalize_public_terms(value: Any) -> Any:
         out: dict[Any, Any] = {}
         for key, item in value.items():
             new_key = PUBLIC_KEY_RENAMES.get(key, key) if isinstance(key, str) else key
+            if isinstance(key, str) and key in OPAQUE_ADAPTER_PAYLOAD_KEYS:
+                out[new_key] = item
+                continue
+            if key == "live_data" and isinstance(item, Mapping):
+                out[new_key] = {
+                    live_key: _normalize_public_terms(live_child)
+                    if live_key in LIVE_DATA_DIAGNOSTIC_KEYS
+                    else live_child
+                    for live_key, live_child in item.items()
+                }
+                continue
             normalized = _normalize_public_terms(item)
             if new_key == "full_projection_cmd":
                 out["projection_controls"] = {
@@ -149,6 +185,12 @@ def _normalize_public_terms(value: Any) -> Any:
 def _contains_diagnostics(value: Any) -> bool:
     if isinstance(value, Mapping):
         for key, item in value.items():
+            if isinstance(key, str) and key in OPAQUE_ADAPTER_PAYLOAD_KEYS:
+                continue
+            if key == "live_data" and isinstance(item, Mapping):
+                if any(live_key in LIVE_DATA_DIAGNOSTIC_KEYS for live_key in item):
+                    return True
+                continue
             if isinstance(key, str) and key in DIAGNOSTIC_KEYS:
                 return True
             if _contains_diagnostics(item):
@@ -168,6 +210,16 @@ def _strip_diagnostics(value: Any) -> Any:
         for key, item in value.items():
             if key == "omitted":
                 out[key] = item
+                continue
+            if isinstance(key, str) and key in OPAQUE_ADAPTER_PAYLOAD_KEYS:
+                out[key] = item
+                continue
+            if key == "live_data" and isinstance(item, Mapping):
+                out[key] = {
+                    live_key: live_child
+                    for live_key, live_child in item.items()
+                    if live_key not in LIVE_DATA_DIAGNOSTIC_KEYS
+                }
                 continue
             if isinstance(key, str) and key in DIAGNOSTIC_KEYS:
                 continue
@@ -221,13 +273,16 @@ def _audit_status(summary: Mapping[str, Any], existing: Any = None) -> str:
 
 def _project_audit(store: dict[str, Any], payload: Mapping[str, Any], *, cmdline_arg: str | None) -> dict[str, Any]:
     scope = str(payload.get("scope") or "root")
+    audit_scope = str(payload.get("audit_scope") or "all")
     checks = list(payload.get("checks") or [])
     findings = list(payload.get("findings") or [])
     summary = _audit_summary(scope, checks, findings, payload.get("summary") if isinstance(payload.get("summary"), Mapping) else None)
+    summary.setdefault("audit_scope", audit_scope)
     status = _audit_status(summary, payload.get("audit_status"))
     if is_max(store):
         out = dict(payload)
         out["summary"] = summary
+        out["audit_scope"] = audit_scope
         out["audit_status"] = status
         return out
 
@@ -237,6 +292,7 @@ def _project_audit(store: dict[str, Any], payload: Mapping[str, Any], *, cmdline
         pass_check_ids = [str(check.get("id")) for check in checks if isinstance(check, Mapping) and _status(check) == "pass"]
         out = {
             "scope": scope,
+            "audit_scope": audit_scope,
             "audit_status": status,
             "summary": summary,
             "checks": visible_checks,
@@ -254,6 +310,7 @@ def _project_audit(store: dict[str, Any], payload: Mapping[str, Any], *, cmdline
     omitted = ["pass_checks", "config_fingerprint", "config_file_details"]
     out = {
         "scope": scope,
+        "audit_scope": audit_scope,
         "audit_status": status,
         "summary": summary,
         "checks": visible_checks,
@@ -277,6 +334,7 @@ def _project_plan(store: dict[str, Any], payload: Mapping[str, Any], *, cmdline_
         "target",
         "planner_id",
         "plan_id",
+        "materialization_manifest_id",
         "master_plan_id",
         "sub_plan_id",
         "expected_commit_id",
@@ -288,6 +346,7 @@ def _project_plan(store: dict[str, Any], payload: Mapping[str, Any], *, cmdline_
         "writes_to_db",
         "can_be_reversed",
         "can_be_repaired",
+        "materialized_artifacts",
         "receipt_sha256",
         "receipt_sha5",
         "accepted_execute_cmd",

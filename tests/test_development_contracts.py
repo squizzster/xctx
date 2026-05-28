@@ -23,6 +23,46 @@ def test_execute_accepts_exactly_one_plan_identifier() -> None:
     assert payload["results"]["next_move"] == "./xctx execute <PLAN_ID> --commit"
 
 
+def test_plan_ref_parser_accepts_only_canonical_plan_id() -> None:
+    ensure_libs_path()
+    from xctx.store.plans import parse_plan_ref  # noqa: PLC0415
+
+    digest = "a" * 64
+    canonical = parse_plan_ref(f"plan:sha256:{digest}")
+    raw = parse_plan_ref(digest)
+    short = parse_plan_ref(digest[:5])
+    malformed = parse_plan_ref("plan:sha256:not-a-sha")
+
+    assert canonical.ok is True
+    assert canonical.receipt_sha256 == digest
+    assert raw.ok is False
+    assert raw.error == "plan_id_required"
+    assert short.ok is False
+    assert short.error == "plan_id_required"
+    assert malformed.ok is False
+    assert malformed.error == "invalid_plan_receipt"
+
+
+def test_resolve_plan_rejects_raw_and_short_receipts(tmp_path, monkeypatch) -> None:
+    ensure_libs_path()
+    from xctx.config.loader import load_store  # noqa: PLC0415
+    from xctx.domain.planning import plan_payload  # noqa: PLC0415
+    from xctx.store.plans import resolve_plan  # noqa: PLC0415
+
+    monkeypatch.setenv("XCTX_RUNTIME_DIR", str(tmp_path))
+    store = load_store(root=ROOT)
+    plan = plan_payload(["bring_online", "macro_intelligence_hub"], store)
+
+    assert resolve_plan(store, plan["plan_id"]).ok is True
+    raw = resolve_plan(store, plan["receipt_sha256"])
+    short = resolve_plan(store, plan["receipt_sha5"])
+
+    assert raw.ok is False
+    assert raw.error == "plan_id_required"
+    assert short.ok is False
+    assert short.error == "plan_id_required"
+
+
 def test_repair_finding_prefix_must_match_current_state() -> None:
     rc, payload = run_runtime_json(["repair", "offline:stock_intelligence_hub::fundamentals_gateway"])
 
@@ -101,6 +141,136 @@ def test_config_validation_rejects_subdomain_id_mismatch() -> None:
 
     with pytest.raises(XctxError, match=f"agent_subdomain id mismatch for {domain_id}::{subdomain_id}"):
         validate_loaded_store(store)
+
+
+def test_config_validation_rejects_invalid_domain_and_action_ids() -> None:
+    ensure_libs_path()
+    from xctx.config.loader import load_store  # noqa: PLC0415
+    from xctx.config.validation import validate_loaded_store  # noqa: PLC0415
+    from xctx.errors import XctxError  # noqa: PLC0415
+
+    store = copy.deepcopy(load_store(root=ROOT))
+    domain = store["agent_domains"].pop("stock_intelligence_hub")
+    domain["id"] = "Bad-Domain"
+    store["agent_domains"]["Bad-Domain"] = domain
+
+    with pytest.raises(XctxError, match="invalid agent_domain id: Bad-Domain"):
+        validate_loaded_store(store)
+
+    store = copy.deepcopy(load_store(root=ROOT))
+    subdomain = store["agent_domains"]["stock_intelligence_hub"]["_subdomains"]["market_data_gateway"]
+    subdomain["actions"]["bad-action"] = {"entrypoint_command": "bad-action"}
+
+    with pytest.raises(XctxError, match="invalid agent_subdomain stock_intelligence_hub::market_data_gateway.actions action id"):
+        validate_loaded_store(store)
+
+
+def test_config_validation_rejects_invalid_connector_kind() -> None:
+    ensure_libs_path()
+    from xctx.config.loader import load_store  # noqa: PLC0415
+    from xctx.config.validation import validate_loaded_store  # noqa: PLC0415
+    from xctx.errors import XctxError  # noqa: PLC0415
+
+    store = copy.deepcopy(load_store(root=ROOT))
+    subdomain = store["agent_domains"]["stock_intelligence_hub"]["_subdomains"]["market_data_gateway"]
+    subdomain["connector"]["kind"] = "unsafe_adapter"
+
+    with pytest.raises(XctxError, match="unsupported agent_subdomain stock_intelligence_hub::market_data_gateway.connector.kind"):
+        validate_loaded_store(store)
+
+
+def test_config_validation_requires_connector_supervisor_entrypoint() -> None:
+    ensure_libs_path()
+    from xctx.config.loader import load_store  # noqa: PLC0415
+    from xctx.config.validation import validate_loaded_store  # noqa: PLC0415
+    from xctx.errors import XctxError  # noqa: PLC0415
+
+    store = copy.deepcopy(load_store(root=ROOT))
+    subdomain = store["agent_domains"]["stock_intelligence_hub"]["_subdomains"]["market_data_gateway"]
+    subdomain["entrypoint"]["file"] = "examples/stock_intelligence_hub/adapters/market_data_gateway.py"
+
+    with pytest.raises(XctxError, match="entrypoint.file must be connector_supervisor.py"):
+        validate_loaded_store(store)
+
+
+def test_config_validation_rejects_passthrough_target_escape() -> None:
+    ensure_libs_path()
+    from xctx.config.loader import load_store  # noqa: PLC0415
+    from xctx.config.validation import validate_loaded_store  # noqa: PLC0415
+    from xctx.errors import XctxError  # noqa: PLC0415
+
+    store = copy.deepcopy(load_store(root=ROOT))
+    subdomain = store["agent_domains"]["stock_intelligence_hub"]["_subdomains"]["market_data_gateway"]
+    subdomain["connector"]["target_entrypoint"] = "../outside.py"
+
+    with pytest.raises(XctxError, match="connector.target_entrypoint resolves outside"):
+        validate_loaded_store(store)
+
+
+def test_config_validation_rejects_invalid_connector_limits() -> None:
+    ensure_libs_path()
+    from xctx.config.loader import load_store  # noqa: PLC0415
+    from xctx.config.validation import validate_loaded_store  # noqa: PLC0415
+    from xctx.errors import XctxError  # noqa: PLC0415
+
+    store = copy.deepcopy(load_store(root=ROOT))
+    subdomain = store["agent_domains"]["stock_intelligence_hub"]["_subdomains"]["market_data_gateway"]
+    subdomain["connector"]["timeout_seconds"] = 0
+
+    with pytest.raises(XctxError, match="connector.timeout_seconds"):
+        validate_loaded_store(store)
+
+    store = copy.deepcopy(load_store(root=ROOT))
+    subdomain = store["agent_domains"]["stock_intelligence_hub"]["_subdomains"]["market_data_gateway"]
+    subdomain["connector"]["max_output_bytes"] = 10
+
+    with pytest.raises(XctxError, match="connector.max_output_bytes"):
+        validate_loaded_store(store)
+
+
+def test_config_validation_rejects_invalid_entrypoint_limits() -> None:
+    ensure_libs_path()
+    from xctx.config.loader import load_store  # noqa: PLC0415
+    from xctx.config.validation import validate_loaded_store  # noqa: PLC0415
+    from xctx.errors import XctxError  # noqa: PLC0415
+
+    store = copy.deepcopy(load_store(root=ROOT))
+    subdomain = store["agent_domains"]["stock_intelligence_hub"]["_subdomains"]["market_data_gateway"]
+    subdomain["entrypoint"]["timeout_seconds"] = 0
+
+    with pytest.raises(XctxError, match="entrypoint.timeout_seconds"):
+        validate_loaded_store(store)
+
+    store = copy.deepcopy(load_store(root=ROOT))
+    subdomain = store["agent_domains"]["stock_intelligence_hub"]["_subdomains"]["market_data_gateway"]
+    subdomain["entrypoint"]["max_output_bytes"] = 10
+
+    with pytest.raises(XctxError, match="entrypoint.max_output_bytes"):
+        validate_loaded_store(store)
+
+
+def test_duplicate_yaml_key_rejected_at_root(tmp_path) -> None:
+    ensure_libs_path()
+    from xctx.errors import XctxError  # noqa: PLC0415
+    from xctx.io.yaml_io import load_yaml  # noqa: PLC0415
+
+    path = tmp_path / "duplicate-root.yaml"
+    path.write_text("connector: first\nconnector: second\n", encoding="utf-8")
+
+    with pytest.raises(XctxError, match="duplicate YAML key: connector"):
+        load_yaml(path)
+
+
+def test_duplicate_yaml_key_rejected_nested(tmp_path) -> None:
+    ensure_libs_path()
+    from xctx.errors import XctxError  # noqa: PLC0415
+    from xctx.io.yaml_io import load_yaml  # noqa: PLC0415
+
+    path = tmp_path / "duplicate-nested.yaml"
+    path.write_text("agent:\n  action: first\n  action: second\n", encoding="utf-8")
+
+    with pytest.raises(XctxError, match="duplicate YAML key: action"):
+        load_yaml(path)
 
 
 def test_option_config_audit_rejects_invalid_numeric_bounds() -> None:

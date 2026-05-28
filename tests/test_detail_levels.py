@@ -98,6 +98,69 @@ def test_projection_is_separate_from_detail_level() -> None:
     assert "market_series_run_cmd" in first
 
 
+def test_projection_preserves_adapter_owned_result_payload_keys() -> None:
+    ensure_libs_path()
+    from xctx.protocol.projection import project_output_envelope, project_record_payload  # noqa: PLC0415
+
+    store = {"detail_level": "basic", "root": "/tmp/xctx-projection-root"}
+    adapter_payload = {
+        "shape": "domain-owned-shape-key",
+        "stdout": "domain stdout data",
+        "stderr": "domain stderr data",
+        "exit_code": 7,
+        "connector": {"domain_value": True},
+        "message": "--shape and shape compact|full are literal adapter text",
+        "path": "/tmp/xctx-projection-root/domain-owned-path.txt",
+    }
+
+    projected = project_record_payload(
+        store,
+        "observation",
+        {"status": "ready", "payload": adapter_payload, "connector": {"framework": "diagnostic"}},
+        command="observe",
+        cmdline_arg="./xctx observe result:abc",
+        domain_level="root",
+    )
+    envelope = project_output_envelope(store, {"results": projected})
+
+    assert "connector" not in envelope["results"]
+    assert envelope["results"]["payload"] == adapter_payload
+
+
+def test_projection_preserves_live_data_domain_fields_while_stripping_middleware_diagnostics() -> None:
+    ensure_libs_path()
+    from xctx.protocol.projection import project_output_envelope, project_record_payload  # noqa: PLC0415
+
+    store = {"detail_level": "basic", "root": "/tmp/xctx-projection-root"}
+    live_data = {
+        "object_type": "domain_payload",
+        "shape": "domain-owned-shape-key",
+        "stdout": "domain stdout data",
+        "message": "--shape remains adapter text",
+        "connector": {"version": "framework metadata"},
+        "command_status": {"stdout_preview": "/tmp/xctx-projection-root/diagnostic.txt"},
+        "nested": {"connector": "domain-owned nested key"},
+    }
+
+    projected = project_record_payload(
+        store,
+        "discovery",
+        {"agent_domain": "demo", "agent_subdomain": "sub", "live_data": live_data},
+        command="discover",
+        cmdline_arg="./xctx discover demo::sub",
+        domain_level="agent_subdomain",
+    )
+    envelope = project_output_envelope(store, {"results": projected})
+    public_live_data = envelope["results"]["live_data"]
+
+    assert "connector" not in public_live_data
+    assert "command_status" not in public_live_data
+    assert public_live_data["shape"] == "domain-owned-shape-key"
+    assert public_live_data["stdout"] == "domain stdout data"
+    assert public_live_data["message"] == "--shape remains adapter text"
+    assert public_live_data["nested"]["connector"] == "domain-owned nested key"
+
+
 def test_obsolete_detail_and_shape_flags_are_rejected() -> None:
     rc, obsolete_detail = run_runtime_json(["--detail", "discover"])
     assert rc == 1
@@ -114,6 +177,24 @@ def test_obsolete_detail_and_shape_flags_are_rejected() -> None:
     assert obsolete_shape["record_type"] == "error"
     assert obsolete_shape["cmdline_arg"].endswith("--shape full")
     assert obsolete_shape["error"] == "unsupported --shape; use --projection compact|full"
+
+
+def test_detail_command_hints_preserve_quoted_arguments_and_strip_existing_detail_flags() -> None:
+    ensure_libs_path()
+    from xctx.protocol.detail import command_with_detail  # noqa: PLC0415
+
+    assert (
+        command_with_detail("xctx --more observe stock_intelligence_hub::equity_filing 'form:DEF 14A'", "max")
+        == "./xctx --max observe stock_intelligence_hub::equity_filing 'form:DEF 14A'"
+    )
+    assert command_with_detail("./xctx --detail-level max discover root", "basic") == "./xctx --basic discover root"
+
+
+def test_detail_command_hints_do_not_shell_split_malformed_input() -> None:
+    ensure_libs_path()
+    from xctx.protocol.detail import command_with_detail  # noqa: PLC0415
+
+    assert command_with_detail('xctx observe "unterminated', "more") == "./xctx --more"
 
 
 def test_plan_execute_and_repair_are_projected_by_detail_level() -> None:

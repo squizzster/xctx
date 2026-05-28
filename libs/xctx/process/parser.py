@@ -75,10 +75,7 @@ def build_parser(store: dict[str, Any]) -> argparse.ArgumentParser:
         _add_discover_parser(subparsers, command)
     if "observe" in visible:
         observe = subparsers.add_parser("observe", add_help=False)
-        observe.add_argument("target", nargs="?")
-        observe.add_argument("target_args", nargs="*")
-        observe.add_argument("--id")
-        _add_configured_cli_options(observe, store, "observe")
+        observe.add_argument("observe_args", nargs=argparse.REMAINDER)
     if "plan" in visible:
         plan = subparsers.add_parser("plan", add_help=False)
         plan.add_argument("plan_args", nargs=argparse.REMAINDER)
@@ -88,6 +85,7 @@ def build_parser(store: dict[str, Any]) -> argparse.ArgumentParser:
         execute.add_argument("--commit", action="store_true")
     if "audit" in visible:
         audit = subparsers.add_parser("audit", add_help=False)
+        audit.add_argument("--scope", dest="audit_scope", choices=["framework", "live", "all"], default="all")
         audit.add_argument("scope", nargs="?", default="root")
     if "repair" in visible:
         repair = subparsers.add_parser("repair", add_help=False)

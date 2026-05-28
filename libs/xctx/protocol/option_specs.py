@@ -200,6 +200,36 @@ def _dedupe_specs(specs: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
     return deduped
 
 
+def _duplicate_labels(specs: Iterable[dict[str, Any]]) -> tuple[list[str], list[str]]:
+    seen_flags: set[str] = set()
+    duplicate_flags: set[str] = set()
+    seen_dests: set[str] = set()
+    duplicate_dests: set[str] = set()
+    for spec in specs:
+        for flag in spec.get("_flags", []):
+            text = str(flag)
+            if text in seen_flags:
+                duplicate_flags.add(text)
+            seen_flags.add(text)
+        dest = str(spec.get("_dest", ""))
+        if dest in seen_dests:
+            duplicate_dests.add(dest)
+        seen_dests.add(dest)
+    return sorted(duplicate_flags), sorted(duplicate_dests)
+
+
+def _raise_for_target_option_collisions(specs: list[dict[str, Any]], *, target_ref: str, command: str) -> None:
+    duplicate_flags, duplicate_dests = _duplicate_labels(specs)
+    if not duplicate_flags and not duplicate_dests:
+        return
+    details: list[str] = []
+    if duplicate_flags:
+        details.append("flags " + ", ".join(duplicate_flags))
+    if duplicate_dests:
+        details.append("dests " + ", ".join(duplicate_dests))
+    raise XctxError(f"duplicate configured {command} options for {target_ref}: {'; '.join(details)}")
+
+
 def _normalised_specs_for_container(
     container: dict[str, Any],
     *,
@@ -260,6 +290,20 @@ def target_cli_option_specs(
     action: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     """Return option specs valid for a resolved subdomain/action target."""
+    specs = _target_cli_option_specs_raw(store, subdomain, command, action_name=action_name, action=action)
+    target_ref = f"{subdomain.get('_domain_id')}::{subdomain.get('id')}"
+    _raise_for_target_option_collisions(specs, target_ref=target_ref, command=command)
+    return specs
+
+
+def _target_cli_option_specs_raw(
+    store: dict[str, Any],
+    subdomain: dict[str, Any],
+    command: str,
+    *,
+    action_name: str | None = None,
+    action: dict[str, Any] | None = None,
+) -> list[dict[str, Any]]:
     domain_id = str(subdomain.get("_domain_id", ""))
     subdomain_id = str(subdomain.get("id", ""))
     specs: list[dict[str, Any]] = []
@@ -283,7 +327,90 @@ def target_cli_option_specs(
             if _spec_applies_to_command(store, spec, command, action_name=action_name, action=action):
                 specs.append(spec)
 
-    return _dedupe_specs(specs)
+    return specs
+
+
+def _coerce_cli_value(value: Any, spec: dict[str, Any]) -> Any:
+    option_type = str(spec.get("_option_type", "str"))
+    flag = str(spec.get("_primary_flag") or spec.get("_dest") or "option")
+    if option_type == "int":
+        if isinstance(value, bool):
+            raise XctxError(f"invalid integer for {flag}")
+        try:
+            return int(value)
+        except (TypeError, ValueError) as exc:
+            raise XctxError(f"invalid integer for {flag}") from exc
+    if option_type == "float":
+        if isinstance(value, bool):
+            raise XctxError(f"invalid number for {flag}")
+        try:
+            return float(value)
+        except (TypeError, ValueError) as exc:
+            raise XctxError(f"invalid number for {flag}") from exc
+    if option_type == "bool":
+        return bool(value) if isinstance(value, bool) else str(value).lower() not in {"0", "false", "no", "off"}
+    return str(value)
+
+
+def parse_target_cli_options(
+    store: dict[str, Any],
+    subdomain: dict[str, Any],
+    command: str,
+    args: list[str],
+    *,
+    action_name: str | None = None,
+    action: dict[str, Any] | None = None,
+) -> tuple[list[str], dict[str, Any]]:
+    """Parse options only after routing has resolved the concrete target."""
+
+    target_ref = f"{subdomain.get('_domain_id')}::{subdomain.get('id')}"
+    specs = target_cli_option_specs(store, subdomain, command, action_name=action_name, action=action)
+    by_flag = {str(flag): spec for spec in specs for flag in spec.get("_flags", [])}
+    values: dict[str, Any] = {}
+    positional: list[str] = []
+    index = 0
+    while index < len(args):
+        raw_token = str(args[index])
+        if raw_token == "--":
+            positional.extend(str(arg) for arg in args[index + 1 :])
+            break
+        inline_value: str | None = None
+        flag_token = raw_token
+        if raw_token.startswith("-") and "=" in raw_token:
+            flag_token, inline_value = raw_token.split("=", 1)
+        if raw_token.startswith("-"):
+            spec = by_flag.get(flag_token)
+            if not spec:
+                raise XctxError(f"unsupported option {flag_token} for {target_ref} {command}")
+            dest = str(spec["_dest"])
+            option_type = str(spec.get("_option_type", "str"))
+            action = str(spec.get("action", "")).strip()
+            if option_type == "bool" or action in {"store_true", "store_false"}:
+                if inline_value is not None:
+                    raise XctxError(f"unsupported value for boolean option {flag_token}")
+                values[dest] = action != "store_false"
+                index += 1
+                continue
+            if inline_value is not None:
+                values[dest] = _coerce_cli_value(inline_value, spec)
+                index += 1
+                continue
+            if index + 1 >= len(args):
+                raise XctxError(f"missing value for {flag_token}")
+            values[dest] = _coerce_cli_value(args[index + 1], spec)
+            index += 2
+            continue
+        positional.append(raw_token)
+        index += 1
+
+    missing = [
+        str(spec.get("_primary_flag") or spec["_dest"])
+        for spec in specs
+        if spec.get("required") and spec["_dest"] not in values
+    ]
+    if missing:
+        raise XctxError(f"missing required {command} option: {missing[0]}")
+    return positional, values
 
 
 def collect_cli_option_values(store: dict[str, Any], command: str, args: Any) -> dict[str, Any]:

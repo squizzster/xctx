@@ -418,7 +418,8 @@ def assert_scoped_affordance_routing() -> None:
     priority = one(["discover", "stock_intelligence_hub::search_priority_bucket", "critical"])
     assert priority["domain_level"] == "agent_subdomain"
     assert priority["results"]["action"] == "search_priority_bucket"
-    assert priority["results"]["agent_subdomain"] == "equity_filing"
+    assert priority["results"]["agent_subdomain_id"] == "stock_intelligence_hub::equity_filing"
+    assert priority["results"]["agent_subdomain"]["subdomain_id"] == "equity_filing"
     assert priority["results"]["live_data"]["matches"][0]["id"] == "priority:critical_always"
 
     shorthand = one(["stock_intelligence_hub::search_priority_bucket", "critical"], expected_code=1)
@@ -502,7 +503,8 @@ def assert_scoped_affordance_routing() -> None:
     assert len(family["results"]["live_data"]["matches"]) > 1
 
     apple_scoped = one(["discover", "stock_intelligence_hub::search_entity_instrument", "Apple"])
-    assert apple_scoped["results"]["agent_subdomain"] == "market_data_gateway"
+    assert apple_scoped["results"]["agent_subdomain_id"] == "stock_intelligence_hub::market_data_gateway"
+    assert apple_scoped["results"]["agent_subdomain"]["subdomain_id"] == "market_data_gateway"
     assert apple_scoped["results"]["live_data"]["matches"][0]["instrument_id"] == "instrument:aapl"
 
     apple_name_shortcut = one(["discover", "--name", "Apple"], expected_code=1)
@@ -583,7 +585,8 @@ def assert_scoped_affordance_routing() -> None:
 def assert_observe_audit_repair() -> None:
     observed = one(["observe", "stock_intelligence_hub::market_data_gateway", "instrument:aapl"])
     assert observed["record_type"] == "observation"
-    assert observed["results"]["agent_subdomain"] == "market_data_gateway"
+    assert observed["results"]["agent_subdomain_id"] == "stock_intelligence_hub::market_data_gateway"
+    assert observed["results"]["agent_subdomain"]["subdomain_id"] == "market_data_gateway"
     assert observed["results"]["live_data"]["instrument_id"] == "instrument:aapl"
     assert "market_series" not in observed["results"]["live_data"]
     assert "latest_available_price" not in observed["results"]["live_data"]
@@ -657,11 +660,13 @@ def assert_observe_audit_repair() -> None:
     )
 
     observed_form = one(["observe", "stock_intelligence_hub::equity_filing", "form:10-K"])
-    assert observed_form["results"]["agent_subdomain"] == "equity_filing"
+    assert observed_form["results"]["agent_subdomain_id"] == "stock_intelligence_hub::equity_filing"
+    assert observed_form["results"]["agent_subdomain"]["subdomain_id"] == "equity_filing"
     assert observed_form["results"]["live_data"]["canonical_family"]["code"] == "ANNUAL_REPORT"
 
     observed_spaced_form = one(["observe", "stock_intelligence_hub::equity_filing", "form:DEF 14A"])
-    assert observed_spaced_form["results"]["agent_subdomain"] == "equity_filing"
+    assert observed_spaced_form["results"]["agent_subdomain_id"] == "stock_intelligence_hub::equity_filing"
+    assert observed_spaced_form["results"]["agent_subdomain"]["subdomain_id"] == "equity_filing"
     assert observed_spaced_form["results"]["live_data"]["id"] == "form:DEF 14A"
 
     missing_range_target = one(["observe", "stock_intelligence_hub::market_data_gateway", "--bars", "5"], expected_code=1)
@@ -712,7 +717,8 @@ def assert_observe_audit_repair() -> None:
 
 def assert_scoped_filing_affordance_routing() -> None:
     priority = one(["discover", "stock_intelligence_hub::search_priority_bucket", "critical"])
-    assert priority["results"]["agent_subdomain"] == "equity_filing"
+    assert priority["results"]["agent_subdomain_id"] == "stock_intelligence_hub::equity_filing"
+    assert priority["results"]["agent_subdomain"]["subdomain_id"] == "equity_filing"
     assert priority["results"]["domain_affordance"] is True
     assert priority["results"]["implemented_by"] == "stock_intelligence_hub::equity_filing::search_priority_buckets"
     assert priority["results"]["live_data"]["matches"][0]["id"] == "priority:critical_always"
@@ -745,7 +751,8 @@ def assert_scoped_market_affordance_routing() -> None:
 def assert_market_observe_range() -> None:
     observed = one(["observe", "stock_intelligence_hub::market_data_gateway", "instrument:aapl"])
     assert observed["record_type"] == "observation"
-    assert observed["results"]["agent_subdomain"] == "market_data_gateway"
+    assert observed["results"]["agent_subdomain_id"] == "stock_intelligence_hub::market_data_gateway"
+    assert observed["results"]["agent_subdomain"]["subdomain_id"] == "market_data_gateway"
     assert "market_series" not in observed["results"]["live_data"]
     assert "latest_available_price" not in observed["results"]["live_data"]
 
@@ -837,7 +844,8 @@ def assert_connector_supervisor_middleware() -> None:
     routed_directory = one(["observe", "file_manager::home_directory", "directory:docs"])
     directory_live = routed_directory["results"]["live_data"]
     assert routed_directory["results"]["agent_domain"] == "file_manager"
-    assert routed_directory["results"]["agent_subdomain"] == "home_directory"
+    assert routed_directory["results"]["agent_subdomain_id"] == "file_manager::home_directory"
+    assert routed_directory["results"]["agent_subdomain"]["subdomain_id"] == "home_directory"
     assert directory_live["directory_id"] == "directory:docs"
     assert directory_live["sample_children"][0]["id"] == "file:docs/manual.txt"
 

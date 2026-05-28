@@ -62,6 +62,7 @@ def emit_record(
     next_moves: list[Any] | None = None,
     cmdline_arg: str | None = None,
     domain_level: str | None = None,
+    error_category: str | None = None,
 ) -> None:
     public_payload = project_record_payload(
         store,
@@ -86,6 +87,8 @@ def emit_record(
             envelope[output_key] = value
     if error:
         envelope[key_for(store, "error", "error")] = error
+    if error_category:
+        envelope["error_category"] = str(error_category)
     if next_moves:
         envelope["next_moves"] = next_moves
     public_envelope = project_output_envelope(store, envelope)
@@ -105,6 +108,7 @@ def emit_minimal_error(
     next_moves: list[Any] | None = None,
     version: str = "v4.2",
     output_format: str = "jsonl",
+    error_category: str = "framework_bug",
 ) -> None:
     payload: dict[str, Any] = {
         "version_xctx": version,
@@ -114,6 +118,7 @@ def emit_minimal_error(
         "detail_level": "basic",
         "results": {},
         "error": str(message),
+        "error_category": str(error_category),
     }
     if next_moves:
         payload["next_moves"] = next_moves

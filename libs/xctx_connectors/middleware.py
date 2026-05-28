@@ -19,6 +19,16 @@ from xctx_connectors import runtime
 
 
 _IMPORT_SAFE_ID = re.compile(r"^[a-z][a-z0-9_]*$")
+RESOLVED_CONTEXT_ENV = "XCTX_RESOLVED_CONTEXT_FILE"
+CONFIG_FINGERPRINT_ENV = "XCTX_CONFIG_FINGERPRINT"
+PASSTHROUGH_FRAMEWORK_KEYS = frozenset(
+    {
+        "connector",
+        "command_status",
+        "passthrough_target",
+        "target_payload",
+    }
+)
 
 
 def _emit_json(payload: dict[str, Any], *, compact: bool) -> None:
@@ -41,7 +51,64 @@ def _project_root() -> Path:
     return project_root_from_module(__file__)
 
 
+def _runtime_root_from_env(root: Path) -> Path:
+    configured = os.environ.get("XCTX_RUNTIME_DIR")
+    runtime_root = Path(configured) if configured else root / ".xctx_runtime"
+    if not runtime_root.is_absolute():
+        runtime_root = root / runtime_root
+    return runtime_root.resolve()
+
+
+def _resolved_subdomain_from_env(root: Path) -> dict[str, Any] | None:
+    raw_path = os.environ.get(RESOLVED_CONTEXT_ENV)
+    if not raw_path:
+        return None
+    path = Path(raw_path)
+    if not path.is_absolute():
+        raise ValueError(f"{RESOLVED_CONTEXT_ENV} must be an absolute path")
+    runtime_root = _runtime_root_from_env(root)
+    resolved = path.resolve()
+    if resolved != runtime_root and runtime_root not in resolved.parents:
+        raise ValueError(f"{RESOLVED_CONTEXT_ENV} must stay inside the xctx runtime directory")
+    try:
+        stat_result = resolved.stat()
+    except OSError as exc:
+        raise ValueError(f"resolved connector context is not readable: {resolved}") from exc
+    if hasattr(os, "getuid") and stat_result.st_uid != os.getuid():
+        raise ValueError("resolved connector context is not owned by the current user")
+    try:
+        payload = json.loads(resolved.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ValueError("resolved connector context must be valid JSON") from exc
+    if not isinstance(payload, dict) or payload.get("object_type") != "xctx_resolved_connector_context":
+        raise ValueError("resolved connector context has an unsupported object_type")
+    expected_fingerprint = os.environ.get(CONFIG_FINGERPRINT_ENV)
+    if expected_fingerprint and payload.get("config_fingerprint") != expected_fingerprint:
+        raise ValueError("resolved connector context fingerprint mismatch")
+    domain_id = os.environ.get("XCTX_AGENT_DOMAIN")
+    subdomain_id = os.environ.get("XCTX_AGENT_SUBDOMAIN")
+    if not domain_id or not subdomain_id:
+        raise ValueError("XCTX_AGENT_DOMAIN and XCTX_AGENT_SUBDOMAIN are required")
+    if payload.get("domain_id") != domain_id or payload.get("subdomain_id") != subdomain_id:
+        raise ValueError("resolved connector context scope mismatch")
+    subdomain = payload.get("subdomain")
+    if not isinstance(subdomain, dict):
+        raise ValueError("resolved connector context is missing subdomain data")
+    if subdomain.get("_domain_id") != domain_id or subdomain.get("id") != subdomain_id:
+        raise ValueError("resolved connector context subdomain identity mismatch")
+    connector = subdomain.get("connector") or {}
+    if not isinstance(connector, dict):
+        raise ValueError("resolved connector context subdomain is missing connector data")
+    connector_kind = str(connector.get("kind") or "xctx_native_passthrough")
+    if payload.get("connector_kind") != connector_kind:
+        raise ValueError("resolved connector context connector kind mismatch")
+    return subdomain
+
+
 def _subdomain_from_env(root: Path) -> dict[str, Any]:
+    resolved = _resolved_subdomain_from_env(root)
+    if resolved is not None:
+        return resolved
     domain_id = os.environ.get("XCTX_AGENT_DOMAIN")
     subdomain_id = os.environ.get("XCTX_AGENT_SUBDOMAIN")
     if not domain_id or not subdomain_id:
@@ -62,12 +129,14 @@ def _context_from_subdomain(root: Path, subdomain: dict[str, Any]) -> runtime.Co
     if not domain_id or not subdomain_id:
         raise ValueError("connector subdomain is missing resolved domain/subdomain scope")
     connector = subdomain.get("connector") or {}
+    limits = runtime.ConnectorLimits.from_config(connector)
     return runtime.ConnectorContext(
         workspace_root=root,
         domain_id=domain_id,
         subdomain_id=subdomain_id,
         subdomain_config=runtime.readonly_mapping(subdomain),
         connector_config=runtime.readonly_mapping(connector),
+        limits=limits,
         detail_level=str(os.environ.get("XCTX_DETAIL_LEVEL") or "basic"),
     )
 
@@ -93,6 +162,12 @@ def _include_command_argv(context: runtime.ConnectorContext) -> bool:
     return context.detail_level == "max"
 
 
+def _with_capture_metadata(payload: dict[str, Any], result: dict[str, Any]) -> dict[str, Any]:
+    out = dict(payload)
+    out.update(runtime.capture_metadata_from_result(result))
+    return out
+
+
 def _passthrough_env(context: runtime.ConnectorContext) -> dict[str, str | None]:
     return {
         "XCTX_AGENT_DOMAIN": context.domain_id,
@@ -106,8 +181,7 @@ def _passthrough(context: runtime.ConnectorContext, args: list[str], *, compact:
     connector = context.connector_config
     target = connector.get("target_entrypoint")
     target_path = _resolve_workspace_entrypoint(context.workspace_root, target, label="target_entrypoint")
-    timeout = runtime.validated_timeout(connector.get("timeout_seconds", 30))
-    max_output_bytes = runtime.validated_max_output_bytes(connector.get("max_output_bytes", runtime.DEFAULT_MAX_OUTPUT_BYTES))
+    limits = context.limits
     argv = python_entrypoint_argv(target_path, args)
     include_argv = _include_command_argv(context)
     if compact and "--compact" not in argv:
@@ -116,8 +190,8 @@ def _passthrough(context: runtime.ConnectorContext, args: list[str], *, compact:
         argv,
         cwd=context.workspace_root,
         env=_passthrough_env(context),
-        timeout=timeout,
-        max_output_bytes=max_output_bytes,
+        timeout=limits.timeout_seconds,
+        max_output_bytes=limits.max_output_bytes,
     )
     if result["timed_out"]:
         payload: dict[str, Any] = {
@@ -126,13 +200,16 @@ def _passthrough(context: runtime.ConnectorContext, args: list[str], *, compact:
             "connector": runtime.connector_meta(context),
             "requested_args": redact_value(args),
             "passthrough_target": str(target),
-            "command_status": runtime.command_status(
-                ok=False,
-                argv=argv if include_argv else None,
-                timed_out=True,
-                error=f"passthrough target timed out after {timeout} seconds",
-                stdout=str(result.get("stdout") or ""),
-                stderr=str(result.get("stderr") or ""),
+            "command_status": _with_capture_metadata(
+                runtime.command_status(
+                    ok=False,
+                    argv=argv if include_argv else None,
+                    timed_out=True,
+                    error=f"passthrough target timed out after {limits.timeout_seconds} seconds",
+                    stdout=str(result.get("stdout") or ""),
+                    stderr=str(result.get("stderr") or ""),
+                ),
+                result,
             ),
             "data_boundary": "Pass-through connector normalized a target adapter timeout into JSON.",
         }
@@ -152,7 +229,17 @@ def _passthrough(context: runtime.ConnectorContext, args: list[str], *, compact:
                 args=args,
             )
         if isinstance(payload, dict):
-            return payload
+            reserved = sorted(PASSTHROUGH_FRAMEWORK_KEYS.intersection(payload))
+            if reserved:
+                return runtime.connector_error_payload(
+                    context,
+                    f"passthrough target returned framework-owned keys: {', '.join(reserved)}",
+                    command=args[0] if args else "discover",
+                    args=args,
+                )
+            payload_with_connector = dict(payload)
+            payload_with_connector["connector"] = runtime.connector_meta(context)
+            return payload_with_connector
         return runtime.connector_error_payload(
             context,
             "passthrough target returned non-object JSON",
@@ -173,17 +260,20 @@ def _passthrough(context: runtime.ConnectorContext, args: list[str], *, compact:
         "requested_args": redact_value(args),
         "passthrough_target": str(target),
         "target_payload": redact_value(target_payload) if isinstance(target_payload, dict) else {},
-        "command_status": runtime.command_status(
-            ok=False,
-            argv=argv if include_argv else None,
-            exit_code=exit_code,
-            error=(
-                str(result.get("stderr") or "").strip()
-                or (target_payload.get("error") if isinstance(target_payload, dict) else None)
-                or "passthrough target failed"
+        "command_status": _with_capture_metadata(
+            runtime.command_status(
+                ok=False,
+                argv=argv if include_argv else None,
+                exit_code=exit_code,
+                error=(
+                    str(result.get("stderr") or "").strip()
+                    or (target_payload.get("error") if isinstance(target_payload, dict) else None)
+                    or "passthrough target failed"
+                ),
+                stdout=str(result.get("stdout") or ""),
+                stderr=str(result.get("stderr") or ""),
             ),
-            stdout=str(result.get("stdout") or ""),
-            stderr=str(result.get("stderr") or ""),
+            result,
         ),
         "data_boundary": "Pass-through connector normalized a target adapter failure into JSON.",
     }

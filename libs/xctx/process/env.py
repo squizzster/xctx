@@ -14,8 +14,6 @@ SAFE_ENV_KEYS = frozenset(
         "LC_ALL",
         "LC_CTYPE",
         "PATH",
-        "PYTHONHOME",
-        "PYTHONPATH",
         "TMPDIR",
         "VIRTUAL_ENV",
         "XCTX_RUNTIME_DIR",

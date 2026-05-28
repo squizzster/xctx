@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping as MappingABC
 from dataclasses import dataclass
 from pathlib import Path
 from types import MappingProxyType
@@ -9,19 +10,21 @@ from typing import Any, Mapping
 
 from xctx.process.capture import capture_process
 from xctx.process.env import SAFE_ENV_KEYS, sanitized_env
-from xctx.process.limits import (
-    DEFAULT_MAX_OUTPUT_BYTES,
-    MAX_CAPTURE_BYTES,
-    MAX_TIMEOUT_SECONDS,
-    MIN_TIMEOUT_SECONDS,
-    validated_max_output_bytes,
-    validated_timeout,
-)
+from xctx.process.limits import ConnectorLimits
 from xctx.process.redaction import redact_argv_values, redact_preview, redact_value
 from xctx.protocol.guidance import command_hints
 
 
 CONNECTOR_VERSION = "xctx_connector.v1"
+CAPTURE_METADATA_KEYS = (
+    "stdout_truncated",
+    "stderr_truncated",
+    "stdout_captured_bytes",
+    "stderr_captured_bytes",
+    "stdout_total_bytes",
+    "stderr_total_bytes",
+    "max_output_bytes",
+)
 
 
 @dataclass(frozen=True)
@@ -31,6 +34,7 @@ class ConnectorContext:
     subdomain_id: str
     subdomain_config: Mapping[str, Any]
     connector_config: Mapping[str, Any]
+    limits: ConnectorLimits = ConnectorLimits.from_values()
     detail_level: str = "basic"
 
     @property
@@ -38,8 +42,23 @@ class ConnectorContext:
         return f"{self.domain_id}::{self.subdomain_id}"
 
 
+def readonly_value(value: Any) -> Any:
+    if isinstance(value, MappingABC):
+        return MappingProxyType({key: readonly_value(item) for key, item in value.items()})
+    if isinstance(value, tuple):
+        return tuple(readonly_value(item) for item in value)
+    if isinstance(value, list):
+        return tuple(readonly_value(item) for item in value)
+    if isinstance(value, (set, frozenset)):
+        return frozenset(readonly_value(item) for item in value)
+    return value
+
+
 def readonly_mapping(value: Mapping[str, Any]) -> Mapping[str, Any]:
-    return MappingProxyType(dict(value))
+    frozen = readonly_value(value)
+    if not isinstance(frozen, MappingABC):
+        raise TypeError("readonly_mapping requires a mapping")
+    return frozen
 
 
 def payload_contract(kind: str) -> dict[str, str]:
@@ -124,7 +143,7 @@ def sanitized_connector_env(extra: Mapping[str, str] | None = None) -> dict[str,
 
 
 def command_status_from_external_result(result: Mapping[str, Any], *, include_argv: bool = True) -> dict[str, Any]:
-    return command_status(
+    payload = command_status(
         ok=bool(result["ok"]),
         argv=list(result["argv"]) if include_argv else None,
         exit_code=result["exit_code"],
@@ -132,6 +151,12 @@ def command_status_from_external_result(result: Mapping[str, Any], *, include_ar
         error=result.get("error"),
         stderr=result.get("stderr"),
     )
+    payload.update(capture_metadata_from_result(result))
+    return payload
+
+
+def capture_metadata_from_result(result: Mapping[str, Any]) -> dict[str, Any]:
+    return {key: result[key] for key in CAPTURE_METADATA_KEYS if key in result}
 
 
 def audit_failure_check(context: ConnectorContext | None, message: str) -> dict[str, Any]:
@@ -228,16 +253,21 @@ def run_external(
             "stderr": "",
             "error": "external command argv must not be empty",
         }
-    timeout = validated_timeout(timeout)
-    configured_max_output = DEFAULT_MAX_OUTPUT_BYTES if max_output_bytes is None else max_output_bytes
-    max_bytes = validated_max_output_bytes(configured_max_output)
+    limit_kwargs: dict[str, Any] = {"timeout_seconds": timeout}
+    if max_output_bytes is not None:
+        limit_kwargs["max_output_bytes"] = max_output_bytes
+    limits = ConnectorLimits.from_values(
+        **limit_kwargs,
+        timeout_label="timeout_seconds",
+        max_output_label="max_output_bytes",
+    )
     try:
         captured = capture_process(
             argv,
             cwd=cwd,
             env=sanitized_connector_env(env),
-            timeout=timeout,
-            max_output_bytes=max_bytes,
+            timeout=limits.timeout_seconds,
+            max_output_bytes=limits.max_output_bytes,
         )
     except OSError as exc:
         return {
@@ -257,7 +287,14 @@ def run_external(
             "timed_out": True,
             "stdout": captured.stdout,
             "stderr": captured.stderr,
-            "error": f"external command timed out after {timeout:g} seconds",
+            "stdout_truncated": captured.stdout_truncated,
+            "stderr_truncated": captured.stderr_truncated,
+            "stdout_captured_bytes": captured.stdout_captured_bytes,
+            "stderr_captured_bytes": captured.stderr_captured_bytes,
+            "stdout_total_bytes": captured.stdout_total_bytes,
+            "stderr_total_bytes": captured.stderr_total_bytes,
+            "max_output_bytes": captured.max_output_bytes,
+            "error": f"external command timed out after {limits.timeout_seconds:g} seconds",
         }
     return {
         "ok": captured.ok,
@@ -266,6 +303,13 @@ def run_external(
         "timed_out": False,
         "stdout": captured.stdout,
         "stderr": captured.stderr,
+        "stdout_truncated": captured.stdout_truncated,
+        "stderr_truncated": captured.stderr_truncated,
+        "stdout_captured_bytes": captured.stdout_captured_bytes,
+        "stderr_captured_bytes": captured.stderr_captured_bytes,
+        "stdout_total_bytes": captured.stdout_total_bytes,
+        "stderr_total_bytes": captured.stderr_total_bytes,
+        "max_output_bytes": captured.max_output_bytes,
         "error": None
         if captured.ok
         else ((captured.stderr or "").strip() or (captured.stdout or "").strip() or "external command failed"),

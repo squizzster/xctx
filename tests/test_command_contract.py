@@ -169,6 +169,166 @@ def test_next_moves_are_command_hint_objects() -> None:
         assert_no_string_next_moves(payload)
 
 
+def test_scope_run_cmd_preserves_shell_quoted_arguments() -> None:
+    ensure_libs_path()
+    from xctx.config.loader import load_store  # noqa: PLC0415
+    from xctx.protocol.accessors import scope_run_cmd  # noqa: PLC0415
+
+    store = load_store(root=ROOT)
+
+    assert (
+        scope_run_cmd(store, "xctx observe stock_intelligence_hub::equity_filing 'form:DEF 14A'")
+        == "./xctx observe stock_intelligence_hub::equity_filing 'form:DEF 14A'"
+    )
+
+
+def test_scope_run_cmd_quotes_shell_metacharacter_arguments() -> None:
+    ensure_libs_path()
+    from xctx.config.loader import load_store  # noqa: PLC0415
+    from xctx.protocol.accessors import scope_run_cmd  # noqa: PLC0415
+
+    store = load_store(root=ROOT)
+
+    assert scope_run_cmd(store, "xctx other --topic 'a;b'") == "./xctx other --topic 'a;b'"
+    assert scope_run_cmd(store, "xctx other --topic '$(whoami)'") == "./xctx other --topic '$(whoami)'"
+
+
+def test_scope_run_cmd_keeps_placeholder_tokens_readable() -> None:
+    ensure_libs_path()
+    from xctx.config.loader import load_store  # noqa: PLC0415
+    from xctx.protocol.accessors import scope_run_cmd  # noqa: PLC0415
+
+    store = load_store(root=ROOT)
+
+    assert (
+        scope_run_cmd(store, "xctx observe <agent_domain>::<agent_subdomain> --id <id>")
+        == "./xctx observe <agent_domain>::<agent_subdomain> --id <id>"
+    )
+
+
+def test_scope_run_cmd_leaves_non_xctx_commands_unchanged() -> None:
+    ensure_libs_path()
+    from xctx.config.loader import load_store  # noqa: PLC0415
+    from xctx.protocol.accessors import scope_run_cmd  # noqa: PLC0415
+
+    store = load_store(root=ROOT)
+
+    assert scope_run_cmd(store, "python -m tool 'hello world'") == "python -m tool 'hello world'"
+
+
+def test_action_args_reject_unexpected_query_for_non_query_actions() -> None:
+    ensure_libs_path()
+    from xctx.domain.actions import validate_declared_action_args  # noqa: PLC0415
+    from xctx.errors import XctxError  # noqa: PLC0415
+
+    action = {
+        "query_required": False,
+        "argument_patterns": ["[--limit N]", "[--projection compact|full]"],
+        "collection": {"max_limit": 10, "item_projections": ["compact", "full"]},
+    }
+
+    with pytest.raises(XctxError, match="unexpected argument for non-query action: 10-K"):
+        validate_declared_action_args(action, ["10-K"])
+
+
+def test_action_args_allow_declared_positional_prefix_for_non_query_actions() -> None:
+    ensure_libs_path()
+    from xctx.domain.actions import validate_declared_action_args  # noqa: PLC0415
+
+    action = {
+        "query_required": False,
+        "argument_patterns": ["[directory:<relative_path>]", "[--limit N]"],
+        "collection": {"max_limit": 10},
+    }
+
+    validate_declared_action_args(action, ["directory:docs", "--limit", "2"])
+
+
+def test_action_args_allow_quoted_declared_positional_pattern_with_spaces() -> None:
+    ensure_libs_path()
+    from xctx.domain.actions import validate_declared_action_args  # noqa: PLC0415
+
+    action = {
+        "query_required": False,
+        "argument_patterns": ["['directory:<relative path>']"],
+    }
+
+    validate_declared_action_args(action, ["directory:Quarterly Reports"])
+
+
+def test_action_args_allow_declared_adapter_filter_options() -> None:
+    ensure_libs_path()
+    from xctx.domain.actions import validate_declared_action_args  # noqa: PLC0415
+
+    action = {
+        "query_required": False,
+        "argument_patterns": ["[--status STATUS]", "[--limit N]"],
+        "collection": {"max_limit": 10, "filters": ["--status"]},
+    }
+
+    validate_declared_action_args(action, ["--status", "active", "--limit", "2"])
+
+
+def test_action_args_allow_declared_action_cli_options() -> None:
+    ensure_libs_path()
+    from xctx.domain.actions import validate_declared_action_args  # noqa: PLC0415
+
+    action = {
+        "query_required": False,
+        "cli_options": [
+            {"flags": ["--minimum"], "dest": "minimum", "type": "int", "commands": ["plan"]},
+            {"flags": ["--maximum"], "dest": "maximum", "type": "int", "commands": ["plan"]},
+        ],
+    }
+
+    validate_declared_action_args(action, ["--minimum", "1", "--maximum", "1000"])
+
+
+def test_action_args_allow_declared_cli_option_mapping_keys() -> None:
+    ensure_libs_path()
+    from xctx.domain.actions import validate_declared_action_args  # noqa: PLC0415
+
+    action = {
+        "query_required": False,
+        "cli_options": {
+            "--game-result": {"dest": "game_result", "type": "str"},
+            "guess": {"dest": "guess", "type": "int"},
+        },
+    }
+
+    validate_declared_action_args(action, ["--game-result", "result:abc", "--guess", "42"])
+
+
+def test_action_args_reject_missing_declared_cli_option_value() -> None:
+    ensure_libs_path()
+    from xctx.domain.actions import validate_declared_action_args  # noqa: PLC0415
+    from xctx.errors import XctxError  # noqa: PLC0415
+
+    action = {"query_required": False, "cli_options": [{"flags": ["--minimum"], "dest": "minimum"}]}
+
+    with pytest.raises(XctxError, match="missing value for --minimum"):
+        validate_declared_action_args(action, ["--minimum"])
+
+
+def test_action_args_reject_undeclared_flag_before_adapter() -> None:
+    ensure_libs_path()
+    from xctx.domain.actions import validate_declared_action_args  # noqa: PLC0415
+    from xctx.errors import XctxError  # noqa: PLC0415
+
+    action = {"query_required": True, "cli_options": [{"flags": ["--minimum"], "dest": "minimum"}]}
+
+    with pytest.raises(XctxError, match="unsupported action option for this action: --maximum"):
+        validate_declared_action_args(action, ["--maximum", "1000"])
+
+
+def test_non_query_list_action_rejects_stray_query_before_adapter() -> None:
+    rc, payload = run_runtime_json(["discover", "stock_intelligence_hub::equity_filing::list_forms", "10-K"])
+
+    assert rc == 1
+    assert payload["record_type"] == "error"
+    assert payload["error"] == "unexpected argument for non-query action: 10-K"
+
+
 def test_protocol_walker_uses_visible_command_surface_only() -> None:
     text = (ROOT / "bin" / "protocol_walker").read_text(encoding="utf-8")
     assert "xctx_other" not in text
@@ -219,3 +379,46 @@ def test_version_uses_declared_protocol_envelope_and_help_is_rejected() -> None:
     assert rc == 1
     assert payload["record_type"] == "error"
     assert payload["error"] == "unknown xctx command"
+
+
+def test_usage_error_records_include_error_category() -> None:
+    rc, payload = run_runtime_json(["unknown-command"])
+
+    assert rc == 1
+    assert payload["record_type"] == "error"
+    assert payload["error"] == "unknown xctx command"
+    assert payload["error_category"] == "usage_error"
+
+
+def test_unexpected_runtime_exception_is_categorized_as_framework_bug(monkeypatch) -> None:
+    ensure_libs_path()
+    from xctx.process import runtime  # noqa: PLC0415
+
+    def broken_handlers() -> dict:
+        raise RuntimeError("handler registry exploded")
+
+    monkeypatch.setattr(runtime, "command_handlers", broken_handlers)
+
+    rc, payload = run_runtime_json(["discover"])
+
+    assert rc == 1
+    assert payload["record_type"] == "error"
+    assert payload["error_category"] == "framework_bug"
+    assert payload["error"].startswith("unexpected_framework_error: RuntimeError")
+
+
+def test_store_error_fallback_records_include_error_category(monkeypatch) -> None:
+    ensure_libs_path()
+    from xctx.process import runtime  # noqa: PLC0415
+
+    def broken_load_store(*_args, **_kwargs) -> dict:
+        raise OSError("runtime store unavailable")
+
+    monkeypatch.setattr(runtime, "load_store", broken_load_store)
+
+    rc, payload = run_runtime_json(["discover"])
+
+    assert rc == 1
+    assert payload["record_type"] == "error"
+    assert payload["error_category"] == "store_error"
+    assert payload["error"] == "runtime store unavailable"

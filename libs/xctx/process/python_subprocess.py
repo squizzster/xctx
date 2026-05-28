@@ -11,7 +11,17 @@ from typing import Iterable, Mapping, Sequence
 
 def _site_package_paths() -> list[str]:
     paths = sysconfig.get_paths()
-    values = [paths.get("purelib"), paths.get("platlib")]
+    values: list[str | None] = []
+    virtual_env = os.environ.get("VIRTUAL_ENV")
+    if virtual_env:
+        major_minor = f"python{sys.version_info.major}.{sys.version_info.minor}"
+        values.extend(
+            [
+                str(Path(virtual_env) / "lib" / major_minor / "site-packages"),
+                str(Path(virtual_env) / "Lib" / "site-packages"),
+            ]
+        )
+    values.extend([paths.get("purelib"), paths.get("platlib")])
     out: list[str] = []
     for value in values:
         if value and value not in out:
@@ -32,7 +42,7 @@ def merged_pythonpath(existing: str | None = None, extra_paths: Iterable[str | P
 
 def with_isolated_pythonpath(env: Mapping[str, str], extra_paths: Iterable[str | Path] = ()) -> dict[str, str]:
     out = dict(env)
-    out["PYTHONPATH"] = merged_pythonpath(out.get("PYTHONPATH"), extra_paths=extra_paths)
+    out["PYTHONPATH"] = merged_pythonpath(None, extra_paths=extra_paths)
     return out
 
 

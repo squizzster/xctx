@@ -15,6 +15,7 @@ from xctx.protocol.option_surface import option_config_checks
 from xctx.store.fingerprints import config_fingerprint_payload
 
 VALID_AUDIT_CHECK_STATUSES = frozenset({"pass", "fail", "warn", "warning", "skip"})
+VALID_AUDIT_SCOPES = frozenset({"framework", "live", "all"})
 
 
 ## Protocol boundary: audits prove framework/config/adapter health; repairs are
@@ -190,13 +191,28 @@ def _normalise_live_audit_checks(
     return normalised
 
 
-def _summary(scope: str, checks: list[dict[str, Any]], findings: list[dict[str, Any]]) -> dict[str, Any]:
+def _audit_scope(value: str | None) -> str:
+    audit_scope = str(value or "all").strip().lower()
+    if audit_scope not in VALID_AUDIT_SCOPES:
+        supported = "|".join(sorted(VALID_AUDIT_SCOPES))
+        raise XctxError(f"unsupported audit --scope: {audit_scope} (supported: {supported})")
+    return audit_scope
+
+
+def _summary(
+    scope: str,
+    checks: list[dict[str, Any]],
+    findings: list[dict[str, Any]],
+    *,
+    audit_scope: str,
+) -> dict[str, Any]:
     pass_count = sum(1 for check in checks if str(check.get("status", "")).lower() == "pass")
     warn_count = sum(1 for check in checks if str(check.get("status", "")).lower() in {"warn", "warning"})
     fail_count = sum(1 for check in checks if audit_check_failed(check))
     skip_count = sum(1 for check in checks if str(check.get("status", "")).lower() == "skip")
     return {
         "scope": scope,
+        "audit_scope": audit_scope,
         "checks_total": len(checks),
         "pass": pass_count,
         "warn": warn_count,
@@ -210,10 +226,9 @@ def _summary(scope: str, checks: list[dict[str, Any]], findings: list[dict[str, 
     }
 
 
-def audit_payload(store: dict[str, Any], scope: str) -> dict[str, Any]:
-    scope = scope or "root"
-    audit_domain_level(store, scope)
-    findings = availability_findings(store, scope)
+def framework_audit_checks(store: dict[str, Any]) -> list[dict[str, Any]]:
+    """Return framework/config checks that never call live connectors."""
+
     checks: list[dict[str, Any]] = [
         {
             "id": "audit:xctx:config_loaded",
@@ -237,7 +252,13 @@ def audit_payload(store: dict[str, Any], scope: str) -> dict[str, Any]:
     checks.append(command_surface_check(store))
     checks.append(domain_affordance_config_check(store))
     checks.extend(option_config_checks(store))
+    return checks
 
+
+def live_connector_audit_checks(store: dict[str, Any], scope: str) -> list[dict[str, Any]]:
+    """Return checks reported by live connectors for the selected audit target."""
+
+    checks: list[dict[str, Any]] = []
     for domain_id, subdomain_id, subdomain in _live_audit_subdomains(store, scope):
         try:
             live = call_external_command(store, subdomain, ["audit"])
@@ -245,11 +266,25 @@ def audit_payload(store: dict[str, Any], scope: str) -> dict[str, Any]:
             checks.append(_live_audit_failure_check(domain_id, subdomain_id, str(exc)))
             continue
         checks.extend(_normalise_live_audit_checks(domain_id, subdomain_id, live))
+    return checks
 
-    summary = _summary(scope, checks, findings)
+
+def audit_payload(store: dict[str, Any], scope: str, audit_scope: str = "all") -> dict[str, Any]:
+    scope = scope or "root"
+    audit_scope = _audit_scope(audit_scope)
+    audit_domain_level(store, scope)
+    findings = availability_findings(store, scope) if audit_scope in {"framework", "all"} else []
+    checks: list[dict[str, Any]] = []
+    if audit_scope in {"framework", "all"}:
+        checks.extend(framework_audit_checks(store))
+    if audit_scope in {"live", "all"}:
+        checks.extend(live_connector_audit_checks(store, scope))
+
+    summary = _summary(scope, checks, findings, audit_scope=audit_scope)
     audit_status = "failed" if summary["fail"] else "warnings_present" if summary["warn"] else "findings_present" if findings else "pass"
     return {
         "scope": scope,
+        "audit_scope": audit_scope,
         "audit_status": audit_status,
         "summary": summary,
         "checks": checks,
