@@ -187,3 +187,66 @@ def final_execute_response(
         ),
         "next_move": f"./xctx observe {result_id}",
     }
+
+
+def execute_refusal_payload(
+    *,
+    error: str,
+    requested_plan: str | None,
+    commit_requested: bool,
+    description: str,
+    next_move: str,
+) -> dict[str, Any]:
+    return {
+        "ok": False,
+        "error": error,
+        "requested_plan": requested_plan,
+        "commit_requested": commit_requested,
+        "status": "refused",
+        "description": description,
+        "next_move": next_move,
+    }
+
+
+def read_only_execute_response(
+    *,
+    requested_plan: str,
+    resolved: Any,
+    accepted: bool,
+    canonical_plan_id: str | None,
+    bound_receipt: str | None,
+    bound_operation: str | None,
+    context_matches: bool,
+    planned_context_sha: str | None,
+    current_context_sha: str | None,
+) -> dict[str, Any]:
+    return {
+        "ok": accepted,
+        "error": None if accepted else resolved.error,
+        "requested_plan": requested_plan,
+        "commit_requested": True,
+        "status": "accepted_read_only_noop" if accepted else "refused",
+        "description": "Execute accepts only receipts that bind to a recorded xctx plan made against the current protocol surface. No domain mutation was performed because the bundled adapters expose read-only operations.",
+        "planner_binding": {
+            "verified": accepted,
+            "requested": requested_plan,
+            "canonical_plan_id": canonical_plan_id,
+            "receipt_sha256": bound_receipt,
+            "operation": bound_operation,
+            "short_receipt_matches": resolved.matches,
+            "context_fingerprint_verified": context_matches if resolved.plan else False,
+            "planned_context_sha256": planned_context_sha,
+            "current_context_sha256": current_context_sha,
+        },
+        "mutations_applied": 0,
+        "execution_receipt_sha256": receipt_for_payload(
+            {
+                "execute": requested_plan,
+                "bound_plan": canonical_plan_id,
+                "commit": True,
+                "mutations_applied": 0,
+                "context_verified": accepted,
+            }
+        ),
+        "next_move": "./xctx audit root" if accepted else "./xctx plan <operation> <target>",
+    }

@@ -1240,6 +1240,103 @@ def test_planning_execution_final_response_counts_mutation_only_on_success() -> 
     assert failure["mutations_applied"] == 0
 
 
+def test_planning_execution_refusal_payload_has_stable_shape() -> None:
+    ensure_libs_path()
+    from xctx.domain.planning_execution import execute_refusal_payload  # noqa: PLC0415
+
+    payload = execute_refusal_payload(
+        error="plan_required",
+        requested_plan=None,
+        commit_requested=False,
+        description="Execute requires a canonical plan id.",
+        next_move="./xctx plan <operation> <target>",
+    )
+
+    assert payload == {
+        "ok": False,
+        "error": "plan_required",
+        "requested_plan": None,
+        "commit_requested": False,
+        "status": "refused",
+        "description": "Execute requires a canonical plan id.",
+        "next_move": "./xctx plan <operation> <target>",
+    }
+
+
+def test_planning_execution_read_only_response_accepts_current_plan() -> None:
+    ensure_libs_path()
+    from xctx.domain.planning_execution import read_only_execute_response  # noqa: PLC0415
+
+    resolved = type("Resolved", (), {"matches": ["abc"], "error": None, "plan": {"plan_id": "plan:sha256:abc"}})()
+    payload = read_only_execute_response(
+        requested_plan="plan:sha256:abc",
+        resolved=resolved,
+        accepted=True,
+        canonical_plan_id="plan:sha256:abc",
+        bound_receipt="abc",
+        bound_operation="discover root",
+        context_matches=True,
+        planned_context_sha="1" * 64,
+        current_context_sha="1" * 64,
+    )
+
+    assert payload["ok"] is True
+    assert payload["error"] is None
+    assert payload["status"] == "accepted_read_only_noop"
+    assert payload["mutations_applied"] == 0
+    assert payload["next_move"] == "./xctx audit root"
+    assert payload["planner_binding"]["context_fingerprint_verified"] is True
+    assert len(payload["execution_receipt_sha256"]) == 64
+
+
+def test_planning_execution_read_only_response_refuses_stale_plan() -> None:
+    ensure_libs_path()
+    from xctx.domain.planning_execution import read_only_execute_response  # noqa: PLC0415
+
+    resolved = type(
+        "Resolved",
+        (),
+        {"matches": [], "error": "stale_plan_context", "plan": {"plan_id": "plan:sha256:abc"}},
+    )()
+    payload = read_only_execute_response(
+        requested_plan="plan:sha256:abc",
+        resolved=resolved,
+        accepted=False,
+        canonical_plan_id="plan:sha256:abc",
+        bound_receipt="abc",
+        bound_operation="discover root",
+        context_matches=False,
+        planned_context_sha="1" * 64,
+        current_context_sha="2" * 64,
+    )
+
+    assert payload["ok"] is False
+    assert payload["error"] == "stale_plan_context"
+    assert payload["status"] == "refused"
+    assert payload["next_move"] == "./xctx plan <operation> <target>"
+    assert payload["planner_binding"]["context_fingerprint_verified"] is False
+
+
+def test_execute_payload_validation_uses_refusal_helper_contract(tmp_path, monkeypatch) -> None:
+    ensure_libs_path()
+    from xctx.config.loader import load_store  # noqa: PLC0415
+    from xctx.domain.planning import execute_payload  # noqa: PLC0415
+
+    monkeypatch.setenv("XCTX_RUNTIME_DIR", str(tmp_path))
+    store = load_store(root=ROOT)
+
+    missing = execute_payload([], False, store)
+    too_many = execute_payload(["plan:sha256:" + "a" * 64, "plan:sha256:" + "b" * 64], True, store)
+    raw = execute_payload(["a" * 64], True, store)
+
+    assert missing["error"] == "plan_required"
+    assert missing["requested_plan"] is None
+    assert too_many["error"] == "invalid_execute_command"
+    assert too_many["requested_plan"] == f"plan:sha256:{'a' * 64} plan:sha256:{'b' * 64}"
+    assert raw["error"] == "plan_id_required"
+    assert raw["next_move"] == "./xctx execute plan:sha256:<sha256> --commit"
+
+
 def test_execute_commit_exists_result_missing_does_not_reinvoke_adapter(tmp_path, monkeypatch) -> None:
     ensure_libs_path()
     from xctx.config.loader import load_store  # noqa: PLC0415

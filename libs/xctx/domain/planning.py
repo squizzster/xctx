@@ -8,13 +8,14 @@ from xctx.domain.core import resolve_subdomain
 from xctx.domain.execution_contract import parse_execute_request, parse_plan_request
 from xctx.domain.planning_execution import (
     commit_context_args as _commit_context_args,
+    execute_refusal_payload as _execute_refusal_payload,
     final_execute_response as _final_execute_response,
     materialized_artifact_committed as _materialized_artifact_committed,
     materialized_artifact_committing as _materialized_artifact_committing,
+    read_only_execute_response as _read_only_execute_response,
     running_execution_artifacts as _running_execution_artifacts,
     terminal_result_payload as _terminal_result_payload,
 )
-from xctx.domain.planning_common import receipt_for_payload as _receipt_for_payload
 from xctx.domain.planning_commit_state import (
     TERMINAL_CLAIM_STATUSES,
     claim_status as _claim_status,
@@ -386,47 +387,39 @@ def _execute_planned_effect_payload(
 def _execute_full_payload(args: list[str], commit: bool, store: dict[str, Any]) -> dict[str, Any]:
     cleaned = [str(arg).strip() for arg in args if str(arg).strip()]
     if not cleaned:
-        return {
-            "ok": False,
-            "error": "plan_required",
-            "requested_plan": None,
-            "commit_requested": commit,
-            "status": "refused",
-            "description": "Execute requires a canonical plan id.",
-            "next_move": "./xctx plan <operation> <target>",
-        }
+        return _execute_refusal_payload(
+            error="plan_required",
+            requested_plan=None,
+            commit_requested=commit,
+            description="Execute requires a canonical plan id.",
+            next_move="./xctx plan <operation> <target>",
+        )
     if len(cleaned) != 1:
-        return {
-            "ok": False,
-            "error": "invalid_execute_command",
-            "requested_plan": " ".join(cleaned),
-            "commit_requested": commit,
-            "status": "refused",
-            "description": "Execute accepts exactly one plan id.",
-            "next_move": "./xctx execute <PLAN_ID> --commit",
-        }
+        return _execute_refusal_payload(
+            error="invalid_execute_command",
+            requested_plan=" ".join(cleaned),
+            commit_requested=commit,
+            description="Execute accepts exactly one plan id.",
+            next_move="./xctx execute <PLAN_ID> --commit",
+        )
     request = parse_execute_request(args, commit=commit)
     requested_plan = request.plan_identifier
     if not str(requested_plan).startswith(PLAN_RECEIPT_PREFIX):
-        return {
-            "ok": False,
-            "error": "plan_id_required",
-            "requested_plan": requested_plan,
-            "commit_requested": commit,
-            "status": "refused",
-            "description": "Execute requires a canonical plan id. Raw receipt hashes and short receipts are not executable.",
-            "next_move": "./xctx execute plan:sha256:<sha256> --commit",
-        }
+        return _execute_refusal_payload(
+            error="plan_id_required",
+            requested_plan=requested_plan,
+            commit_requested=commit,
+            description="Execute requires a canonical plan id. Raw receipt hashes and short receipts are not executable.",
+            next_move="./xctx execute plan:sha256:<sha256> --commit",
+        )
     if not request.commit:
-        return {
-            "ok": False,
-            "error": "commit_required",
-            "requested_plan": requested_plan,
-            "commit_requested": False,
-            "status": "refused",
-            "description": "Execute requires explicit --commit before any recorded plan can be accepted.",
-            "next_move": f"./xctx execute {requested_plan} --commit",
-        }
+        return _execute_refusal_payload(
+            error="commit_required",
+            requested_plan=requested_plan,
+            commit_requested=False,
+            description="Execute requires explicit --commit before any recorded plan can be accepted.",
+            next_move=f"./xctx execute {requested_plan} --commit",
+        )
 
     resolved = resolve_plan(store, requested_plan)
     accepted = resolved.ok
@@ -465,36 +458,17 @@ def _execute_full_payload(args: list[str], commit: bool, store: dict[str, Any]) 
             current_context_sha=current_context_sha,
         )
 
-    payload = {
-        "ok": accepted,
-        "error": None if accepted else resolved.error,
-        "requested_plan": requested_plan,
-        "commit_requested": True,
-        "status": "accepted_read_only_noop" if accepted else "refused",
-        "description": "Execute accepts only receipts that bind to a recorded xctx plan made against the current protocol surface. No domain mutation was performed because the bundled adapters expose read-only operations.",
-        "planner_binding": {
-            "verified": accepted,
-            "requested": requested_plan,
-            "canonical_plan_id": canonical_plan_id,
-            "receipt_sha256": bound_receipt,
-            "operation": bound_operation,
-            "short_receipt_matches": resolved.matches,
-            "context_fingerprint_verified": context_matches if resolved.plan else False,
-            "planned_context_sha256": planned_context_sha,
-            "current_context_sha256": current_context_sha,
-        },
-        "mutations_applied": 0,
-        "execution_receipt_sha256": _receipt_for_payload(
-            {
-                "execute": requested_plan,
-                "bound_plan": canonical_plan_id,
-                "commit": True,
-                "mutations_applied": 0,
-                "context_verified": accepted,
-            }
-        ),
-        "next_move": "./xctx audit root" if accepted else "./xctx plan <operation> <target>",
-    }
+    payload = _read_only_execute_response(
+        requested_plan=requested_plan,
+        resolved=resolved,
+        accepted=accepted,
+        canonical_plan_id=canonical_plan_id,
+        bound_receipt=bound_receipt,
+        bound_operation=bound_operation,
+        context_matches=context_matches,
+        planned_context_sha=planned_context_sha,
+        current_context_sha=current_context_sha,
+    )
     if accepted and resolved.plan:
         _mark_plan_committed(
             store,
