@@ -8,7 +8,8 @@ from typing import Any
 class XctxError(Exception):
     """Raised when xctx should return a protocol-shaped error record."""
 
-    def __init__(self, message: str, *, next_moves: list[Any] | None = None) -> None:
+    def __init__(self, message: str, *, next_moves: list[Any] | None = None, category: str = "usage_error") -> None:
         super().__init__(message)
         self.message = str(message)
         self.next_moves = list(next_moves or [])
+        self.category = str(category)

@@ -367,3 +367,46 @@ def test_version_uses_declared_protocol_envelope_and_help_is_rejected() -> None:
     assert rc == 1
     assert payload["record_type"] == "error"
     assert payload["error"] == "unknown xctx command"
+
+
+def test_usage_error_records_include_error_category() -> None:
+    rc, payload = run_runtime_json(["unknown-command"])
+
+    assert rc == 1
+    assert payload["record_type"] == "error"
+    assert payload["error"] == "unknown xctx command"
+    assert payload["error_category"] == "usage_error"
+
+
+def test_unexpected_runtime_exception_is_categorized_as_framework_bug(monkeypatch) -> None:
+    ensure_libs_path()
+    from xctx.process import runtime  # noqa: PLC0415
+
+    def broken_handlers() -> dict:
+        raise RuntimeError("handler registry exploded")
+
+    monkeypatch.setattr(runtime, "command_handlers", broken_handlers)
+
+    rc, payload = run_runtime_json(["discover"])
+
+    assert rc == 1
+    assert payload["record_type"] == "error"
+    assert payload["error_category"] == "framework_bug"
+    assert payload["error"].startswith("unexpected_framework_error: RuntimeError")
+
+
+def test_store_error_fallback_records_include_error_category(monkeypatch) -> None:
+    ensure_libs_path()
+    from xctx.process import runtime  # noqa: PLC0415
+
+    def broken_load_store(*_args, **_kwargs) -> dict:
+        raise OSError("runtime store unavailable")
+
+    monkeypatch.setattr(runtime, "load_store", broken_load_store)
+
+    rc, payload = run_runtime_json(["discover"])
+
+    assert rc == 1
+    assert payload["record_type"] == "error"
+    assert payload["error_category"] == "store_error"
+    assert payload["error"] == "runtime store unavailable"
