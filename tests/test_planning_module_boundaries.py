@@ -265,6 +265,110 @@ def test_execute_module_has_no_adapter_invocation_port() -> None:
     assert not hasattr(planning_execute, "resolve_subdomain")
 
 
+def test_execute_module_dispatches_read_only_plan_to_read_only_execution_module(monkeypatch) -> None:
+    ensure_libs_path()
+    from xctx.domain import planning_execute  # noqa: PLC0415
+    from xctx.store.plans import ResolvedPlan  # noqa: PLC0415
+
+    receipt = "e" * 64
+    requested_plan = f"plan:sha256:{receipt}"
+    plan = {
+        "plan_id": requested_plan,
+        "receipt_sha256": receipt,
+        "operation": "discover",
+    }
+    resolved = ResolvedPlan(True, None, requested_plan, plan, [receipt])
+    calls: list[dict] = []
+    sentinel = {"ok": True, "source": "read_only_execution"}
+
+    def fake_execute_read_only_plan(**kwargs):
+        calls.append(kwargs)
+        return sentinel
+
+    monkeypatch.setattr(planning_execute, "resolve_plan", lambda store, value: resolved)
+    monkeypatch.setattr(planning_execute, "context_match", lambda store, plan_record: (True, "planned-sha", "current-sha"))
+    monkeypatch.setattr(planning_execute, "plan_is_committed", lambda plan_record: False)
+    monkeypatch.setattr(planning_execute, "execute_read_only_plan", fake_execute_read_only_plan)
+
+    result = planning_execute.execute_payload([requested_plan], True, {"store": "sentinel"})
+
+    assert result is sentinel
+    assert calls == [
+        {
+            "requested_plan": requested_plan,
+            "resolved": resolved,
+            "accepted": True,
+            "store": {"store": "sentinel"},
+            "canonical_plan_id": requested_plan,
+            "bound_receipt": receipt,
+            "bound_operation": "discover",
+            "context_matches": True,
+            "planned_context_sha": "planned-sha",
+            "current_context_sha": "current-sha",
+        }
+    ]
+
+
+def test_read_only_execution_module_does_not_commit_refused_plan(monkeypatch) -> None:
+    ensure_libs_path()
+    from xctx.domain import planning_read_only_execution  # noqa: PLC0415
+    from xctx.store.plans import ResolvedPlan  # noqa: PLC0415
+
+    receipt = "f" * 64
+    requested_plan = f"plan:sha256:{receipt}"
+    resolved = ResolvedPlan(False, "stale_plan_context", requested_plan, {"plan_id": requested_plan}, [receipt])
+    monkeypatch.setattr(
+        planning_read_only_execution,
+        "mark_plan_committed",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("refused plan should not be committed")),
+    )
+
+    result = planning_read_only_execution.execute_read_only_plan(
+        requested_plan=requested_plan,
+        resolved=resolved,
+        accepted=False,
+        store={},
+        canonical_plan_id=requested_plan,
+        bound_receipt=receipt,
+        bound_operation="discover",
+        context_matches=False,
+        planned_context_sha="planned-sha",
+        current_context_sha="current-sha",
+    )
+
+    assert result["ok"] is False
+    assert result["error"] == "stale_plan_context"
+
+
+def test_read_only_execution_module_marks_accepted_plan_committed(tmp_path, monkeypatch) -> None:
+    ensure_libs_path()
+    from xctx.domain.planning import plan_payload  # noqa: PLC0415
+    from xctx.domain.planning_read_only_execution import execute_read_only_plan  # noqa: PLC0415
+    from xctx.store.plans import read_plan, resolve_plan  # noqa: PLC0415
+
+    store = _load_store(tmp_path, monkeypatch)
+    plan = plan_payload(["bring_online", "macro_intelligence_hub"], store)
+    resolved = resolve_plan(store, plan["plan_id"])
+
+    result = execute_read_only_plan(
+        requested_plan=plan["plan_id"],
+        resolved=resolved,
+        accepted=True,
+        store=store,
+        canonical_plan_id=plan["plan_id"],
+        bound_receipt=plan["receipt_sha256"],
+        bound_operation=plan["operation"],
+        context_matches=True,
+        planned_context_sha=None,
+        current_context_sha=None,
+    )
+    persisted = read_plan(store, plan["receipt_sha256"])
+
+    assert result["ok"] is True
+    assert persisted is not None
+    assert persisted["execution_status"] == "committed"
+
+
 def test_execute_module_marks_read_only_plan_committed(tmp_path, monkeypatch) -> None:
     ensure_libs_path()
     from xctx.domain.planning import plan_payload  # noqa: PLC0415

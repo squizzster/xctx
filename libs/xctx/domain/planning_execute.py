@@ -5,12 +5,12 @@ from __future__ import annotations
 from typing import Any
 
 from xctx.domain.execution_contract import parse_execute_request
-from xctx.domain.planning_execution import execute_refusal_payload, read_only_execute_response
-from xctx.domain.planning_ledger import context_match, mark_plan_committed, plan_is_committed
+from xctx.domain.planning_execution import execute_refusal_payload
+from xctx.domain.planning_ledger import context_match, plan_is_committed
 from xctx.domain.planning_payloads import plan_already_committed_payload
 from xctx.domain.planning_planned_effect_execution import execute_planned_effect_payload
+from xctx.domain.planning_read_only_execution import execute_read_only_plan
 from xctx.store.plans import PLAN_RECEIPT_PREFIX, resolve_plan
-from xctx.store.runtime_artifacts import isoformat_utc, utc_now
 
 
 def execute_payload(args: list[str], commit: bool, store: dict[str, Any]) -> dict[str, Any]:
@@ -87,10 +87,11 @@ def execute_payload(args: list[str], commit: bool, store: dict[str, Any]) -> dic
             current_context_sha=current_context_sha,
         )
 
-    payload = read_only_execute_response(
+    return execute_read_only_plan(
         requested_plan=requested_plan,
         resolved=resolved,
         accepted=accepted,
+        store=store,
         canonical_plan_id=canonical_plan_id,
         bound_receipt=bound_receipt,
         bound_operation=bound_operation,
@@ -98,10 +99,3 @@ def execute_payload(args: list[str], commit: bool, store: dict[str, Any]) -> dic
         planned_context_sha=planned_context_sha,
         current_context_sha=current_context_sha,
     )
-    if accepted and resolved.plan:
-        mark_plan_committed(
-            store,
-            resolved.plan,
-            committed_at=isoformat_utc(utc_now()),
-        )
-    return payload
