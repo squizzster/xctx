@@ -4,8 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from xctx.domain.core import resolve_subdomain
-from xctx.domain.planning_execution import commit_context_args
+from xctx.domain.planning_planned_effect_adapter import invoke_commit_adapter
 from xctx.domain.planning_planned_effect_preflight import planned_effect_execution_preflight
 from xctx.domain.planning_planned_effect_start import (
     mark_execution_started,
@@ -15,7 +14,6 @@ from xctx.domain.planning_planned_effect_terminal import (
     adapter_exception_failure_response,
     finalize_adapter_execution,
 )
-from xctx.ports.external_command import call_external_command
 
 
 def execute_planned_effect_payload(
@@ -59,23 +57,12 @@ def execute_planned_effect_payload(
             commit=commit,
             claim=preflight.claim,
         )
-        subdomain = resolve_subdomain(
-            store,
-            str(preflight.planned_effect["agent_domain"]),
-            str(preflight.planned_effect["agent_subdomain"]),
-        )
-        live = call_external_command(
-            store,
-            subdomain,
-            [
-                str(preflight.planned_effect["commit_adapter_command"]),
-                *[str(arg) for arg in preflight.planned_effect.get("adapter_args") or []],
-                *commit_context_args(
-                    canonical_plan_id=preflight.canonical_plan_id,
-                    commit_id=preflight.commit_id,
-                    result_id=preflight.result_id,
-                ),
-            ],
+        live = invoke_commit_adapter(
+            store=store,
+            planned_effect=preflight.planned_effect,
+            canonical_plan_id=preflight.canonical_plan_id,
+            commit_id=preflight.commit_id,
+            result_id=preflight.result_id,
         )
     except Exception as exc:  # keep the committed result handle observable
         return adapter_exception_failure_response(

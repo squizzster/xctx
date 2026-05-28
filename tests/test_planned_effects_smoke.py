@@ -514,7 +514,7 @@ def test_execute_refuses_unmaterialized_planned_effect_without_adapter_call(tmp_
     def fail_if_called(*_args, **_kwargs):
         raise AssertionError("adapter should not be invoked for an unmaterialized plan")
 
-    monkeypatch.setattr("xctx.domain.planning_planned_effect_execution.call_external_command", fail_if_called)
+    monkeypatch.setattr("xctx.domain.planning_planned_effect_adapter.call_external_command", fail_if_called)
 
     result = execute_payload([plan["plan_id"]], True, store)
 
@@ -536,7 +536,7 @@ def test_execute_refuses_missing_sub_plan_materialization_without_adapter_call(t
     def fail_if_called(*_args, **_kwargs):
         raise AssertionError("adapter should not be invoked for an unmaterialized plan")
 
-    monkeypatch.setattr("xctx.domain.planning_planned_effect_execution.call_external_command", fail_if_called)
+    monkeypatch.setattr("xctx.domain.planning_planned_effect_adapter.call_external_command", fail_if_called)
 
     result = execute_payload([plan["plan_id"]], True, store)
 
@@ -759,7 +759,7 @@ def test_execute_refuses_missing_plan_manifest_without_adapter_call(tmp_path, mo
     def fail_if_called(*_args, **_kwargs):
         raise AssertionError("adapter should not be invoked without a materialization manifest")
 
-    monkeypatch.setattr("xctx.domain.planning_planned_effect_execution.call_external_command", fail_if_called)
+    monkeypatch.setattr("xctx.domain.planning_planned_effect_adapter.call_external_command", fail_if_called)
 
     result = execute_payload([plan["plan_id"]], True, store)
 
@@ -786,7 +786,7 @@ def test_execute_refuses_corrupt_plan_manifest_without_adapter_call(tmp_path, mo
     def fail_if_called(*_args, **_kwargs):
         raise AssertionError("adapter should not be invoked with a corrupt materialization manifest")
 
-    monkeypatch.setattr("xctx.domain.planning_planned_effect_execution.call_external_command", fail_if_called)
+    monkeypatch.setattr("xctx.domain.planning_planned_effect_adapter.call_external_command", fail_if_called)
 
     result = execute_payload([plan["plan_id"]], True, store)
 
@@ -1362,7 +1362,7 @@ def test_execute_commit_exists_result_missing_does_not_reinvoke_adapter(tmp_path
     def fail_if_called(*_args, **_kwargs):
         raise AssertionError("adapter should not be invoked when a commit artifact already exists")
 
-    monkeypatch.setattr("xctx.domain.planning_planned_effect_execution.call_external_command", fail_if_called)
+    monkeypatch.setattr("xctx.domain.planning_planned_effect_adapter.call_external_command", fail_if_called)
 
     result = execute_payload([plan["plan_id"]], True, store)
 
@@ -1399,7 +1399,7 @@ def test_execute_result_exists_commit_missing_does_not_reinvoke_adapter(tmp_path
     def fail_if_called(*_args, **_kwargs):
         raise AssertionError("adapter should not be invoked when a result artifact already exists")
 
-    monkeypatch.setattr("xctx.domain.planning_planned_effect_execution.call_external_command", fail_if_called)
+    monkeypatch.setattr("xctx.domain.planning_planned_effect_adapter.call_external_command", fail_if_called)
 
     result = execute_payload([plan["plan_id"]], True, store)
 
@@ -1442,7 +1442,7 @@ def test_execute_existing_claim_does_not_reinvoke_adapter(tmp_path, monkeypatch)
     def fail_if_called(*_args, **_kwargs):
         raise AssertionError("adapter should not be invoked when an execution claim already exists")
 
-    monkeypatch.setattr("xctx.domain.planning_planned_effect_execution.call_external_command", fail_if_called)
+    monkeypatch.setattr("xctx.domain.planning_planned_effect_adapter.call_external_command", fail_if_called)
 
     result = execute_payload([plan["plan_id"]], True, store)
 
@@ -1490,7 +1490,7 @@ def test_stale_running_claim_is_abandoned_without_reinvoking_adapter(tmp_path, m
     def fail_if_called(*_args, **_kwargs):
         raise AssertionError("adapter should not be invoked for a stale running claim")
 
-    monkeypatch.setattr("xctx.domain.planning_planned_effect_execution.call_external_command", fail_if_called)
+    monkeypatch.setattr("xctx.domain.planning_planned_effect_adapter.call_external_command", fail_if_called)
 
     result = execute_payload([plan["plan_id"]], True, store)
     persisted = read_commit_execution_claim(store, receipt)
@@ -1517,7 +1517,7 @@ def test_adapter_exception_secret_is_not_persisted_in_result_artifact(tmp_path, 
     def fail_with_secret(*_args, **_kwargs):
         raise XctxError("adapter failed with api_key=SECRET_VALUE")
 
-    monkeypatch.setattr("xctx.domain.planning_planned_effect_execution.call_external_command", fail_with_secret)
+    monkeypatch.setattr("xctx.domain.planning_planned_effect_adapter.call_external_command", fail_with_secret)
 
     result = execute_payload([plan["plan_id"]], True, store)
     persisted = read_runtime_artifact(store, "result", plan["receipt_sha256"])
@@ -1541,7 +1541,7 @@ def test_terminal_result_ttl_starts_at_completed_at(tmp_path, monkeypatch) -> No
     def succeed(*_args, **_kwargs):
         return {"object_type": "test_adapter_success"}
 
-    monkeypatch.setattr("xctx.domain.planning_planned_effect_execution.call_external_command", succeed)
+    monkeypatch.setattr("xctx.domain.planning_planned_effect_adapter.call_external_command", succeed)
 
     result = execute_payload([plan["plan_id"]], True, store)
     persisted = read_runtime_artifact(store, "result", plan["receipt_sha256"])

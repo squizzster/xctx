@@ -432,7 +432,12 @@ def test_execute_module_marks_read_only_plan_committed(tmp_path, monkeypatch) ->
 
 def test_planned_effect_execution_module_uses_moved_adapter_call_boundary(tmp_path, monkeypatch) -> None:
     ensure_libs_path()
-    from xctx.domain import planning, planning_execute, planning_planned_effect_execution  # noqa: PLC0415
+    from xctx.domain import (  # noqa: PLC0415
+        planning,
+        planning_execute,
+        planning_planned_effect_adapter,
+        planning_planned_effect_execution,
+    )
 
     store = _load_store(tmp_path, monkeypatch)
     plan = _direct_planned_effect(store)
@@ -442,7 +447,7 @@ def test_planned_effect_execution_module_uses_moved_adapter_call_boundary(tmp_pa
         calls.append(list(args))
         return {"object_type": "test_adapter_success"}
 
-    monkeypatch.setattr(planning_planned_effect_execution, "call_external_command", fake_call)
+    monkeypatch.setattr(planning_planned_effect_adapter, "call_external_command", fake_call)
 
     result = planning_execute.execute_payload([plan["plan_id"]], True, store)
 
@@ -459,6 +464,66 @@ def test_planned_effect_execution_module_uses_moved_adapter_call_boundary(tmp_pa
     ]
     assert not hasattr(planning, "call_external_command")
     assert not hasattr(planning_execute, "call_external_command")
+    assert not hasattr(planning_planned_effect_execution, "call_external_command")
+
+
+def test_planned_effect_adapter_invokes_commit_command_with_context_args(tmp_path, monkeypatch) -> None:
+    ensure_libs_path()
+    from xctx.domain import planning_planned_effect_adapter  # noqa: PLC0415
+
+    store = _load_store(tmp_path, monkeypatch)
+    state = _terminal_planned_effect_state(store)
+    calls: list[tuple[dict, list[str]]] = []
+
+    def fake_call(_store, subdomain, args):
+        calls.append((subdomain, list(args)))
+        return {"object_type": "test_adapter_success"}
+
+    monkeypatch.setattr(planning_planned_effect_adapter, "call_external_command", fake_call)
+
+    result = planning_planned_effect_adapter.invoke_commit_adapter(
+        store=store,
+        planned_effect=state.planned_effect,
+        canonical_plan_id=state.plan["plan_id"],
+        commit_id=state.commit_id,
+        result_id=state.result_id,
+    )
+
+    assert result["object_type"] == "test_adapter_success"
+    assert calls
+    subdomain, args = calls[0]
+    assert subdomain["id"] == state.planned_effect["agent_subdomain"]
+    assert args[0] == state.planned_effect["commit_adapter_command"]
+    assert args[-6:] == [
+        "--xctx-plan-id",
+        state.plan["plan_id"],
+        "--xctx-commit-id",
+        state.commit_id,
+        "--xctx-result-id",
+        state.result_id,
+    ]
+
+
+def test_planned_effect_adapter_propagates_adapter_exception(tmp_path, monkeypatch) -> None:
+    ensure_libs_path()
+    from xctx.domain import planning_planned_effect_adapter  # noqa: PLC0415
+
+    store = _load_store(tmp_path, monkeypatch)
+    state = _terminal_planned_effect_state(store)
+
+    def fake_call(*_args, **_kwargs):
+        raise RuntimeError("adapter failed")
+
+    monkeypatch.setattr(planning_planned_effect_adapter, "call_external_command", fake_call)
+
+    with pytest.raises(RuntimeError, match="adapter failed"):
+        planning_planned_effect_adapter.invoke_commit_adapter(
+            store=store,
+            planned_effect=state.planned_effect,
+            canonical_plan_id=state.plan["plan_id"],
+            commit_id=state.commit_id,
+            result_id=state.result_id,
+        )
 
 
 def test_planned_effect_preflight_creates_exclusive_claim_for_ready_plan(tmp_path, monkeypatch) -> None:
