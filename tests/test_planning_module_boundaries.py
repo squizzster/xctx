@@ -461,6 +461,179 @@ def test_planned_effect_execution_module_uses_moved_adapter_call_boundary(tmp_pa
     assert not hasattr(planning_execute, "call_external_command")
 
 
+def test_planned_effect_preflight_creates_exclusive_claim_for_ready_plan(tmp_path, monkeypatch) -> None:
+    ensure_libs_path()
+    from xctx.domain.planning_planned_effect_preflight import planned_effect_execution_preflight  # noqa: PLC0415
+    from xctx.store.runtime_artifacts import read_commit_execution_claim  # noqa: PLC0415
+
+    store = _load_store(tmp_path, monkeypatch)
+    plan = _direct_planned_effect(store)
+    resolved = SimpleNamespace(plan=plan, matches=[plan["receipt_sha256"]])
+
+    preflight = planned_effect_execution_preflight(
+        requested_plan=plan["plan_id"],
+        resolved=resolved,
+        store=store,
+        context_matches=True,
+        planned_context_sha="planned-sha",
+        current_context_sha="current-sha",
+    )
+    persisted_claim = read_commit_execution_claim(store, plan["receipt_sha256"])
+
+    assert preflight.refusal_payload is None
+    assert preflight.claim is not None
+    assert preflight.claim["status"] == "claimed"
+    assert persisted_claim == preflight.claim
+    assert preflight.master_plan is not None
+    assert preflight.sub_plan is not None
+
+
+def test_planned_effect_preflight_refuses_missing_materialization(tmp_path, monkeypatch) -> None:
+    ensure_libs_path()
+    from xctx.domain.planning_planned_effect_preflight import planned_effect_execution_preflight  # noqa: PLC0415
+
+    store = _load_store(tmp_path, monkeypatch)
+    plan = _direct_planned_effect(store)
+    (tmp_path / "plan_manifest" / f"{plan['receipt_sha256']}.json").unlink()
+    resolved = SimpleNamespace(plan=plan, matches=[plan["receipt_sha256"]])
+
+    preflight = planned_effect_execution_preflight(
+        requested_plan=plan["plan_id"],
+        resolved=resolved,
+        store=store,
+        context_matches=True,
+        planned_context_sha="planned-sha",
+        current_context_sha="current-sha",
+    )
+
+    assert preflight.refusal_payload is not None
+    assert preflight.refusal_payload["error"] == "plan_not_materialized"
+    assert "missing_plan_manifest" in preflight.refusal_payload["materialization_errors"]
+
+
+def test_planned_effect_preflight_refuses_existing_claim_without_reclaiming(tmp_path, monkeypatch) -> None:
+    ensure_libs_path()
+    from xctx.domain.planning_planned_effect_preflight import planned_effect_execution_preflight  # noqa: PLC0415
+    from xctx.store.runtime_artifacts import create_commit_execution_claim, isoformat_utc, utc_now  # noqa: PLC0415
+
+    store = _load_store(tmp_path, monkeypatch)
+    plan = _direct_planned_effect(store)
+    receipt = plan["receipt_sha256"]
+    now = isoformat_utc(utc_now())
+    existing_claim = {
+        "object_type": "commit_execution_claim",
+        "plan_id": plan["plan_id"],
+        "commit_id": plan["expected_commit_id"],
+        "result_id": plan["expected_result_id"],
+        "receipt_sha256": receipt,
+        "owner_id": "existing-owner",
+        "claim_nonce": "existing-nonce",
+        "status": "running",
+        "claimed_at": now,
+        "started_at": now,
+        "heartbeat_at": now,
+        "completed_at": None,
+        "recovery_policy": "never_reinvoke_adapter_without_operator_repair",
+    }
+    assert create_commit_execution_claim(store, receipt, existing_claim) is True
+    resolved = SimpleNamespace(plan=plan, matches=[receipt])
+
+    preflight = planned_effect_execution_preflight(
+        requested_plan=plan["plan_id"],
+        resolved=resolved,
+        store=store,
+        context_matches=True,
+        planned_context_sha="planned-sha",
+        current_context_sha="current-sha",
+    )
+
+    assert preflight.refusal_payload is not None
+    assert preflight.refusal_payload["error"] == "planned_effect_execution_in_progress"
+    assert preflight.refusal_payload["execution_claim_status"] == "running"
+
+
+def test_planned_effect_preflight_refuses_existing_commit_artifact(tmp_path, monkeypatch) -> None:
+    ensure_libs_path()
+    from xctx.domain.planning_planned_effect_preflight import planned_effect_execution_preflight  # noqa: PLC0415
+    from xctx.store.runtime_artifacts import write_runtime_artifact  # noqa: PLC0415
+
+    store = _load_store(tmp_path, monkeypatch)
+    plan = _direct_planned_effect(store)
+    receipt = plan["receipt_sha256"]
+    write_runtime_artifact(
+        store,
+        "commit",
+        receipt,
+        {
+            "commit_id": plan["expected_commit_id"],
+            "plan_id": plan["plan_id"],
+            "result_id": plan["expected_result_id"],
+            "status": "running",
+        },
+    )
+    resolved = SimpleNamespace(plan=plan, matches=[receipt])
+
+    preflight = planned_effect_execution_preflight(
+        requested_plan=plan["plan_id"],
+        resolved=resolved,
+        store=store,
+        context_matches=True,
+        planned_context_sha="planned-sha",
+        current_context_sha="current-sha",
+    )
+
+    assert preflight.refusal_payload is not None
+    assert preflight.refusal_payload["error"] == "planned_effect_execution_requires_repair"
+    assert preflight.refusal_payload["existing_commit_status"] == "running"
+
+
+def test_planned_effect_preflight_refuses_committed_plan_before_new_claim(tmp_path, monkeypatch) -> None:
+    ensure_libs_path()
+    from xctx.domain.planning_planned_effect_preflight import planned_effect_execution_preflight  # noqa: PLC0415
+    from xctx.store.runtime_artifacts import read_commit_execution_claim  # noqa: PLC0415
+
+    store = _load_store(tmp_path, monkeypatch)
+    plan = {**_direct_planned_effect(store), "execution_status": "committed"}
+    receipt = plan["receipt_sha256"]
+    resolved = SimpleNamespace(plan=plan, matches=[receipt])
+
+    preflight = planned_effect_execution_preflight(
+        requested_plan=plan["plan_id"],
+        resolved=resolved,
+        store=store,
+        context_matches=True,
+        planned_context_sha="planned-sha",
+        current_context_sha="current-sha",
+    )
+
+    assert preflight.refusal_payload is not None
+    assert preflight.refusal_payload["error"] == "plan_already_committed"
+    assert read_commit_execution_claim(store, receipt) is None
+
+
+def test_planned_effect_preflight_refuses_exclusive_claim_collision(tmp_path, monkeypatch) -> None:
+    ensure_libs_path()
+    from xctx.domain import planning_planned_effect_preflight  # noqa: PLC0415
+
+    store = _load_store(tmp_path, monkeypatch)
+    plan = _direct_planned_effect(store)
+    resolved = SimpleNamespace(plan=plan, matches=[plan["receipt_sha256"]])
+    monkeypatch.setattr(planning_planned_effect_preflight, "create_commit_execution_claim", lambda *_args: False)
+
+    preflight = planning_planned_effect_preflight.planned_effect_execution_preflight(
+        requested_plan=plan["plan_id"],
+        resolved=resolved,
+        store=store,
+        context_matches=True,
+        planned_context_sha="planned-sha",
+        current_context_sha="current-sha",
+    )
+
+    assert preflight.refusal_payload is not None
+    assert preflight.refusal_payload["error"] == "planned_effect_execution_in_progress"
+    assert preflight.claim is None
+
+
 def test_planned_effect_start_publishes_running_artifacts(tmp_path, monkeypatch) -> None:
     ensure_libs_path()
     from xctx.domain.planning_planned_effect_start import publish_running_execution_artifacts  # noqa: PLC0415
