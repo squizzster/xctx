@@ -244,6 +244,18 @@ def test_action_args_allow_declared_positional_prefix_for_non_query_actions() ->
     validate_declared_action_args(action, ["directory:docs", "--limit", "2"])
 
 
+def test_action_args_allow_quoted_declared_positional_pattern_with_spaces() -> None:
+    ensure_libs_path()
+    from xctx.domain.actions import validate_declared_action_args  # noqa: PLC0415
+
+    action = {
+        "query_required": False,
+        "argument_patterns": ["['directory:<relative path>']"],
+    }
+
+    validate_declared_action_args(action, ["directory:Quarterly Reports"])
+
+
 def test_action_args_allow_declared_adapter_filter_options() -> None:
     ensure_libs_path()
     from xctx.domain.actions import validate_declared_action_args  # noqa: PLC0415

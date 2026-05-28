@@ -272,7 +272,11 @@ def _declared_positional_prefixes(action: dict[str, Any]) -> set[str]:
         raw = str(pattern).strip().strip("[]")
         if raw.startswith("--"):
             continue
-        first = raw.split()[0] if raw.split() else ""
+        try:
+            parts = shlex.split(raw)
+        except ValueError:
+            parts = []
+        first = parts[0] if parts else ""
         if ":<" in first:
             prefixes.add(first.split(":<", 1)[0] + ":")
     return prefixes
