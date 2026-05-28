@@ -98,6 +98,28 @@ def test_subdomain_actions_require_structural_action_refs() -> None:
         assert payload["record_type"] == "discovery"
 
 
+def test_entrypoint_action_token_guidance_uses_canonical_structural_ref() -> None:
+    rc, payload = run_runtime_json(["discover", "stock_intelligence_hub::equity_filing", "list-forms"])
+
+    assert rc == 1
+    assert payload["record_type"] == "error"
+    assert payload["error"] == "non-canonical action token for stock_intelligence_hub::equity_filing: list-forms"
+    assert payload["next_moves"] == [{"run_cmd": "./xctx discover stock_intelligence_hub::equity_filing::list_forms"}]
+    assert "./xctx discover stock_intelligence_hub::equity_filing list_forms" not in _text(payload)
+
+
+def test_domain_action_name_guidance_uses_canonical_structural_ref() -> None:
+    rc, payload = run_runtime_json(["discover", "stock_intelligence_hub::equity_filing", "search_filing_form"])
+
+    assert rc == 1
+    assert payload["record_type"] == "error"
+    assert payload["error"] == (
+        "non-canonical action token for stock_intelligence_hub::equity_filing: search_filing_form"
+    )
+    assert payload["next_moves"] == [{"run_cmd": "./xctx discover stock_intelligence_hub::equity_filing::search_forms"}]
+    assert "./xctx discover stock_intelligence_hub::equity_filing search_forms" not in _text(payload)
+
+
 def test_domain_affordance_shortcuts_are_explicit_mappings() -> None:
     rc, shortcut = run_runtime_json(["discover", "stock_intelligence_hub::search_filing_form", "10-K"])
     assert rc == 0

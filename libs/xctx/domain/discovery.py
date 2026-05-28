@@ -175,7 +175,7 @@ def subdomain_discovery_payload(
         if canonical_action:
             raise XctxError(
                 f"non-canonical action token for {domain_id}::{subdomain_id}: {query_parts[0]}",
-                next_moves=[f"./xctx discover {domain_id}::{subdomain_id} {canonical_action}"],
+                next_moves=[f"./xctx discover {domain_id}::{subdomain_id}::{canonical_action}"],
             )
     _discover_action_name, discover_action = subdomain_action_config(subdomain, "discover")
     if discover_action:
