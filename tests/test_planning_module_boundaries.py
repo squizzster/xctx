@@ -155,6 +155,116 @@ def test_execute_module_requires_commit_without_store_lookup(monkeypatch) -> Non
     assert result["error"] == "commit_required"
 
 
+def test_execute_module_dispatches_planned_effect_to_transaction_module(monkeypatch) -> None:
+    ensure_libs_path()
+    from xctx.domain import planning_execute  # noqa: PLC0415
+    from xctx.store.plans import ResolvedPlan  # noqa: PLC0415
+
+    receipt = "b" * 64
+    requested_plan = f"plan:sha256:{receipt}"
+    plan = {
+        "plan_id": requested_plan,
+        "receipt_sha256": receipt,
+        "operation": "mutate",
+        "planned_effect": {"kind": "test"},
+    }
+    resolved = ResolvedPlan(True, None, requested_plan, plan, [receipt])
+    calls: list[dict] = []
+    sentinel = {"ok": True, "source": "planned_effect_transaction"}
+
+    def fake_execute_planned_effect_payload(**kwargs):
+        calls.append(kwargs)
+        return sentinel
+
+    monkeypatch.setattr(planning_execute, "resolve_plan", lambda store, value: resolved)
+    monkeypatch.setattr(planning_execute, "context_match", lambda store, plan_record: (True, "planned-sha", "current-sha"))
+    monkeypatch.setattr(planning_execute, "plan_is_committed", lambda plan_record: False)
+    monkeypatch.setattr(planning_execute, "execute_planned_effect_payload", fake_execute_planned_effect_payload)
+
+    result = planning_execute.execute_payload([requested_plan], True, {"store": "sentinel"})
+
+    assert result is sentinel
+    assert calls == [
+        {
+            "requested_plan": requested_plan,
+            "resolved": resolved,
+            "store": {"store": "sentinel"},
+            "context_matches": True,
+            "planned_context_sha": "planned-sha",
+            "current_context_sha": "current-sha",
+        }
+    ]
+
+
+def test_execute_module_refuses_committed_plan_before_transaction_module(monkeypatch) -> None:
+    ensure_libs_path()
+    from xctx.domain import planning_execute  # noqa: PLC0415
+    from xctx.store.plans import ResolvedPlan  # noqa: PLC0415
+
+    receipt = "c" * 64
+    requested_plan = f"plan:sha256:{receipt}"
+    plan = {
+        "plan_id": requested_plan,
+        "receipt_sha256": receipt,
+        "operation": "mutate",
+        "planned_effect": {"kind": "test"},
+        "execution_status": "committed",
+    }
+    resolved = ResolvedPlan(True, None, requested_plan, plan, [receipt])
+
+    monkeypatch.setattr(planning_execute, "resolve_plan", lambda store, value: resolved)
+    monkeypatch.setattr(planning_execute, "context_match", lambda store, plan_record: (True, "planned-sha", "current-sha"))
+    monkeypatch.setattr(planning_execute, "plan_is_committed", lambda plan_record: True)
+    monkeypatch.setattr(
+        planning_execute,
+        "execute_planned_effect_payload",
+        lambda **_kwargs: (_ for _ in ()).throw(AssertionError("transaction module should not run")),
+    )
+
+    result = planning_execute.execute_payload([requested_plan], True, {})
+
+    assert result["ok"] is False
+    assert result["error"] == "plan_already_committed"
+
+
+def test_execute_module_refuses_stale_context_before_transaction_module(monkeypatch) -> None:
+    ensure_libs_path()
+    from xctx.domain import planning_execute  # noqa: PLC0415
+    from xctx.store.plans import ResolvedPlan  # noqa: PLC0415
+
+    receipt = "d" * 64
+    requested_plan = f"plan:sha256:{receipt}"
+    plan = {
+        "plan_id": requested_plan,
+        "receipt_sha256": receipt,
+        "operation": "mutate",
+        "planned_effect": {"kind": "test"},
+    }
+    resolved = ResolvedPlan(True, None, requested_plan, plan, [receipt])
+
+    monkeypatch.setattr(planning_execute, "resolve_plan", lambda store, value: resolved)
+    monkeypatch.setattr(planning_execute, "context_match", lambda store, plan_record: (False, "planned-sha", "current-sha"))
+    monkeypatch.setattr(
+        planning_execute,
+        "execute_planned_effect_payload",
+        lambda **_kwargs: (_ for _ in ()).throw(AssertionError("transaction module should not run")),
+    )
+
+    result = planning_execute.execute_payload([requested_plan], True, {})
+
+    assert result["ok"] is False
+    assert result["error"] == "stale_plan_context"
+    assert result["planner_binding"]["context_fingerprint_verified"] is False
+
+
+def test_execute_module_has_no_adapter_invocation_port() -> None:
+    ensure_libs_path()
+    from xctx.domain import planning_execute  # noqa: PLC0415
+
+    assert not hasattr(planning_execute, "call_external_command")
+    assert not hasattr(planning_execute, "resolve_subdomain")
+
+
 def test_execute_module_marks_read_only_plan_committed(tmp_path, monkeypatch) -> None:
     ensure_libs_path()
     from xctx.domain.planning import plan_payload  # noqa: PLC0415
@@ -172,9 +282,9 @@ def test_execute_module_marks_read_only_plan_committed(tmp_path, monkeypatch) ->
     assert persisted["execution_status"] == "committed"
 
 
-def test_execute_module_uses_moved_adapter_call_boundary(tmp_path, monkeypatch) -> None:
+def test_planned_effect_execution_module_uses_moved_adapter_call_boundary(tmp_path, monkeypatch) -> None:
     ensure_libs_path()
-    from xctx.domain import planning, planning_execute  # noqa: PLC0415
+    from xctx.domain import planning, planning_execute, planning_planned_effect_execution  # noqa: PLC0415
 
     store = _load_store(tmp_path, monkeypatch)
     plan = _direct_planned_effect(store)
@@ -184,7 +294,7 @@ def test_execute_module_uses_moved_adapter_call_boundary(tmp_path, monkeypatch) 
         calls.append(list(args))
         return {"object_type": "test_adapter_success"}
 
-    monkeypatch.setattr(planning_execute, "call_external_command", fake_call)
+    monkeypatch.setattr(planning_planned_effect_execution, "call_external_command", fake_call)
 
     result = planning_execute.execute_payload([plan["plan_id"]], True, store)
 
@@ -200,3 +310,4 @@ def test_execute_module_uses_moved_adapter_call_boundary(tmp_path, monkeypatch) 
         plan["expected_result_id"],
     ]
     assert not hasattr(planning, "call_external_command")
+    assert not hasattr(planning_execute, "call_external_command")
