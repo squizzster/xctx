@@ -111,8 +111,32 @@ def test_global_options_do_not_strip_command_arguments_after_command_token() -> 
     assert payload["results"]["operation"] == "inspect --json"
 
 
-def test_installed_workspace_root_fallback_is_non_throwing_for_shallow_paths() -> None:
+def test_workspace_root_uses_explicit_environment_override(monkeypatch) -> None:
     ensure_libs_path()
     from xctx.config.paths import project_root_from_module  # noqa: PLC0415
 
-    assert project_root_from_module("/tmp/x.py").is_absolute()
+    monkeypatch.setenv("XCTX_WORKSPACE", str(ROOT))
+
+    assert project_root_from_module("/tmp/x.py") == ROOT
+
+
+def test_workspace_root_rejects_invalid_environment_override(tmp_path, monkeypatch) -> None:
+    ensure_libs_path()
+    from xctx.config.paths import project_root_from_module  # noqa: PLC0415
+    from xctx.errors import XctxError  # noqa: PLC0415
+
+    monkeypatch.setenv("XCTX_WORKSPACE", str(tmp_path))
+
+    with pytest.raises(XctxError, match="XCTX_WORKSPACE is not an xctx workspace root"):
+        project_root_from_module("/tmp/x.py")
+
+
+def test_workspace_root_missing_fails_with_actionable_error(monkeypatch) -> None:
+    ensure_libs_path()
+    from xctx.config.paths import project_root_from_module  # noqa: PLC0415
+    from xctx.errors import XctxError  # noqa: PLC0415
+
+    monkeypatch.delenv("XCTX_WORKSPACE", raising=False)
+
+    with pytest.raises(XctxError, match="could not locate xctx workspace root"):
+        project_root_from_module("/tmp/x.py")
