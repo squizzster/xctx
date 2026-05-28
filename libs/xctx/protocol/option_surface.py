@@ -22,7 +22,7 @@ def _serialisable_option_entry(spec: dict[str, Any]) -> dict[str, Any]:
         "description": spec.get("desc") or spec.get("description"),
         "source": spec.get("_source"),
     }
-    for key in ("min", "max", "mutex_group", "adapter_arg", "choices"):
+    for key in ("min", "max", "mutex_group", "adapter_arg", "choices", "pattern"):
         if spec.get(key) is not None:
             entry[key] = spec[key]
     return {key: value for key, value in entry.items() if value is not None}

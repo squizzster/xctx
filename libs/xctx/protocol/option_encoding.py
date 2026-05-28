@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from xctx.errors import XctxError
@@ -40,6 +41,14 @@ def _validate_min_max(spec: dict[str, Any], value: Any) -> None:
         raise XctxError(f"{spec['_primary_flag']} is above maximum {upper}")
 
 
+def _validate_pattern(spec: dict[str, Any], value: Any) -> None:
+    pattern = spec.get("pattern")
+    if pattern is None:
+        return
+    if not re.fullmatch(str(pattern), str(value)):
+        raise XctxError(f"{spec['_primary_flag']} must match pattern {pattern}")
+
+
 def encode_cli_options_for_target(
     store: dict[str, Any],
     subdomain: dict[str, Any],
@@ -71,6 +80,7 @@ def encode_cli_options_for_target(
         if spec.get("choices") and str(value) not in {str(choice) for choice in spec.get("choices") or []}:
             choices = "|".join(str(choice) for choice in spec.get("choices") or [])
             raise XctxError(f"unsupported value for {spec['_primary_flag']}: {value} (allowed: {choices})")
+        _validate_pattern(spec, value)
         present_specs.append((dest, spec, value))
 
     groups: dict[str, list[dict[str, Any]]] = {}

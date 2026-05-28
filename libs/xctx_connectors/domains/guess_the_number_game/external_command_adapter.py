@@ -169,6 +169,20 @@ def _choose_between_bounds(context: Any, args: list[str]) -> dict[str, Any]:
     }
 
 
+def _validate_choose_between_bounds(context: Any, args: list[str]) -> dict[str, Any]:
+    low = _int_option(args, "--minimum")
+    high = _int_option(args, "--maximum")
+    if low > high:
+        return {
+            "ok": False,
+            "error": "--minimum must be less than or equal to --maximum",
+        }
+    return {
+        "ok": True,
+        "object_type": "guess_the_number_plan_preflight",
+    }
+
+
 def _submit_guess(context: Any, args: list[str]) -> dict[str, Any]:
     game_result = str(_option(args, "--game-result"))
     guess = _int_option(args, "--guess")
@@ -234,6 +248,23 @@ def _submit_guess(context: Any, args: list[str]) -> dict[str, Any]:
     }
 
 
+def _validate_submit_guess(context: Any, args: list[str]) -> dict[str, Any]:
+    try:
+        game_result = str(_option(args, "--game-result"))
+        _result_digest(game_result)
+        _read_game(context, game_result)
+        _int_option(args, "--guess")
+    except ValueError as exc:
+        return {
+            "ok": False,
+            "error": str(exc),
+        }
+    return {
+        "ok": True,
+        "object_type": "guess_the_number_plan_preflight",
+    }
+
+
 def _observe(context: Any, args: list[str]) -> dict[str, Any]:
     target = " ".join(args).strip() or "status"
     return {
@@ -267,8 +298,12 @@ def run(context: Any, command: str, rest: list[str], runtime: Any) -> dict[str, 
         return _audit(context)
     if command == "observe":
         return _observe(context, rest)
+    if command == "validate-choose-between-bounds":
+        return _validate_choose_between_bounds(context, rest)
     if command == "choose-between-bounds":
         return _choose_between_bounds(context, rest)
+    if command == "validate-submit-guess":
+        return _validate_submit_guess(context, rest)
     if command == "submit-guess":
         return _submit_guess(context, rest)
     raise ValueError(f"unsupported guess_the_number_game command: {command}")

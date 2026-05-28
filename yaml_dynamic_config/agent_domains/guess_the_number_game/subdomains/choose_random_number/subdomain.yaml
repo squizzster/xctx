@@ -40,6 +40,7 @@ actions:
     planning:
       mode: planned_effect
       planned_effect: true
+      preflight_adapter_command: validate-choose-between-bounds
       commit_adapter_command: choose-between-bounds
       writes_to_db: true
       can_be_reversed: false

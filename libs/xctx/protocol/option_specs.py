@@ -7,6 +7,7 @@ interpreted after routing has resolved a concrete domain/subdomain/action.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterable
 from typing import Any
 
@@ -111,6 +112,19 @@ def _normalise_choices(spec: dict[str, Any], option_type: str, dest: str) -> Non
     ]
 
 
+def _normalise_pattern(spec: dict[str, Any], option_type: str, dest: str) -> None:
+    if spec.get("pattern") is None:
+        return
+    if option_type != "str":
+        raise XctxError(f"non-string cli_option cannot declare pattern: {dest}")
+    pattern = str(spec["pattern"])
+    try:
+        re.compile(pattern)
+    except re.error as exc:
+        raise XctxError(f"invalid cli_option pattern for {dest}: {exc}") from exc
+    spec["pattern"] = pattern
+
+
 def _normalise_option_spec(raw: dict[str, Any], *, source: dict[str, Any], index: int) -> dict[str, Any]:
     spec = dict(raw)
     flags = _option_flags(spec)
@@ -131,6 +145,7 @@ def _normalise_option_spec(raw: dict[str, Any], *, source: dict[str, Any], index
         raise XctxError(f"unsupported cli_option type for {dest}: {option_type} (supported: {supported})")
     _normalise_min_max(spec, option_type, dest)
     _normalise_choices(spec, option_type, dest)
+    _normalise_pattern(spec, option_type, dest)
     spec["_flags"] = flags
     spec["_dest"] = dest
     spec["_primary_flag"] = _primary_flag(spec)

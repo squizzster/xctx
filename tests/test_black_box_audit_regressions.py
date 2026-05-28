@@ -133,3 +133,70 @@ def test_live_audit_declares_that_availability_findings_are_excluded() -> None:
     assert contract["availability_findings_included"] is False
     assert contract["excluded_availability_findings"] >= 1
     assert payload["results"]["findings"] == []
+
+
+# Adapter/game-planned-effect tests
+
+
+def test_choose_bounds_rejected_at_plan_time_before_ledger(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    monkeypatch.setenv("XCTX_RUNTIME_DIR", str(tmp_path))
+
+    rc, payload = run_runtime_json(
+        [
+            "plan",
+            "guess_the_number_game::choose_random_number::choose_between_bounds",
+            "--minimum",
+            "10",
+            "--maximum",
+            "1",
+        ]
+    )
+
+    assert rc == 1
+    assert payload["ok"] is False
+    assert payload["error"] == "--minimum must be less than or equal to --maximum"
+    assert "plan_id" not in json.dumps(payload)
+
+
+def test_malformed_game_result_rejected_by_configured_pattern_before_ledger(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    monkeypatch.setenv("XCTX_RUNTIME_DIR", str(tmp_path))
+
+    rc, payload = run_runtime_json(
+        [
+            "plan",
+            "guess_the_number_game::guess_number::submit_guess",
+            "--game-result",
+            "result:bogus",
+            "--guess",
+            "5",
+        ]
+    )
+
+    assert rc == 1
+    assert payload["ok"] is False
+    assert payload["error"] == "--game-result must match pattern ^result:[0-9a-f]{64}$"
+    assert "plan_id" not in json.dumps(payload)
+
+
+def test_unknown_game_result_rejected_at_plan_time(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    monkeypatch.setenv("XCTX_RUNTIME_DIR", str(tmp_path))
+    bogus = "result:" + "a" * 64
+
+    rc, payload = run_runtime_json(
+        [
+            "plan",
+            "guess_the_number_game::guess_number::submit_guess",
+            "--game-result",
+            bogus,
+            "--guess",
+            "5",
+        ]
+    )
+
+    assert rc == 1
+    assert payload["ok"] is False
+    assert payload["error"] == f"unknown game result handle: {bogus}"
+    assert "plan_id" not in json.dumps(payload)

@@ -14,6 +14,7 @@ from xctx.domain.planning_materialization import (
     plan_materialization_manifest,
     write_plan_materialization_bundle,
 )
+from xctx.domain.planning_planned_effect_plan_preflight import planned_effect_plan_preflight
 from xctx.protocol.guidance import command_hints
 from xctx.store.plans import plan_store_dir, write_plan
 from xctx.store.runtime_artifacts import runtime_artifact_dir, runtime_artifact_ref
@@ -24,6 +25,7 @@ def planned_effect_plan_payload(args: list[str], store: dict[str, Any], planned:
     context = plan_context(store)
     action_args = list(request.raw_args[1:])
     parsed_args = parse_planned_action_args(store, planned, action_args)
+    planned_effect_plan_preflight(store, planned, parsed_args)
     plan_material = {
         "protocol": "xctx.v4.2",
         "operation": request.operation_text,

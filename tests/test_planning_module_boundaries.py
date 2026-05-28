@@ -118,11 +118,10 @@ def test_planning_plan_payload_routes_planned_effect_to_planned_effect_module(mo
     assert planning.plan_payload(["mutate", "target"], {"store": "sentinel"}) is sentinel
 
 
-def test_planning_plan_payload_routes_unplanned_command_to_read_only_module(monkeypatch) -> None:
+def test_planning_plan_payload_rejects_unplanned_command_without_ledger_write(monkeypatch) -> None:
     ensure_libs_path()
     from xctx.domain import planning  # noqa: PLC0415
-
-    sentinel = {"ok": True, "source": "read_only"}
+    from xctx.errors import XctxError  # noqa: PLC0415
 
     monkeypatch.setattr(
         planning,
@@ -130,9 +129,14 @@ def test_planning_plan_payload_routes_unplanned_command_to_read_only_module(monk
         lambda args: SimpleNamespace(operation="discover", raw_args=["discover", "root"]),
     )
     monkeypatch.setattr(planning, "_resolve_planned_action", lambda store, operation, args: None)
-    monkeypatch.setattr(planning, "_read_only_plan_payload", lambda args, store: sentinel)
 
-    assert planning.plan_payload(["discover", "root"], {"store": "sentinel"}) is sentinel
+    with pytest.raises(XctxError, match="unknown or non-plannable operation: discover") as raised:
+        planning.plan_payload(["discover", "root"], {"store": "sentinel"})
+    assert raised.value.next_moves == [
+        "./xctx discover",
+        "./xctx discover <agent_domain>::<agent_subdomain>",
+        "./xctx plan <agent_domain>::<agent_subdomain>::<planned_action> [OPTIONS...]",
+    ]
 
 
 def test_execute_module_requires_plan_identifier_without_store_lookup(monkeypatch) -> None:
@@ -183,20 +187,25 @@ def test_execute_module_rejects_raw_receipt_without_store_lookup(monkeypatch) ->
     assert result["error"] == "plan_id_required"
 
 
-def test_execute_module_requires_commit_without_store_lookup(monkeypatch) -> None:
+def test_execute_module_requires_commit_after_plan_lookup(monkeypatch) -> None:
     ensure_libs_path()
     from xctx.domain import planning_execute  # noqa: PLC0415
+    from xctx.store.plans import ResolvedPlan  # noqa: PLC0415
 
-    monkeypatch.setattr(
-        planning_execute,
-        "resolve_plan",
-        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("store lookup should not run")),
-    )
+    requested = "plan:sha256:" + ("a" * 64)
+    calls: list[str] = []
 
-    result = planning_execute.execute_payload(["plan:sha256:" + ("a" * 64)], False, {})
+    def fake_resolve_plan(_store, value):
+        calls.append(value)
+        return ResolvedPlan(True, None, value, {"plan_id": value, "receipt_sha256": "a" * 64}, ["a" * 64])
+
+    monkeypatch.setattr(planning_execute, "resolve_plan", fake_resolve_plan)
+
+    result = planning_execute.execute_payload([requested], False, {})
 
     assert result["ok"] is False
     assert result["error"] == "commit_required"
+    assert calls == [requested]
 
 
 def test_execute_module_dispatches_planned_effect_to_transaction_module(monkeypatch) -> None:
@@ -386,12 +395,12 @@ def test_read_only_execution_module_does_not_commit_refused_plan(monkeypatch) ->
 
 def test_read_only_execution_module_marks_accepted_plan_committed(tmp_path, monkeypatch) -> None:
     ensure_libs_path()
-    from xctx.domain.planning import plan_payload  # noqa: PLC0415
     from xctx.domain.planning_read_only_execution import execute_read_only_plan  # noqa: PLC0415
+    from xctx.domain.planning_read_only import read_only_plan_payload  # noqa: PLC0415
     from xctx.store.plans import read_plan, resolve_plan  # noqa: PLC0415
 
     store = _load_store(tmp_path, monkeypatch)
-    plan = plan_payload(["bring_online", "macro_intelligence_hub"], store)
+    plan = read_only_plan_payload(["discover", "root"], store)
     resolved = resolve_plan(store, plan["plan_id"])
 
     result = execute_read_only_plan(
@@ -415,12 +424,12 @@ def test_read_only_execution_module_marks_accepted_plan_committed(tmp_path, monk
 
 def test_execute_module_marks_read_only_plan_committed(tmp_path, monkeypatch) -> None:
     ensure_libs_path()
-    from xctx.domain.planning import plan_payload  # noqa: PLC0415
     from xctx.domain.planning_execute import execute_payload  # noqa: PLC0415
+    from xctx.domain.planning_read_only import read_only_plan_payload  # noqa: PLC0415
     from xctx.store.plans import read_plan  # noqa: PLC0415
 
     store = _load_store(tmp_path, monkeypatch)
-    plan = plan_payload(["bring_online", "macro_intelligence_hub"], store)
+    plan = read_only_plan_payload(["discover", "root"], store)
 
     result = execute_payload([plan["plan_id"]], True, store)
     persisted = read_plan(store, plan["receipt_sha256"])
