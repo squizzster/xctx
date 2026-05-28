@@ -36,6 +36,50 @@ def _direct_planned_effect(store: dict) -> dict:
     )
 
 
+def _terminal_planned_effect_state(store: dict) -> SimpleNamespace:
+    ensure_libs_path()
+    from xctx.domain.planning_commit_state import new_execution_claim  # noqa: PLC0415
+    from xctx.domain.planning_execution import running_execution_artifacts  # noqa: PLC0415
+    from xctx.store.runtime_artifacts import read_runtime_artifact, utc_now  # noqa: PLC0415
+
+    plan = _direct_planned_effect(store)
+    receipt = plan["receipt_sha256"]
+    planned_effect = plan["planned_effect"]
+    commit_id = plan["expected_commit_id"]
+    result_id = plan["expected_result_id"]
+    commit, running_result = running_execution_artifacts(
+        canonical_plan_id=plan["plan_id"],
+        commit_id=commit_id,
+        result_id=result_id,
+        planned_effect=planned_effect,
+        now=utc_now(),
+    )
+    claim = new_execution_claim(
+        plan=plan,
+        receipt=receipt,
+        commit_id=commit_id,
+        result_id=result_id,
+        current_context_sha="current-sha",
+    )
+    master_plan = read_runtime_artifact(store, "master_plan", receipt)
+    sub_plan = read_runtime_artifact(store, "sub_plan", receipt)
+    assert master_plan is not None
+    assert sub_plan is not None
+    return SimpleNamespace(
+        plan=plan,
+        receipt=receipt,
+        planned_effect=planned_effect,
+        commit_id=commit_id,
+        result_id=result_id,
+        commit=commit,
+        running_result=running_result,
+        claim=claim,
+        master_plan=master_plan,
+        sub_plan=sub_plan,
+        resolved=SimpleNamespace(matches=[receipt]),
+    )
+
+
 def test_planning_execute_payload_delegates_to_execute_module(monkeypatch) -> None:
     ensure_libs_path()
     from xctx.domain import planning  # noqa: PLC0415
@@ -415,3 +459,139 @@ def test_planned_effect_execution_module_uses_moved_adapter_call_boundary(tmp_pa
     ]
     assert not hasattr(planning, "call_external_command")
     assert not hasattr(planning_execute, "call_external_command")
+
+
+def test_planned_effect_terminal_success_persists_committed_artifacts(tmp_path, monkeypatch) -> None:
+    ensure_libs_path()
+    from xctx.domain.planning_planned_effect_terminal import finalize_adapter_execution  # noqa: PLC0415
+    from xctx.store.plans import read_plan  # noqa: PLC0415
+    from xctx.store.runtime_artifacts import read_commit_execution_claim, read_runtime_artifact  # noqa: PLC0415
+
+    store = _load_store(tmp_path, monkeypatch)
+    state = _terminal_planned_effect_state(store)
+
+    result = finalize_adapter_execution(
+        requested_plan=state.plan["plan_id"],
+        resolved=state.resolved,
+        store=store,
+        plan=state.plan,
+        receipt=state.receipt,
+        canonical_plan_id=state.plan["plan_id"],
+        commit_id=state.commit_id,
+        result_id=state.result_id,
+        planned_effect=state.planned_effect,
+        commit=state.commit,
+        running_result=state.running_result,
+        claim=state.claim,
+        master_plan=state.master_plan,
+        sub_plan=state.sub_plan,
+        live_payload={"object_type": "test_adapter_success", "value": 7},
+        context_matches=True,
+        planned_context_sha="planned-sha",
+        current_context_sha="current-sha",
+    )
+
+    commit = read_runtime_artifact(store, "commit", state.receipt)
+    persisted_result = read_runtime_artifact(store, "result", state.receipt)
+    claim = read_commit_execution_claim(store, state.receipt)
+    persisted_plan = read_plan(store, state.receipt)
+    master_plan = read_runtime_artifact(store, "master_plan", state.receipt)
+    sub_plan = read_runtime_artifact(store, "sub_plan", state.receipt)
+
+    assert result["ok"] is True
+    assert result["status"] == "committed"
+    assert commit is not None and commit["status"] == "committed"
+    assert persisted_result is not None and persisted_result["status"] == "ready"
+    assert persisted_result["payload"]["value"] == 7
+    assert claim is not None and claim["status"] == "succeeded"
+    assert persisted_plan is not None and persisted_plan["execution_status"] == "committed"
+    assert master_plan is not None and master_plan["execution_status"] == "committed"
+    assert sub_plan is not None and sub_plan["execution_status"] == "committed"
+
+
+def test_planned_effect_terminal_failure_payload_persists_failed_artifacts(tmp_path, monkeypatch) -> None:
+    ensure_libs_path()
+    from xctx.domain.planning_planned_effect_terminal import finalize_adapter_execution  # noqa: PLC0415
+    from xctx.store.runtime_artifacts import read_commit_execution_claim, read_runtime_artifact  # noqa: PLC0415
+
+    store = _load_store(tmp_path, monkeypatch)
+    state = _terminal_planned_effect_state(store)
+
+    result = finalize_adapter_execution(
+        requested_plan=state.plan["plan_id"],
+        resolved=state.resolved,
+        store=store,
+        plan=state.plan,
+        receipt=state.receipt,
+        canonical_plan_id=state.plan["plan_id"],
+        commit_id=state.commit_id,
+        result_id=state.result_id,
+        planned_effect=state.planned_effect,
+        commit=state.commit,
+        running_result=state.running_result,
+        claim=state.claim,
+        master_plan=state.master_plan,
+        sub_plan=state.sub_plan,
+        live_payload={"object_type": "test_adapter_error", "api_key": "SECRET_VALUE"},
+        context_matches=True,
+        planned_context_sha="planned-sha",
+        current_context_sha="current-sha",
+    )
+
+    commit = read_runtime_artifact(store, "commit", state.receipt)
+    persisted_result = read_runtime_artifact(store, "result", state.receipt)
+    claim = read_commit_execution_claim(store, state.receipt)
+
+    assert result["ok"] is False
+    assert result["error"] == "planned_effect_commit_failed"
+    assert commit is not None and commit["status"] == "failed"
+    assert persisted_result is not None
+    assert persisted_result["status"] == "failed"
+    assert persisted_result["payload"] is None
+    assert "SECRET_VALUE" not in str(persisted_result)
+    assert persisted_result["failure_payload"]["api_key"] == "<redacted>"
+    assert claim is not None and claim["status"] == "failed"
+
+
+def test_planned_effect_terminal_exception_persists_redacted_failure(tmp_path, monkeypatch) -> None:
+    ensure_libs_path()
+    from xctx.domain.planning_planned_effect_terminal import adapter_exception_failure_response  # noqa: PLC0415
+    from xctx.store.runtime_artifacts import read_commit_execution_claim, read_runtime_artifact  # noqa: PLC0415
+
+    store = _load_store(tmp_path, monkeypatch)
+    state = _terminal_planned_effect_state(store)
+
+    result = adapter_exception_failure_response(
+        requested_plan=state.plan["plan_id"],
+        resolved=state.resolved,
+        store=store,
+        plan=state.plan,
+        receipt=state.receipt,
+        canonical_plan_id=state.plan["plan_id"],
+        commit_id=state.commit_id,
+        result_id=state.result_id,
+        planned_effect=state.planned_effect,
+        commit=state.commit,
+        claim=state.claim,
+        master_plan=state.master_plan,
+        sub_plan=state.sub_plan,
+        context_matches=True,
+        planned_context_sha="planned-sha",
+        current_context_sha="current-sha",
+        exc=RuntimeError("adapter crashed with api_key=SECRET_VALUE"),
+    )
+
+    commit = read_runtime_artifact(store, "commit", state.receipt)
+    persisted_result = read_runtime_artifact(store, "result", state.receipt)
+    claim = read_commit_execution_claim(store, state.receipt)
+    master_plan = read_runtime_artifact(store, "master_plan", state.receipt)
+
+    assert result["ok"] is False
+    assert result["error"] == "planned_effect_commit_failed"
+    assert commit is not None and commit["status"] == "failed"
+    assert commit["error"] == "adapter crashed with api_key=<redacted>"
+    assert persisted_result is not None
+    assert "SECRET_VALUE" not in str(persisted_result)
+    assert persisted_result["heartbeat"]["message"] == "adapter crashed with api_key=<redacted>"
+    assert claim is not None and claim["status"] == "failed"
+    assert master_plan is not None and master_plan["failed"] is True

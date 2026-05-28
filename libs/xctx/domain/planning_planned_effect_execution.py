@@ -13,22 +13,17 @@ from xctx.domain.planning_commit_state import (
 )
 from xctx.domain.planning_execution import (
     commit_context_args,
-    final_execute_response,
-    materialized_artifact_committed,
     materialized_artifact_committing,
     running_execution_artifacts,
-    terminal_result_payload,
 )
-from xctx.domain.planning_ledger import mark_plan_committed, plan_is_committed
+from xctx.domain.planning_ledger import plan_is_committed
 from xctx.domain.planning_materialization import verify_plan_materialization
-from xctx.domain.planning_payloads import (
-    adapter_payload_failed,
-    execution_claim_refusal_payload,
-    failed_result_payload,
-    plan_already_committed_payload,
+from xctx.domain.planning_payloads import execution_claim_refusal_payload, plan_already_committed_payload
+from xctx.domain.planning_planned_effect_terminal import (
+    adapter_exception_failure_response,
+    finalize_adapter_execution,
 )
 from xctx.ports.external_command import call_external_command
-from xctx.process.redaction import redact_preview
 from xctx.store.runtime_artifacts import (
     create_commit_execution_claim,
     isoformat_utc,
@@ -211,143 +206,43 @@ def execute_planned_effect_payload(
             ],
         )
     except Exception as exc:  # keep the committed result handle observable
-        message = redact_preview(str(exc))
-        failed = failed_result_payload(plan=plan, planned_effect=planned_effect, receipt=receipt, message=message)
-        commit["status"] = "failed"
-        commit["error"] = message
-        commit["completed_at"] = failed["created_at"]
-        write_runtime_artifact(store, "commit", receipt, commit)
-        write_runtime_artifact(store, "result", receipt, failed)
-        mark_plan_committed(
-            store,
-            plan,
-            committed_at=failed["created_at"],
+        return adapter_exception_failure_response(
+            requested_plan=requested_plan,
+            resolved=resolved,
+            store=store,
+            plan=plan,
+            receipt=receipt,
+            canonical_plan_id=canonical_plan_id,
             commit_id=commit_id,
             result_id=result_id,
+            planned_effect=planned_effect,
+            commit=commit,
+            claim=claim,
+            master_plan=master_plan,
+            sub_plan=sub_plan,
+            context_matches=context_matches,
+            planned_context_sha=planned_context_sha,
+            current_context_sha=current_context_sha,
+            exc=exc,
         )
-        if master_plan:
-            write_runtime_artifact(
-                store,
-                "master_plan",
-                receipt,
-                materialized_artifact_committed(
-                    master_plan,
-                    commit_id=commit_id,
-                    result_id=result_id,
-                    committed_at=failed["created_at"],
-                    failed=True,
-                ),
-            )
-        write_runtime_artifact(
-            store,
-            "sub_plan",
-            receipt,
-            materialized_artifact_committed(
-                sub_plan,
-                commit_id=commit_id,
-                result_id=result_id,
-                committed_at=failed["created_at"],
-                failed=True,
-            ),
-        )
-        write_commit_execution_claim(
-            store,
-            receipt,
-            {**claim, "status": "failed", "completed_at": failed["created_at"], "heartbeat_at": failed["created_at"]},
-        )
-        return {
-            "ok": False,
-            "error": "planned_effect_commit_failed",
-            "requested_plan": requested_plan,
-            "commit_requested": True,
-            "status": "failed",
-            "description": "Execute accepted the planned effect boundary, but the scoped adapter failed. The result handle records the failure state.",
-            "planner_binding": {
-                "verified": True,
-                "requested": requested_plan,
-                "canonical_plan_id": canonical_plan_id,
-                "receipt_sha256": receipt,
-                "operation": plan.get("operation"),
-                "short_receipt_matches": resolved.matches,
-                "context_fingerprint_verified": context_matches,
-                "planned_context_sha256": planned_context_sha,
-                "current_context_sha256": current_context_sha,
-            },
-            "commit_id": commit_id,
-            "result_id": result_id,
-            "observe_result_cmd": f"./xctx observe {result_id}",
-            "mutations_applied": 0,
-            "next_move": f"./xctx observe {result_id}",
-        }
 
-    finished = utc_now()
-    failed = adapter_payload_failed(live)
-    result_payload = terminal_result_payload(
-        running_result=running_result,
+    return finalize_adapter_execution(
+        requested_plan=requested_plan,
+        resolved=resolved,
+        store=store,
+        plan=plan,
+        receipt=receipt,
         canonical_plan_id=canonical_plan_id,
         commit_id=commit_id,
         result_id=result_id,
         planned_effect=planned_effect,
+        commit=commit,
+        running_result=running_result,
+        claim=claim,
+        master_plan=master_plan,
+        sub_plan=sub_plan,
         live_payload=live,
-        failed=failed,
-        finished=finished,
-    )
-    completed_at = str(result_payload["completed_at"])
-    claim = {**claim, "status": "finalizing", "heartbeat_at": completed_at}
-    write_commit_execution_claim(store, receipt, claim)
-    if failed:
-        commit["status"] = "failed"
-        commit["completed_at"] = completed_at
-    else:
-        commit["status"] = "committed"
-        commit["completed_at"] = completed_at
-    write_runtime_artifact(store, "commit", receipt, commit)
-    write_runtime_artifact(store, "result", receipt, result_payload)
-    mark_plan_committed(
-        store,
-        plan,
-        committed_at=completed_at,
-        commit_id=commit_id,
-        result_id=result_id,
-    )
-    write_runtime_artifact(
-        store,
-        "master_plan",
-        receipt,
-        materialized_artifact_committed(
-            master_plan,
-            commit_id=commit_id,
-            result_id=result_id,
-            committed_at=completed_at,
-        ),
-    )
-    write_runtime_artifact(
-        store,
-        "sub_plan",
-        receipt,
-        materialized_artifact_committed(
-            sub_plan,
-            commit_id=commit_id,
-            result_id=result_id,
-            committed_at=completed_at,
-        ),
-    )
-    write_commit_execution_claim(
-        store,
-        receipt,
-        {**claim, "status": "failed" if failed else "succeeded", "completed_at": completed_at, "heartbeat_at": completed_at},
-    )
-    return final_execute_response(
-        requested_plan=requested_plan,
-        plan=plan,
-        resolved=resolved,
-        canonical_plan_id=canonical_plan_id,
-        receipt=receipt,
-        commit_id=commit_id,
-        result_id=result_id,
         context_matches=context_matches,
         planned_context_sha=planned_context_sha,
         current_context_sha=current_context_sha,
-        planned_effect=planned_effect,
-        failed=failed,
     )
