@@ -197,8 +197,18 @@ def test_detail_command_hints_do_not_shell_split_malformed_input() -> None:
     assert command_with_detail('xctx observe "unterminated', "more") == "./xctx --more"
 
 
-def test_plan_execute_and_repair_are_projected_by_detail_level() -> None:
-    rc, plan = run_runtime_json(["plan", "bring_online", "macro_intelligence_hub"])
+def test_plan_execute_and_repair_are_projected_by_detail_level(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("XCTX_RUNTIME_DIR", str(tmp_path))
+    rc, plan = run_runtime_json(
+        [
+            "plan",
+            "guess_the_number_game::choose_random_number::choose_between_bounds",
+            "--minimum",
+            "1",
+            "--maximum",
+            "10",
+        ]
+    )
     assert rc == 0
     assert plan["detail_level"] == "basic"
     assert not _contains_key(plan["results"], "planner_ledger")

@@ -105,10 +105,20 @@ def test_cmdline_arg_shell_quotes_scoped_values_with_spaces() -> None:
 
 
 def test_global_options_do_not_strip_command_arguments_after_command_token() -> None:
-    rc, payload = run_runtime_json(["plan", "inspect", "--json"])
+    rc, payload = run_runtime_json(
+        [
+            "plan",
+            "guess_the_number_game::choose_random_number::choose_between_bounds",
+            "--minimum",
+            "1",
+            "--maximum",
+            "2",
+            "--json",
+        ]
+    )
 
-    assert rc == 0
-    assert payload["results"]["operation"] == "inspect --json"
+    assert rc == 1
+    assert payload["error"] == "unsupported action option for this action: --json"
 
 
 def test_workspace_root_uses_explicit_environment_override(monkeypatch) -> None:

@@ -51,7 +51,16 @@ def test_resolve_plan_rejects_raw_and_short_receipts(tmp_path, monkeypatch) -> N
 
     monkeypatch.setenv("XCTX_RUNTIME_DIR", str(tmp_path))
     store = load_store(root=ROOT)
-    plan = plan_payload(["bring_online", "macro_intelligence_hub"], store)
+    plan = plan_payload(
+        [
+            "guess_the_number_game::choose_random_number::choose_between_bounds",
+            "--minimum",
+            "1",
+            "--maximum",
+            "10",
+        ],
+        store,
+    )
 
     assert resolve_plan(store, plan["plan_id"]).ok is True
     raw = resolve_plan(store, plan["receipt_sha256"])
@@ -98,7 +107,16 @@ def test_execute_rejects_plan_recorded_against_stale_config_context(tmp_path, mo
 
     monkeypatch.setenv("XCTX_RUNTIME_DIR", str(tmp_path))
     store = load_store(root=ROOT)
-    plan = plan_payload(["bring_online", "macro_intelligence_hub"], store)
+    plan = plan_payload(
+        [
+            "guess_the_number_game::choose_random_number::choose_between_bounds",
+            "--minimum",
+            "1",
+            "--maximum",
+            "10",
+        ],
+        store,
+    )
     path = plan_store_dir(store) / f"{plan['receipt_sha256']}.json"
     stored = json.loads(path.read_text(encoding="utf-8"))
     stored["planner_context"]["config_sha256"] = "0" * 64

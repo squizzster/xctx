@@ -157,15 +157,15 @@ def test_next_moves_are_command_hint_objects() -> None:
             for item in value:
                 assert_no_string_next_moves(item)
 
-    for args in (
-        [],
-        ["discover"],
-        ["discover", "macro_intelligence_hub::"],
-        ["other", "--topic", "ping"],
-        ["plan", "inspect", "root"],
+    for args, expected_rc in (
+        ([], 0),
+        (["discover"], 0),
+        (["discover", "macro_intelligence_hub::"], 0),
+        (["other", "--topic", "ping"], 0),
+        (["plan", "inspect", "root"], 1),
     ):
         rc, payload = run_runtime_json(list(args))
-        assert rc == 0
+        assert rc == expected_rc
         assert_no_string_next_moves(payload)
 
 
