@@ -233,6 +233,51 @@ def selected_action_projection(action: dict[str, Any] | None, action_args: list[
         index += 1
     return str(projection) if projection else None
 
+def _declared_option_flags(action: dict[str, Any]) -> set[str]:
+    flags = {"--limit", "--cursor", "--projection"}
+    collection = _collection_contract(action)
+    if collection:
+        flags.update(str(flag) for flag in collection.get("filters") or [] if str(flag).startswith("--"))
+    raw_cli_options = action.get("cli_options") or []
+    if isinstance(raw_cli_options, dict):
+        cli_specs = []
+        for key, value in raw_cli_options.items():
+            spec = dict(value or {}) if isinstance(value, dict) else {}
+            if str(key).startswith("-") and not any(name in spec for name in ("flags", "flag", "name")):
+                spec["flags"] = [key]
+            cli_specs.append(spec)
+    else:
+        cli_specs = list(raw_cli_options) if isinstance(raw_cli_options, (list, tuple)) else [raw_cli_options]
+    for spec in cli_specs:
+        if not isinstance(spec, dict):
+            spec = {"flags": [spec]}
+        raw_flags = spec.get("flags", spec.get("flag", spec.get("name")))
+        if raw_flags is None and spec.get("dest"):
+            raw_flags = ["--" + str(spec["dest"]).replace("_", "-")]
+        if raw_flags is None:
+            raw_flags = []
+        elif not isinstance(raw_flags, (list, tuple)):
+            raw_flags = [raw_flags]
+        flags.update(str(flag) for flag in raw_flags if str(flag).startswith("--"))
+    for pattern in action.get("argument_patterns") or []:
+        parts = shlex.split(str(pattern).strip("[]"))
+        if parts and parts[0].startswith("--"):
+            flags.add(parts[0])
+    return flags
+
+
+def _declared_positional_prefixes(action: dict[str, Any]) -> set[str]:
+    prefixes: set[str] = set()
+    for pattern in action.get("argument_patterns") or []:
+        raw = str(pattern).strip().strip("[]")
+        if raw.startswith("--"):
+            continue
+        first = raw.split()[0] if raw.split() else ""
+        if ":<" in first:
+            prefixes.add(first.split(":<", 1)[0] + ":")
+    return prefixes
+
+
 def compact_action_index(actions: dict[str, Any]) -> dict[str, dict[str, Any]]:
     out: dict[str, dict[str, Any]] = {}
     for name, action in sorted(actions.items(), key=lambda item: item[1].get("priority", 9999)):
@@ -254,12 +299,24 @@ def validate_declared_action_args(action: dict[str, Any], action_args: list[str]
     ## Protocol boundary: validate generic controls only when a scoped pack
     ## declares them. Cursor and projection values stay opaque to xctx.
     collection = _collection_contract(action)
+    declared_options = _declared_option_flags(action)
+    declared_positionals = _declared_positional_prefixes(action)
+    arbitrary_query_allowed = bool(action.get("allow_arbitrary_query", action.get("query_required", True)))
     index = 0
     while index < len(action_args):
         token = action_args[index]
         if token == "--shape":
             raise XctxError("unsupported --shape; use --projection compact|full")
+        if token.startswith("--") and token not in declared_options:
+            raise XctxError(f"unsupported action option for this action: {token}")
         if token not in {"--limit", "--cursor", "--projection"}:
+            if token in declared_options:
+                if index + 1 >= len(action_args):
+                    raise XctxError(f"missing value for {token}")
+                index += 2
+                continue
+            if not arbitrary_query_allowed and not any(token.startswith(prefix) for prefix in declared_positionals):
+                raise XctxError(f"unexpected argument for non-query action: {token}")
             index += 1
             continue
         if index + 1 >= len(action_args):

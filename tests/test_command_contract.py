@@ -205,6 +205,107 @@ def test_scope_run_cmd_leaves_non_xctx_commands_unchanged() -> None:
     assert scope_run_cmd(store, "python -m tool 'hello world'") == "python -m tool 'hello world'"
 
 
+def test_action_args_reject_unexpected_query_for_non_query_actions() -> None:
+    ensure_libs_path()
+    from xctx.domain.actions import validate_declared_action_args  # noqa: PLC0415
+    from xctx.errors import XctxError  # noqa: PLC0415
+
+    action = {
+        "query_required": False,
+        "argument_patterns": ["[--limit N]", "[--projection compact|full]"],
+        "collection": {"max_limit": 10, "item_projections": ["compact", "full"]},
+    }
+
+    with pytest.raises(XctxError, match="unexpected argument for non-query action: 10-K"):
+        validate_declared_action_args(action, ["10-K"])
+
+
+def test_action_args_allow_declared_positional_prefix_for_non_query_actions() -> None:
+    ensure_libs_path()
+    from xctx.domain.actions import validate_declared_action_args  # noqa: PLC0415
+
+    action = {
+        "query_required": False,
+        "argument_patterns": ["[directory:<relative_path>]", "[--limit N]"],
+        "collection": {"max_limit": 10},
+    }
+
+    validate_declared_action_args(action, ["directory:docs", "--limit", "2"])
+
+
+def test_action_args_allow_declared_adapter_filter_options() -> None:
+    ensure_libs_path()
+    from xctx.domain.actions import validate_declared_action_args  # noqa: PLC0415
+
+    action = {
+        "query_required": False,
+        "argument_patterns": ["[--status STATUS]", "[--limit N]"],
+        "collection": {"max_limit": 10, "filters": ["--status"]},
+    }
+
+    validate_declared_action_args(action, ["--status", "active", "--limit", "2"])
+
+
+def test_action_args_allow_declared_action_cli_options() -> None:
+    ensure_libs_path()
+    from xctx.domain.actions import validate_declared_action_args  # noqa: PLC0415
+
+    action = {
+        "query_required": False,
+        "cli_options": [
+            {"flags": ["--minimum"], "dest": "minimum", "type": "int", "commands": ["plan"]},
+            {"flags": ["--maximum"], "dest": "maximum", "type": "int", "commands": ["plan"]},
+        ],
+    }
+
+    validate_declared_action_args(action, ["--minimum", "1", "--maximum", "1000"])
+
+
+def test_action_args_allow_declared_cli_option_mapping_keys() -> None:
+    ensure_libs_path()
+    from xctx.domain.actions import validate_declared_action_args  # noqa: PLC0415
+
+    action = {
+        "query_required": False,
+        "cli_options": {
+            "--game-result": {"dest": "game_result", "type": "str"},
+            "guess": {"dest": "guess", "type": "int"},
+        },
+    }
+
+    validate_declared_action_args(action, ["--game-result", "result:abc", "--guess", "42"])
+
+
+def test_action_args_reject_missing_declared_cli_option_value() -> None:
+    ensure_libs_path()
+    from xctx.domain.actions import validate_declared_action_args  # noqa: PLC0415
+    from xctx.errors import XctxError  # noqa: PLC0415
+
+    action = {"query_required": False, "cli_options": [{"flags": ["--minimum"], "dest": "minimum"}]}
+
+    with pytest.raises(XctxError, match="missing value for --minimum"):
+        validate_declared_action_args(action, ["--minimum"])
+
+
+def test_action_args_reject_undeclared_flag_before_adapter() -> None:
+    ensure_libs_path()
+    from xctx.domain.actions import validate_declared_action_args  # noqa: PLC0415
+    from xctx.errors import XctxError  # noqa: PLC0415
+
+    action = {"query_required": True, "cli_options": [{"flags": ["--minimum"], "dest": "minimum"}]}
+
+    with pytest.raises(XctxError, match="unsupported action option for this action: --maximum"):
+        validate_declared_action_args(action, ["--maximum", "1000"])
+
+
+def test_non_query_list_action_rejects_stray_query_before_adapter() -> None:
+    rc, payload = run_runtime_json(["discover", "stock_intelligence_hub::equity_filing::list_forms", "10-K"])
+
+    assert rc == 1
+    assert payload["record_type"] == "error"
+    assert payload["error"] == "unexpected argument for non-query action: 10-K"
+
+
 def test_protocol_walker_uses_visible_command_surface_only() -> None:
     text = (ROOT / "bin" / "protocol_walker").read_text(encoding="utf-8")
     assert "xctx_other" not in text
