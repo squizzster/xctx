@@ -179,6 +179,24 @@ def test_obsolete_detail_and_shape_flags_are_rejected() -> None:
     assert obsolete_shape["error"] == "unsupported --shape; use --projection compact|full"
 
 
+def test_detail_command_hints_preserve_quoted_arguments_and_strip_existing_detail_flags() -> None:
+    ensure_libs_path()
+    from xctx.protocol.detail import command_with_detail  # noqa: PLC0415
+
+    assert (
+        command_with_detail("xctx --more observe stock_intelligence_hub::equity_filing 'form:DEF 14A'", "max")
+        == "./xctx --max observe stock_intelligence_hub::equity_filing 'form:DEF 14A'"
+    )
+    assert command_with_detail("./xctx --detail-level max discover root", "basic") == "./xctx --basic discover root"
+
+
+def test_detail_command_hints_do_not_shell_split_malformed_input() -> None:
+    ensure_libs_path()
+    from xctx.protocol.detail import command_with_detail  # noqa: PLC0415
+
+    assert command_with_detail('xctx observe "unterminated', "more") == "./xctx --more"
+
+
 def test_plan_execute_and_repair_are_projected_by_detail_level() -> None:
     rc, plan = run_runtime_json(["plan", "bring_online", "macro_intelligence_hub"])
     assert rc == 0

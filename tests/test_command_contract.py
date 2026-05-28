@@ -182,6 +182,17 @@ def test_scope_run_cmd_preserves_shell_quoted_arguments() -> None:
     )
 
 
+def test_scope_run_cmd_quotes_shell_metacharacter_arguments() -> None:
+    ensure_libs_path()
+    from xctx.config.loader import load_store  # noqa: PLC0415
+    from xctx.protocol.accessors import scope_run_cmd  # noqa: PLC0415
+
+    store = load_store(root=ROOT)
+
+    assert scope_run_cmd(store, "xctx other --topic 'a;b'") == "./xctx other --topic 'a;b'"
+    assert scope_run_cmd(store, "xctx other --topic '$(whoami)'") == "./xctx other --topic '$(whoami)'"
+
+
 def test_scope_run_cmd_keeps_placeholder_tokens_readable() -> None:
     ensure_libs_path()
     from xctx.config.loader import load_store  # noqa: PLC0415

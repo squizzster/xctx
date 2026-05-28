@@ -120,7 +120,7 @@ def _normalise_command_parts(cmdline_arg: str | None) -> list[str]:
     try:
         parts = shlex.split(raw)
     except ValueError:
-        parts = raw.split()
+        return ["./xctx"]
     if not parts:
         return ["./xctx"]
     if parts[0] == "xctx":
