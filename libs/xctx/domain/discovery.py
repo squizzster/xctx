@@ -234,6 +234,10 @@ def scoped_action_discovery_payload(
     payload = {
         "action": action_name,
         "domain_affordance": True,
+        "requested_scope": f"{domain_id}::{action_name}",
+        "requested_scope_level": "agent_domain_affordance",
+        "implemented_scope": implemented_by,
+        "implemented_scope_level": "agent_subdomain",
         "implemented_by": implemented_by,
         "implemented_by_run_cmd": f"./xctx discover {implemented_by}",
         "action_description": action.get("desc"),

@@ -9,6 +9,7 @@ from xctx.domain.core import has_agent_domains
 from xctx.domain.discovery import discover_payload, universe_discovery_payload
 from xctx.errors import XctxError
 from xctx.protocol.emitter import emit_final_stderr, emit_record, emit_stderr_event
+from xctx.store.runtime_artifacts import is_runtime_ref
 
 
 def handle(store: dict, args: argparse.Namespace) -> int:
@@ -41,7 +42,24 @@ def handle(store: dict, args: argparse.Namespace) -> int:
             next_moves=["./xctx discover TARGET", "./xctx discover --id ID"],
         )
     if getattr(args, "id", None):
-        args.target = args.id
+        artifact_id = str(args.id)
+        if is_runtime_ref("result", artifact_id):
+            raise XctxError(
+                "result handles are observed, not discovered",
+                next_moves=[f"./xctx observe {artifact_id}"],
+            )
+        if not any(
+            is_runtime_ref(kind, artifact_id)
+            for kind in ("plan_manifest", "master_plan", "sub_plan", "commit")
+        ):
+            raise XctxError(
+                "discover --id only accepts protocol artifact ids",
+                next_moves=[
+                    "./xctx discover <agent_domain>::<agent_subdomain> <query-or-id>",
+                    "./xctx observe <agent_domain>::<agent_subdomain> --id <id>",
+                ],
+            )
+        args.target = artifact_id
     level, payload = discover_payload(store, getattr(args, "target", None), target_args)
     failed = live_payload_failed(payload.get("live_data") if isinstance(payload, dict) else None)
     emit_record(

@@ -295,6 +295,7 @@ def _project_audit(store: dict[str, Any], payload: Mapping[str, Any], *, cmdline
             "audit_scope": audit_scope,
             "audit_status": status,
             "summary": summary,
+            "scope_contract": payload.get("scope_contract"),
             "checks": visible_checks,
             "pass_check_ids": pass_check_ids,
             "findings": findings,
@@ -313,6 +314,7 @@ def _project_audit(store: dict[str, Any], payload: Mapping[str, Any], *, cmdline
         "audit_scope": audit_scope,
         "audit_status": status,
         "summary": summary,
+        "scope_contract": payload.get("scope_contract"),
         "checks": visible_checks,
         "findings": findings,
         "omitted": {
@@ -322,7 +324,7 @@ def _project_audit(store: dict[str, Any], payload: Mapping[str, Any], *, cmdline
         },
         "detail_hint": detail_hint(store, cmdline_arg, omitted=omitted),
     }
-    return out
+    return {key: value for key, value in out.items() if value is not None}
 
 
 def _project_plan(store: dict[str, Any], payload: Mapping[str, Any], *, cmdline_arg: str | None) -> dict[str, Any]:

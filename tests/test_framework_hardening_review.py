@@ -232,8 +232,8 @@ def test_connector_failure_payloads_redact_requested_args_and_do_not_mask_operat
     assert payload["results"]["live_data"]["requested_args"] == ["list", "--cursor", "api_key=<redacted>"]
 
     plan_rc, plan_payload = run_runtime_json(["plan", "inspect", "root"])
-    assert plan_rc == 0
-    assert plan_payload["results"]["operation_token"] == "inspect"
+    assert plan_rc == 1
+    assert plan_payload["error"] == "unknown or non-plannable operation: inspect"
 
 
 def test_undeclared_secret_action_option_is_rejected_before_adapter_and_redacted() -> None:

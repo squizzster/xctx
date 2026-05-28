@@ -30,6 +30,12 @@ def observe_payload(
         if options:
             raise XctxError("result observation does not accept scoped observe options")
         return "root", result_observation_payload(store, artifact_identifier)
+    for kind in ("plan_manifest", "master_plan", "sub_plan", "commit"):
+        if artifact_identifier and is_runtime_ref(kind, artifact_identifier):
+            raise XctxError(
+                f"{kind} artifacts are discovered, not observed",
+                next_moves=[f"./xctx discover {artifact_identifier}"],
+            )
     domain_id, subdomain_id = parse_ref(store, target)
     if domain_id and subdomain_id:
         subdomain = resolve_subdomain(store, domain_id, subdomain_id)

@@ -1555,7 +1555,7 @@ def test_terminal_result_ttl_starts_at_completed_at(tmp_path, monkeypatch) -> No
     assert expires_at - completed_at >= timedelta(seconds=299)
 
 
-def test_replanning_read_only_command_does_not_reset_committed_plan(tmp_path, monkeypatch) -> None:
+def test_replanning_planned_effect_command_does_not_reset_committed_plan(tmp_path, monkeypatch) -> None:
     ensure_libs_path()
     from xctx.config.loader import load_store  # noqa: PLC0415
     from xctx.domain.planning import execute_payload, plan_payload  # noqa: PLC0415
@@ -1563,16 +1563,34 @@ def test_replanning_read_only_command_does_not_reset_committed_plan(tmp_path, mo
 
     monkeypatch.setenv("XCTX_RUNTIME_DIR", str(tmp_path))
     store = load_store(root=ROOT)
-    first = plan_payload(["bring_online", "macro_intelligence_hub"], store)
+    first = plan_payload(
+        [
+            "guess_the_number_game::choose_random_number::choose_between_bounds",
+            "--minimum",
+            "1",
+            "--maximum",
+            "10",
+        ],
+        store,
+    )
     executed = execute_payload([first["plan_id"]], True, store)
-    second = plan_payload(["bring_online", "macro_intelligence_hub"], store)
+    second = plan_payload(
+        [
+            "guess_the_number_game::choose_random_number::choose_between_bounds",
+            "--minimum",
+            "1",
+            "--maximum",
+            "10",
+        ],
+        store,
+    )
     first_persisted = read_plan(store, first["receipt_sha256"])
 
     assert executed["ok"] is True
     assert first_persisted is not None
     assert first_persisted["execution_status"] == "committed"
     assert second["plan_id"] != first["plan_id"]
-    assert second["canonical_intent_hash"] == first["canonical_intent_hash"]
+    assert second["execution_status"] == "planned"
 
 
 def test_runtime_artifacts_are_exact_bearer_handles_not_indexes(tmp_path, monkeypatch) -> None:

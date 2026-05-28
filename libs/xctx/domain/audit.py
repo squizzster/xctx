@@ -81,8 +81,14 @@ def _known_audit_scope_next_moves(store: dict[str, Any], domain_id: str | None =
     return [f"./xctx audit {example}" for example in examples]
 
 
+def _normalise_audit_scope(scope: str) -> str:
+    if scope.endswith("::") and scope.count("::") == 1:
+        return scope[:-2]
+    return scope
+
+
 def audit_domain_level(store: dict[str, Any], scope: str) -> str:
-    scope = scope or "root"
+    scope = _normalise_audit_scope(scope or "root")
     if scope in {"root", "all", "*"}:
         return "root"
 
@@ -270,10 +276,11 @@ def live_connector_audit_checks(store: dict[str, Any], scope: str) -> list[dict[
 
 
 def audit_payload(store: dict[str, Any], scope: str, audit_scope: str = "all") -> dict[str, Any]:
-    scope = scope or "root"
+    scope = _normalise_audit_scope(scope or "root")
     audit_scope = _audit_scope(audit_scope)
     audit_domain_level(store, scope)
-    findings = availability_findings(store, scope) if audit_scope in {"framework", "all"} else []
+    available_findings = availability_findings(store, scope)
+    findings = available_findings if audit_scope in {"framework", "all"} else []
     checks: list[dict[str, Any]] = []
     if audit_scope in {"framework", "all"}:
         checks.extend(framework_audit_checks(store))
@@ -285,6 +292,18 @@ def audit_payload(store: dict[str, Any], scope: str, audit_scope: str = "all") -
     return {
         "scope": scope,
         "audit_scope": audit_scope,
+        "scope_contract": {
+            "requested": audit_scope,
+            "meaning": (
+                "online adapter live checks only"
+                if audit_scope == "live"
+                else "framework/config checks plus availability findings"
+                if audit_scope == "framework"
+                else "framework/config checks, availability findings, and online adapter live checks"
+            ),
+            "availability_findings_included": audit_scope in {"framework", "all"},
+            "excluded_availability_findings": len(available_findings) if audit_scope == "live" else 0,
+        },
         "audit_status": audit_status,
         "summary": summary,
         "checks": checks,

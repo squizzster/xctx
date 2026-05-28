@@ -1,6 +1,6 @@
 xctx:
   discover:
-    Discover lawful next affordances from root, an agent domain, an agent subdomain, an identity, or a scoped named affordance.: '[TARGET [TEXT...] | --id ID]'
+    Discover lawful next affordances from root, an agent domain, an agent subdomain, a scoped named affordance, or a protocol artifact id.: '[TARGET [TEXT...] | --id PROTOCOL_ARTIFACT_ID]'
   observe:
     Observe a discovered object, agent domain, agent subdomain, or target-specific result in detail. Domain data is read-only; bounded protocol-local artifacts such as exports require explicit scoped options.: '[TARGET] [ID] [--id ID] [CONFIGURED_OPTIONS...]'
   plan:

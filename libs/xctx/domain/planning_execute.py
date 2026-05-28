@@ -41,16 +41,24 @@ def execute_payload(args: list[str], commit: bool, store: dict[str, Any]) -> dic
             description="Execute requires a canonical plan id. Raw receipt hashes and short receipts are not executable.",
             next_move="./xctx execute plan:sha256:<sha256> --commit",
         )
+    resolved = resolve_plan(store, requested_plan)
+    if not resolved.ok:
+        return execute_refusal_payload(
+            error=resolved.error or "unknown_plan_receipt",
+            requested_plan=requested_plan,
+            commit_requested=commit,
+            description="Execute requires a recorded xctx plan id.",
+            next_move="./xctx plan <operation> <target>",
+        )
     if not request.commit:
         return execute_refusal_payload(
             error="commit_required",
             requested_plan=requested_plan,
             commit_requested=False,
-            description="Execute requires explicit --commit before any recorded plan can be accepted.",
+            description="Execute requires explicit --commit before a recorded plan can be accepted.",
             next_move=f"./xctx execute {requested_plan} --commit",
         )
 
-    resolved = resolve_plan(store, requested_plan)
     accepted = resolved.ok
     canonical_plan_id = None
     bound_operation = None
