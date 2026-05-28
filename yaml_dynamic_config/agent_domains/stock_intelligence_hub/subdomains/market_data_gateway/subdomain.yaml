@@ -50,8 +50,22 @@ actions:
     priority: 25
     entrypoint_command: search-market-series
     query_required: true
+    mode_kind: search
     desc: Discover bundled read-only OHLCV market-series objects by ticker, issuer, provider, or local series id without returning bar values.
-    run_cmd: ./xctx discover stock_intelligence_hub::market_data_gateway::search_market_series <ticker|issuer|provider|text>
+    collection:
+      result_path: matches
+      default_limit: 10
+      max_limit: 50
+      cursor: none
+      default: compact
+      item_projections:
+        - compact
+        - full
+    argument_patterns:
+      - "<ticker|issuer|provider|text>"
+      - "[--limit N]"
+      - "[--projection compact|full]"
+    run_cmd: ./xctx discover stock_intelligence_hub::market_data_gateway::search_market_series <ticker|issuer|provider|text> [--limit N] [--projection compact|full]
   latest_price:
     domain_affordance: true
     priority: 27
@@ -70,7 +84,7 @@ actions:
       default_limit: 25
       max_limit: 100
       cursor: optional
-      cursor_type: opaque
+      cursor_type: offset
       default: compact
       item_projections:
         - compact

@@ -44,12 +44,23 @@ actions:
     query_required: true
     mode_kind: search
     desc: Search SEC/EDGAR filing form types. Exact form-code queries return the exact form and direct amendment only.
+    collection:
+      result_path: matches
+      default_limit: 10
+      max_limit: 50
+      cursor: none
+      default: compact
+      item_projections:
+        - compact
+        - full
     argument_patterns:
       - "<form code>"
       - "<form name text>"
       - "<family text>"
       - "<priority text>"
       - "<descriptive text>"
+      - "[--limit N]"
+      - "[--projection compact|full]"
     examples:
       - query: exact annual report form
         run_cmd: ./xctx discover stock_intelligence_hub::equity_filing::search_forms 10-K
@@ -74,7 +85,7 @@ actions:
       default_limit: 25
       max_limit: 100
       cursor: optional
-      cursor_type: opaque
+      cursor_type: offset
       default: compact
       item_projections:
         - compact
@@ -103,10 +114,21 @@ actions:
     query_required: true
     mode_kind: search
     desc: Search canonical filing families. Exact family-code queries return the exact family only.
+    collection:
+      result_path: matches
+      default_limit: 10
+      max_limit: 50
+      cursor: none
+      default: compact
+      item_projections:
+        - compact
+        - full
     argument_patterns:
       - "<family code>"
       - "<family name text>"
       - "<descriptive text>"
+      - "[--limit N]"
+      - "[--projection compact|full]"
     examples:
       - query: exact annual report family
         run_cmd: ./xctx discover stock_intelligence_hub::equity_filing::search_families ANNUAL_REPORT
@@ -128,7 +150,7 @@ actions:
       default_limit: 25
       max_limit: 100
       cursor: optional
-      cursor_type: opaque
+      cursor_type: offset
       default: compact
       item_projections:
         - compact
@@ -155,9 +177,20 @@ actions:
     query_required: true
     mode_kind: search
     desc: Search filing priority buckets. Exact priority-code queries return the exact bucket only.
+    collection:
+      result_path: matches
+      default_limit: 10
+      max_limit: 50
+      cursor: none
+      default: compact
+      item_projections:
+        - compact
+        - full
     argument_patterns:
       - "<priority code>"
       - "<priority name text>"
+      - "[--limit N]"
+      - "[--projection compact|full]"
     examples:
       - query: exact critical bucket
         run_cmd: ./xctx discover stock_intelligence_hub::equity_filing::search_priority_buckets critical_always

@@ -9,6 +9,8 @@ from xctx_live.instruments import find_instrument, public_instrument, search_ins
 SQLITE_PATH = Path("data/edgar_form_reference_taxonomy.sqlite")
 LIST_DEFAULT_LIMIT = 25
 LIST_MAX_LIMIT = 100
+SEARCH_DEFAULT_LIMIT = 10
+SEARCH_MAX_LIMIT = 50
 
 
 def sqlite_path(root: Path) -> Path:
@@ -78,6 +80,7 @@ def compact_form_projection(row: sqlite3.Row | dict[str, Any]) -> dict[str, Any]
         "family": family,
         "priority": priority,
         "is_amendment": bool(d.get("is_amendment")),
+        "run_cmd": f"./xctx observe stock_intelligence_hub::equity_filing form:{form_code}",
     }
 
 
@@ -88,6 +91,7 @@ def compact_family_projection(row: sqlite3.Row | dict[str, Any]) -> dict[str, An
         "code": d.get("code"),
         "name": d.get("name"),
         "form_count": d.get("form_count"),
+        "run_cmd": f"./xctx observe stock_intelligence_hub::equity_filing family:{d.get('code')}",
     }
 
 
@@ -98,6 +102,7 @@ def compact_priority_projection(row: sqlite3.Row | dict[str, Any]) -> dict[str, 
         "code": d.get("code"),
         "name": d.get("name"),
         "form_count": d.get("form_count"),
+        "run_cmd": f"./xctx observe stock_intelligence_hub::equity_filing priority:{d.get('code')}",
     }
 
 
@@ -425,13 +430,28 @@ def list_priority_buckets(root: Path, *, limit: int = LIST_DEFAULT_LIMIT, projec
             "run_cmd": f"./xctx observe stock_intelligence_hub::equity_filing priority:{row['code']}",
         }
     ) if projection_name == "full" else compact_priority_projection
-    pagination = pagination_payload(
-        limit=limit,
-        cursor=None,
-        returned_count=len(rows),
-        total_count=total,
-        next_cursor=None,
-    )
+    partial = len(rows) < total
+    pagination = {
+        **pagination_payload(
+            limit=limit,
+            cursor=None,
+            returned_count=len(rows),
+            total_count=total,
+            next_cursor=None,
+        ),
+        "cursor_supported": False,
+        "partial": partial,
+        "more_available": partial,
+        "remaining_count": max(total - len(rows), 0),
+    }
+    next_moves = [
+        "./xctx discover stock_intelligence_hub::equity_filing::search_priority_buckets",
+        "./xctx discover stock_intelligence_hub::equity_filing::search_priority_buckets <priority|text>",
+    ]
+    if partial and total <= LIST_MAX_LIMIT:
+        next_moves.append(
+            f"./xctx discover stock_intelligence_hub::equity_filing::list_priority_buckets --limit {total}"
+        )
     return {
         "object_type": "equity_filing_priority_bucket_list",
         "description": "Compact bounded index of filing priority buckets.",
@@ -442,10 +462,7 @@ def list_priority_buckets(root: Path, *, limit: int = LIST_DEFAULT_LIMIT, projec
         "limit": limit,
         "pagination": pagination,
         "priority_buckets": [projector(row) for row in rows],
-        "next_moves": [
-            "./xctx discover stock_intelligence_hub::equity_filing::search_priority_buckets",
-            "./xctx discover stock_intelligence_hub::equity_filing::search_priority_buckets <priority|text>",
-        ],
+        "next_moves": next_moves,
     }
 
 

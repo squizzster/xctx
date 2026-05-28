@@ -16,10 +16,26 @@ INSTRUMENT_DATA = Path("yaml_dynamic_config/agent_domains/stock_intelligence_hub
 MINI_STOCKS_DB = Path("data/mini_stocks.sqlite")
 PRICE_SCALE = 1_000_000
 DEFAULT_SEARCH_LIMIT = 10
+SEARCH_MAX_LIMIT = 50
 LIST_DEFAULT_LIMIT = 25
 LIST_MAX_LIMIT = 100
 INLINE_BAR_LIMIT = 30
-BAR_CSV_COLUMNS = ["bar_start_ts", "date", "open", "high", "low", "close", "vwap", "volume_raw", "transaction_count"]
+VOLUME_SCALE = 1000
+BAR_CSV_COLUMNS = [
+    "bar_start_ts",
+    "date",
+    "open",
+    "high",
+    "low",
+    "close",
+    "vwap",
+    "volume",
+    "volume_raw",
+    "volume_scale",
+    "volume_unit",
+    "volume_raw_unit",
+    "transaction_count",
+]
 DAILY_BAR_MULTIPLIER = 1
 DAILY_BAR_TIMESPAN_CODE = 1
 
@@ -639,7 +655,10 @@ def list_instruments(root: Path, args: list[str]) -> dict[str, Any]:
         and _matches_filter(item, "exchange", options["exchange"])
         and _matches_filter(item, "security_type", options["security_type"])
     ]
-    cursor = min(options["cursor"], len(filtered))
+    requested_cursor = int(options["cursor"])
+    if requested_cursor > len(filtered):
+        raise ValueError(f"--cursor out of range for filtered result set: {requested_cursor}")
+    cursor = requested_cursor
     limit = options["limit"]
     page = filtered[cursor : cursor + limit]
     next_cursor = cursor + limit if cursor + limit < len(filtered) else None
@@ -706,6 +725,27 @@ def find_instrument(root: Path, identifier: str) -> dict[str, Any] | None:
     return None
 
 
+def find_instrument_exact(root: Path, identifier: str) -> dict[str, Any] | None:
+    identifier = _instrument_lookup_token(identifier)
+    if not identifier:
+        return None
+    q = identifier.lower()
+    q_cik = _query_cik_key(q)
+    for record in load_all_instruments(root):
+        aliases = {alias.lower() for alias in _alias_symbols(record)}
+        candidates = {
+            str(record.get("instrument_id", "")).lower(),
+            str(record.get("issuer_id", "")).lower(),
+            str(record.get("ticker", "")).lower(),
+            str(record.get("cik", "")).lower(),
+            _strip_cik(str(record.get("cik", ""))),
+            *aliases,
+        }
+        if q in candidates or (q_cik and q_cik in candidates):
+            return record
+    return None
+
+
 def _table_count(conn: sqlite3.Connection, table: str) -> int:
     return int(conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0])
 
@@ -743,6 +783,14 @@ def _date_key(value: Any) -> str | None:
 
 
 def _bar_payload(row: sqlite3.Row, *, include_ts: bool = False) -> dict[str, Any]:
+    raw_volume = row["volume_int"]
+    volume_payload = {
+        "volume": None if raw_volume is None else int(raw_volume) // VOLUME_SCALE,
+        "volume_raw": raw_volume,
+        "volume_scale": VOLUME_SCALE,
+        "volume_unit": "shares",
+        "volume_raw_unit": "shares_x1000",
+    }
     payload = {
         "date": _date_key(row["bar_date_key"]),
         "open": _price(row["open_int"]),
@@ -750,7 +798,7 @@ def _bar_payload(row: sqlite3.Row, *, include_ts: bool = False) -> dict[str, Any
         "low": _price(row["low_int"]),
         "close": _price(row["close_int"]),
         "vwap": _price(row["vwap_int"]),
-        "volume_raw": row["volume_int"],
+        **volume_payload,
         "transaction_count": row["transaction_count"],
     }
     if include_ts:
@@ -772,7 +820,11 @@ def _latest_available_price_payload(series: dict[str, Any], currency: str | None
         "low": bar.get("low"),
         "close": bar.get("close"),
         "vwap": bar.get("vwap"),
+        "volume": bar.get("volume"),
         "volume_raw": bar.get("volume_raw"),
+        "volume_scale": bar.get("volume_scale"),
+        "volume_unit": bar.get("volume_unit"),
+        "volume_raw_unit": bar.get("volume_raw_unit"),
         "transaction_count": bar.get("transaction_count"),
     }
 
@@ -936,6 +988,24 @@ def _market_series_projection(row: sqlite3.Row, *, include_observed_data: bool =
     if include_observed_data:
         payload["latest_bar"] = _bar_payload(row)
     return {key: value for key, value in payload.items() if value is not None}
+
+
+def compact_market_series_projection(item: dict[str, Any]) -> dict[str, Any]:
+    return {
+        key: item.get(key)
+        for key in (
+            "id",
+            "market_series_id",
+            "ticker",
+            "issuer_name",
+            "instrument_id",
+            "timeframe",
+            "bar_count",
+            "coverage",
+            "run_cmd",
+        )
+        if item.get(key) is not None
+    }
 
 
 def _series_identifier_where(identifier: str) -> tuple[str, tuple[Any, ...]]:
@@ -1125,6 +1195,14 @@ def market_series_range_observation(
         "requested_identifier": identifier,
         "bars_inline": len(ranged_bars) <= INLINE_BAR_LIMIT,
         "inline_bar_limit": INLINE_BAR_LIMIT,
+        "range_controls": {
+            "bars_zero_semantics": "all_available_bars",
+            "calendar_days_zero_semantics": "all_available_bars",
+            "safer_examples": [
+                f"./xctx observe {scoped_ref()} {found['ticker']} --bars 5",
+                f"./xctx observe {scoped_ref()} {found['ticker']} --calendar-days 30",
+            ],
+        },
         "data_boundary": "Bundled read-only OHLCV fixture; not a live quote feed and not investment advice.",
     }
     if export_csv:
@@ -1408,14 +1486,26 @@ def instrument_search_payload(root: Path, query: str) -> dict[str, Any]:
     }
 
 
-def market_series_search_payload(root: Path, query: str) -> dict[str, Any]:
-    matches = search_market_series(root, query)
-    record = None if matches else find_instrument(root, query)
+def market_series_search_payload(
+    root: Path,
+    query: str,
+    *,
+    limit: int = DEFAULT_SEARCH_LIMIT,
+    projection: str = "compact",
+) -> dict[str, Any]:
+    matches = search_market_series(root, query, limit=limit)
+    record = None if matches else find_instrument_exact(root, query)
+    projected_matches = (
+        matches if projection == "full" else [compact_market_series_projection(match) for match in matches]
+    )
     return {
         "object_type": "market_data_gateway::search_market_series::result",
         "query": query,
-        "matches_returned": len(matches),
-        "matches": matches,
+        "projection": projection,
+        "limit": limit,
+        "matches_returned": len(projected_matches),
+        "matches": projected_matches,
+        "truncated": len(projected_matches) == limit,
         "empty_result_guidance": None if matches else _empty_market_series_guidance(record),
     }
 

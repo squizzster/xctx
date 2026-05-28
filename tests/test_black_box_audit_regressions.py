@@ -255,3 +255,172 @@ def test_file_manager_bad_cursor_returns_clean_connector_error() -> None:
     assert payload["ok"] is False
     assert payload["error"] == "--cursor requires an integer"
     assert "invalid literal" not in json.dumps(payload)
+
+
+# Adapter/filing-taxonomy tests
+
+
+def test_priority_bucket_limit_without_cursor_reports_partial_truthfully() -> None:
+    rc, payload = run_runtime_json(
+        [
+            "discover",
+            "stock_intelligence_hub::equity_filing::list_priority_buckets",
+            "--limit",
+            "1",
+        ]
+    )
+
+    assert rc == 0
+    live = payload["results"]["live_data"]
+    assert live["total_count"] == 12
+    assert live["returned_count"] == 1
+
+    page = live["pagination"]
+    assert page["cursor_supported"] is False
+    assert page["next_cursor"] is None
+    assert page["has_more"] is False
+    assert page["partial"] is True
+    assert page["more_available"] is True
+    assert page["remaining_count"] == 11
+
+
+def test_search_forms_accepts_limit_and_returns_bounded_matches() -> None:
+    rc, payload = run_runtime_json(
+        [
+            "discover",
+            "stock_intelligence_hub::equity_filing::search_forms",
+            "annual",
+            "--limit",
+            "5",
+        ]
+    )
+
+    assert rc == 0
+    live = payload["results"]["live_data"]
+    assert live["limit"] == 5
+    assert live["matches_returned"] <= 5
+    assert len(live["matches"]) <= 5
+
+
+def test_search_families_accepts_limit_and_compact_projection() -> None:
+    rc, payload = run_runtime_json(
+        [
+            "discover",
+            "stock_intelligence_hub::equity_filing::search_families",
+            "report",
+            "--limit",
+            "3",
+        ]
+    )
+
+    assert rc == 0
+    live = payload["results"]["live_data"]
+    assert live["projection"] == "compact"
+    assert live["limit"] == 3
+    assert live["matches_returned"] <= 3
+    if live["matches"]:
+        assert "description" not in live["matches"][0]
+
+
+def test_search_priority_buckets_accepts_limit() -> None:
+    rc, payload = run_runtime_json(
+        [
+            "discover",
+            "stock_intelligence_hub::equity_filing::search_priority_buckets",
+            "critical",
+            "--limit",
+            "2",
+        ]
+    )
+
+    assert rc == 0
+    live = payload["results"]["live_data"]
+    assert live["limit"] == 2
+    assert live["matches_returned"] <= 2
+
+
+# Adapter/market-data tests
+
+
+def test_search_market_series_accepts_limit() -> None:
+    rc, payload = run_runtime_json(
+        [
+            "discover",
+            "stock_intelligence_hub::market_data_gateway::search_market_series",
+            "a",
+            "--limit",
+            "3",
+        ]
+    )
+
+    assert rc == 0
+    live = payload["results"]["live_data"]
+    assert live["limit"] == 3
+    assert live["matches_returned"] <= 3
+
+
+def test_market_series_shell_like_literal_has_no_unrelated_guidance() -> None:
+    rc, payload = run_runtime_json(
+        [
+            "discover",
+            "stock_intelligence_hub::market_data_gateway::search_market_series",
+            "$(id)",
+        ]
+    )
+
+    assert rc == 0
+    live = payload["results"]["live_data"]
+    assert live["matches_returned"] == 0
+    assert "ACIW" not in json.dumps(live)
+    assert "Known instrument" not in str(live.get("empty_result_guidance"))
+
+
+def test_stock_list_instruments_rejects_out_of_range_cursor() -> None:
+    rc, payload = run_runtime_json(
+        [
+            "discover",
+            "stock_intelligence_hub::market_data_gateway::list_instruments",
+            "--cursor",
+            "999999",
+        ]
+    )
+
+    assert rc == 1
+    assert payload["ok"] is False
+    assert "--cursor out of range" in payload["error"]
+
+
+def test_bars_zero_declares_all_available_in_basic_payload() -> None:
+    rc, payload = run_runtime_json(
+        [
+            "observe",
+            "stock_intelligence_hub::market_data_gateway",
+            "AAPL",
+            "--bars",
+            "0",
+        ]
+    )
+
+    assert rc == 0
+    live = payload["results"]["live_data"]
+    assert live["request"] == {"unit": "bars", "value": 0, "all_available": True}
+    assert live["range_controls"]["bars_zero_semantics"] == "all_available_bars"
+
+
+def test_market_bars_expose_volume_units_and_normalized_volume() -> None:
+    rc, payload = run_runtime_json(
+        [
+            "observe",
+            "stock_intelligence_hub::market_data_gateway",
+            "AAPL",
+            "--bars",
+            "1",
+        ]
+    )
+
+    assert rc == 0
+    bar = payload["results"]["live_data"]["bars"][0]
+    assert "volume" in bar
+    assert "volume_raw" in bar
+    assert bar["volume_unit"] == "shares"
+    assert bar["volume_scale"] in {1, 1000}

@@ -29,6 +29,8 @@ if LIBS.is_dir() and str(LIBS) not in sys.path:
 
 from xctx_live.common import emit_json, joined_query, take_flag, usage_error  # noqa: E402
 from xctx_live.instruments import (  # noqa: E402
+    DEFAULT_SEARCH_LIMIT,
+    SEARCH_MAX_LIMIT,
     instrument_audit,
     instrument_observation,
     instrument_registry_discovery,
@@ -99,6 +101,40 @@ def parse_observe_args(args: list[str]) -> tuple[str, dict[str, object] | None]:
     return joined_query(identifier_parts), range_request or None
 
 
+def parse_search_args(args: list[str]) -> tuple[str, int, str]:
+    limit = DEFAULT_SEARCH_LIMIT
+    projection = "compact"
+    query_parts: list[str] = []
+    index = 0
+    while index < len(args):
+        token = args[index]
+        if token == "--limit":
+            if index + 1 >= len(args):
+                raise ValueError("--limit requires a value")
+            try:
+                parsed_limit = int(args[index + 1])
+            except ValueError as exc:
+                raise ValueError("--limit requires an integer") from exc
+            if parsed_limit < 1:
+                raise ValueError("--limit must be at least 1")
+            limit = min(parsed_limit, SEARCH_MAX_LIMIT)
+            index += 2
+            continue
+        if token == "--projection":
+            if index + 1 >= len(args):
+                raise ValueError("--projection requires a value")
+            projection = args[index + 1]
+            if projection not in {"compact", "full"}:
+                raise ValueError("--projection must be compact or full")
+            index += 2
+            continue
+        if token.startswith("--"):
+            raise ValueError("supported search arguments: [--limit N] [--projection compact|full]")
+        query_parts.append(token)
+        index += 1
+    return joined_query(query_parts), limit, projection
+
+
 def main(argv: list[str] | None = None) -> int:
     raw = list(sys.argv[1:] if argv is None else argv)
     compact, args = take_flag(raw, "--compact")
@@ -117,10 +153,13 @@ def main(argv: list[str] | None = None) -> int:
             return usage_error("search requires a company, ticker, CIK, issuer id, instrument id, or alias")
         payload = instrument_search_payload(ROOT, query)
     elif command in {"search-market-series", "search_market_series", "search-series", "search_series"}:
-        query = joined_query(rest)
+        try:
+            query, limit, projection = parse_search_args(rest)
+        except ValueError as exc:
+            return usage_error(str(exc))
         if not query:
             return usage_error("search-market-series requires a ticker, issuer, provider, or text query")
-        payload = market_series_search_payload(ROOT, query)
+        payload = market_series_search_payload(ROOT, query, limit=limit, projection=projection)
     elif command in {"latest-price", "latest_price", "latest", "quote", "latest_quote"}:
         query = joined_query(rest)
         if not query:

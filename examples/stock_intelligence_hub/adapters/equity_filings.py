@@ -30,6 +30,11 @@ from xctx_live.common import emit_json, joined_query, take_flag, usage_error  # 
 from xctx_live.filings import (  # noqa: E402
     LIST_DEFAULT_LIMIT,
     LIST_MAX_LIMIT,
+    SEARCH_DEFAULT_LIMIT,
+    SEARCH_MAX_LIMIT,
+    compact_family_projection,
+    compact_form_projection,
+    compact_priority_projection,
     discover_with_query,
     filing_audit,
     filing_taxonomy_discovery,
@@ -109,6 +114,59 @@ def parse_list_args(args: list[str], *, cursor_supported: bool = False) -> dict[
     return options
 
 
+def parse_search_args(args: list[str]) -> tuple[str, int, str]:
+    limit = SEARCH_DEFAULT_LIMIT
+    projection = "compact"
+    query_parts: list[str] = []
+    index = 0
+    while index < len(args):
+        token = args[index]
+        if token == "--limit":
+            if index + 1 >= len(args):
+                raise ValueError("--limit requires a value")
+            try:
+                parsed_limit = int(args[index + 1])
+            except ValueError as exc:
+                raise ValueError("--limit requires an integer") from exc
+            if parsed_limit < 1:
+                raise ValueError("--limit must be at least 1")
+            limit = min(parsed_limit, SEARCH_MAX_LIMIT)
+            index += 2
+            continue
+        if token == "--projection":
+            if index + 1 >= len(args):
+                raise ValueError("--projection requires a value")
+            projection = args[index + 1]
+            if projection not in {"compact", "full"}:
+                raise ValueError("--projection must be compact or full")
+            index += 2
+            continue
+        if token.startswith("--"):
+            raise ValueError("supported search arguments: [--limit N] [--projection compact|full]")
+        query_parts.append(token)
+        index += 1
+    return joined_query(query_parts), limit, projection
+
+
+def _search_payload(
+    *,
+    object_type: str,
+    query: str,
+    limit: int,
+    projection: str,
+    matches: list[dict],
+) -> dict:
+    return {
+        "object_type": object_type,
+        "query": query,
+        "projection": projection,
+        "limit": limit,
+        "matches_returned": len(matches),
+        "matches": matches,
+        "truncated": len(matches) == limit,
+    }
+
+
 def main(argv: list[str] | None = None) -> int:
     raw = list(sys.argv[1:] if argv is None else argv)
     compact, args = take_flag(raw, "--compact")
@@ -122,17 +180,47 @@ def main(argv: list[str] | None = None) -> int:
             return usage_error(str(exc))
         payload = discover_with_query(ROOT, query) if query else filing_taxonomy_discovery(ROOT, projection=projection)
     elif command == "search-forms":
-        query = joined_query(rest)
-        matches = search_forms(ROOT, query)
-        payload = {"object_type": "equity_filing::search_filing_form::result", "query": query, "matches_returned": len(matches), "matches": matches}
+        try:
+            query, limit, projection = parse_search_args(rest)
+        except ValueError as exc:
+            return usage_error(str(exc))
+        raw_matches = search_forms(ROOT, query, limit=limit)
+        matches = raw_matches if projection == "full" else [compact_form_projection(match) for match in raw_matches]
+        payload = _search_payload(
+            object_type="equity_filing::search_filing_form::result",
+            query=query,
+            limit=limit,
+            projection=projection,
+            matches=matches,
+        )
     elif command == "search-families":
-        query = joined_query(rest)
-        matches = search_families(ROOT, query)
-        payload = {"object_type": "equity_filing::search_filing_family::result", "query": query, "matches_returned": len(matches), "matches": matches}
+        try:
+            query, limit, projection = parse_search_args(rest)
+        except ValueError as exc:
+            return usage_error(str(exc))
+        raw_matches = search_families(ROOT, query, limit=limit)
+        matches = raw_matches if projection == "full" else [compact_family_projection(match) for match in raw_matches]
+        payload = _search_payload(
+            object_type="equity_filing::search_filing_family::result",
+            query=query,
+            limit=limit,
+            projection=projection,
+            matches=matches,
+        )
     elif command == "search-priority-buckets":
-        query = joined_query(rest)
-        matches = search_priority_buckets(ROOT, query)
-        payload = {"object_type": "equity_filing::search_priority_bucket::result", "query": query, "matches_returned": len(matches), "matches": matches}
+        try:
+            query, limit, projection = parse_search_args(rest)
+        except ValueError as exc:
+            return usage_error(str(exc))
+        raw_matches = search_priority_buckets(ROOT, query, limit=limit)
+        matches = raw_matches if projection == "full" else [compact_priority_projection(match) for match in raw_matches]
+        payload = _search_payload(
+            object_type="equity_filing::search_priority_bucket::result",
+            query=query,
+            limit=limit,
+            projection=projection,
+            matches=matches,
+        )
     elif command == "list-forms":
         try:
             list_options = parse_list_args(rest, cursor_supported=True)

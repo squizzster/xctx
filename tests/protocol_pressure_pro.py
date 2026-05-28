@@ -265,7 +265,7 @@ def assert_scoped_filing_affordance_routing() -> None:
     list_forms = run_engine(["discover", "stock_intelligence_hub::equity_filing::list_forms"])
     assert list_forms["results"]["live_data"]["object_type"] == "equity_filing_form_list"
     assert list_forms["results"]["live_data"]["projection"] == "compact"
-    assert "run_cmd" not in list_forms["results"]["live_data"]["forms"][0]
+    assert list_forms["results"]["live_data"]["forms"][0]["run_cmd"].startswith("./xctx observe ")
     list_forms_full = run_engine(["discover", "stock_intelligence_hub::equity_filing::list_forms", "--limit", "2", "--projection", "full"])
     assert list_forms_full["results"]["live_data"]["pagination"]["returned_count"] == 2
     assert "run_cmd" in list_forms_full["results"]["live_data"]["forms"][0]
