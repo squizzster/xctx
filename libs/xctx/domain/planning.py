@@ -2,14 +2,20 @@
 
 from __future__ import annotations
 
-from datetime import timedelta
 from typing import Any
 
 from xctx.domain.core import resolve_subdomain
 from xctx.domain.execution_contract import parse_execute_request, parse_plan_request
+from xctx.domain.planning_execution import (
+    commit_context_args as _commit_context_args,
+    final_execute_response as _final_execute_response,
+    materialized_artifact_committed as _materialized_artifact_committed,
+    materialized_artifact_committing as _materialized_artifact_committing,
+    running_execution_artifacts as _running_execution_artifacts,
+    terminal_result_payload as _terminal_result_payload,
+)
 from xctx.domain.planning_common import receipt_for_payload as _receipt_for_payload
 from xctx.domain.planning_commit_state import (
-    RUNNING_CLAIM_STALE_SECONDS,
     TERMINAL_CLAIM_STATUSES,
     claim_status as _claim_status,
     mark_claim_abandoned_if_stale as _mark_claim_abandoned_if_stale,
@@ -27,14 +33,13 @@ from xctx.domain.planning_payloads import (
     adapter_payload_failed as _adapter_payload_failed,
     execution_claim_refusal_payload as _execution_claim_refusal_payload,
     failed_result_payload as _failed_result_payload,
-    heartbeat as _heartbeat,
     plan_already_committed_payload as _plan_already_committed_payload,
 )
 from xctx.domain.planning_intent import resolve_planned_action as _resolve_planned_action
 from xctx.domain.planning_planned_effects import planned_effect_plan_payload as _planned_effect_plan_payload
 from xctx.domain.planning_read_only import read_only_plan_payload as _read_only_plan_payload
 from xctx.ports.external_command import call_external_command
-from xctx.process.redaction import redact_preview, redact_value
+from xctx.process.redaction import redact_preview
 from xctx.store.plans import PLAN_RECEIPT_PREFIX, resolve_plan
 from xctx.store.runtime_artifacts import (
     create_commit_execution_claim,
@@ -178,59 +183,36 @@ def _execute_planned_effect_payload(
             claim=existing_claim,
         )
 
-    now = utc_now()
-    running_lease_expires_at = now + timedelta(seconds=RUNNING_CLAIM_STALE_SECONDS)
-    running_result = {
-        "result_id": result_id,
-        "commit_id": commit_id,
-        "plan_id": canonical_plan_id,
-        "status": "running",
-        "created_at": isoformat_utc(now),
-        "lease_expires_at": isoformat_utc(running_lease_expires_at),
-        "heartbeat_at": isoformat_utc(now),
-        "heartbeat": _heartbeat(
-            planned_effect,
-            "running_heartbeat",
-            "commit_running",
-            "Commit accepted; adapter work is running.",
-        ),
-        "payload": None,
-    }
-    commit = {
-        "commit_id": commit_id,
-        "plan_id": canonical_plan_id,
-        "result_id": result_id,
-        "status": "claimed",
-        "created_at": isoformat_utc(now),
-        "planned_effect": {
-            key: planned_effect.get(key)
-            for key in ("agent_domain", "agent_subdomain", "action", "implemented_by", "commit_adapter_command")
-            if planned_effect.get(key) is not None
-        },
-    }
+    commit, running_result = _running_execution_artifacts(
+        canonical_plan_id=canonical_plan_id,
+        commit_id=commit_id,
+        result_id=result_id,
+        planned_effect=planned_effect,
+        now=utc_now(),
+    )
     write_runtime_artifact(store, "commit", receipt, commit)
     write_runtime_artifact(store, "result", receipt, running_result)
-    updated_master_plan = {
-        **master_plan,
-        "status": "committing",
-        "execution_status": "committing",
-        "commit_id": commit_id,
-        "result_id": result_id,
-        "committed_at": running_result["created_at"],
-    }
-    write_runtime_artifact(store, "master_plan", receipt, updated_master_plan)
+    write_runtime_artifact(
+        store,
+        "master_plan",
+        receipt,
+        _materialized_artifact_committing(
+            master_plan,
+            commit_id=commit_id,
+            result_id=result_id,
+            committed_at=running_result["created_at"],
+        ),
+    )
     write_runtime_artifact(
         store,
         "sub_plan",
         receipt,
-        {
-            **sub_plan,
-            "status": "committing",
-            "execution_status": "committing",
-            "commit_id": commit_id,
-            "result_id": result_id,
-            "committed_at": running_result["created_at"],
-        },
+        _materialized_artifact_committing(
+            sub_plan,
+            commit_id=commit_id,
+            result_id=result_id,
+            committed_at=running_result["created_at"],
+        ),
     )
 
     try:
@@ -244,14 +226,11 @@ def _execute_planned_effect_payload(
             str(planned_effect["agent_domain"]),
             str(planned_effect["agent_subdomain"]),
         )
-        commit_context_args = [
-            "--xctx-plan-id",
-            canonical_plan_id,
-            "--xctx-commit-id",
-            commit_id,
-            "--xctx-result-id",
-            result_id,
-        ]
+        commit_context_args = _commit_context_args(
+            canonical_plan_id=canonical_plan_id,
+            commit_id=commit_id,
+            result_id=result_id,
+        )
         live = call_external_command(
             store,
             subdomain,
@@ -281,29 +260,25 @@ def _execute_planned_effect_payload(
                 store,
                 "master_plan",
                 receipt,
-                {
-                    **master_plan,
-                    "status": "committed",
-                    "execution_status": "committed",
-                    "commit_id": commit_id,
-                    "result_id": result_id,
-                    "committed_at": failed["created_at"],
-                    "failed": True,
-                },
+                _materialized_artifact_committed(
+                    master_plan,
+                    commit_id=commit_id,
+                    result_id=result_id,
+                    committed_at=failed["created_at"],
+                    failed=True,
+                ),
             )
         write_runtime_artifact(
             store,
             "sub_plan",
             receipt,
-            {
-                **sub_plan,
-                "status": "committed",
-                "execution_status": "committed",
-                "commit_id": commit_id,
-                "result_id": result_id,
-                "committed_at": failed["created_at"],
-                "failed": True,
-            },
+            _materialized_artifact_committed(
+                sub_plan,
+                commit_id=commit_id,
+                result_id=result_id,
+                committed_at=failed["created_at"],
+                failed=True,
+            ),
         )
         write_commit_execution_claim(
             store,
@@ -337,29 +312,20 @@ def _execute_planned_effect_payload(
 
     finished = utc_now()
     failed = _adapter_payload_failed(live)
-    ttl_seconds = int(planned_effect.get("result_ttl_seconds") or 300)
-    completed_at = isoformat_utc(finished)
-    expires_at = isoformat_utc(finished + timedelta(seconds=ttl_seconds))
+    result_payload = _terminal_result_payload(
+        running_result=running_result,
+        canonical_plan_id=canonical_plan_id,
+        commit_id=commit_id,
+        result_id=result_id,
+        planned_effect=planned_effect,
+        live_payload=live,
+        failed=failed,
+        finished=finished,
+    )
+    completed_at = str(result_payload["completed_at"])
     claim = {**claim, "status": "finalizing", "heartbeat_at": completed_at}
     write_commit_execution_claim(store, receipt, claim)
-    result_payload = {
-        "result_id": result_id,
-        "commit_id": commit_id,
-        "plan_id": canonical_plan_id,
-        "status": "failed" if failed else "ready",
-        "created_at": running_result["created_at"],
-        "completed_at": completed_at,
-        "expires_at": expires_at,
-        "heartbeat_at": completed_at,
-        "heartbeat": (
-            {"phase": "failed", "message": "Scoped adapter returned a failure payload."}
-            if failed
-            else _heartbeat(planned_effect, "complete_heartbeat", "complete", "Result is ready.")
-        ),
-        "payload": None if failed else live,
-    }
     if failed:
-        result_payload["failure_payload"] = redact_value(live)
         commit["status"] = "failed"
         commit["completed_at"] = completed_at
     else:
@@ -378,68 +344,43 @@ def _execute_planned_effect_payload(
         store,
         "master_plan",
         receipt,
-        {
-            **master_plan,
-            "status": "committed",
-            "execution_status": "committed",
-            "commit_id": commit_id,
-            "result_id": result_id,
-            "committed_at": completed_at,
-        },
+        _materialized_artifact_committed(
+            master_plan,
+            commit_id=commit_id,
+            result_id=result_id,
+            committed_at=completed_at,
+        ),
     )
     write_runtime_artifact(
         store,
         "sub_plan",
         receipt,
-        {
-            **sub_plan,
-            "status": "committed",
-            "execution_status": "committed",
-            "commit_id": commit_id,
-            "result_id": result_id,
-            "committed_at": completed_at,
-        },
+        _materialized_artifact_committed(
+            sub_plan,
+            commit_id=commit_id,
+            result_id=result_id,
+            committed_at=completed_at,
+        ),
     )
     write_commit_execution_claim(
         store,
         receipt,
         {**claim, "status": "failed" if failed else "succeeded", "completed_at": completed_at, "heartbeat_at": completed_at},
     )
-    return {
-        "ok": not failed,
-        "error": "planned_effect_commit_failed" if failed else None,
-        "requested_plan": requested_plan,
-        "commit_requested": True,
-        "status": "committed" if not failed else "failed",
-        "description": "Execute committed a recorded planned effect through its scoped adapter and wrote a protocol-local result handle.",
-        "planner_binding": {
-            "verified": True,
-            "requested": requested_plan,
-            "canonical_plan_id": canonical_plan_id,
-            "receipt_sha256": receipt,
-            "operation": plan.get("operation"),
-            "short_receipt_matches": resolved.matches,
-            "context_fingerprint_verified": context_matches,
-            "planned_context_sha256": planned_context_sha,
-            "current_context_sha256": current_context_sha,
-        },
-        "commit_id": commit_id,
-        "result_id": result_id,
-        "observe_result_cmd": f"./xctx observe {result_id}",
-        "mutations_applied": 1 if not failed and planned_effect.get("writes_to_db") else 0,
-        "execution_receipt_sha256": _receipt_for_payload(
-            {
-                "execute": requested_plan,
-                "bound_plan": canonical_plan_id,
-                "commit": True,
-                "commit_id": commit_id,
-                "result_id": result_id,
-                "mutations_applied": 1 if not failed and planned_effect.get("writes_to_db") else 0,
-                "context_verified": True,
-            }
-        ),
-        "next_move": f"./xctx observe {result_id}",
-    }
+    return _final_execute_response(
+        requested_plan=requested_plan,
+        plan=plan,
+        resolved=resolved,
+        canonical_plan_id=canonical_plan_id,
+        receipt=receipt,
+        commit_id=commit_id,
+        result_id=result_id,
+        context_matches=context_matches,
+        planned_context_sha=planned_context_sha,
+        current_context_sha=current_context_sha,
+        planned_effect=planned_effect,
+        failed=failed,
+    )
 
 
 def _execute_full_payload(args: list[str], commit: bool, store: dict[str, Any]) -> dict[str, Any]:

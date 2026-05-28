@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import shlex
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -1057,6 +1057,187 @@ def test_planning_payload_failed_result_uses_terminal_ttl_and_handles() -> None:
     assert created_at is not None
     assert expires_at is not None
     assert expires_at - created_at == timedelta(seconds=120)
+
+
+def test_planning_execution_commit_context_args_are_ordered() -> None:
+    ensure_libs_path()
+    from xctx.domain.planning_execution import commit_context_args  # noqa: PLC0415
+
+    assert commit_context_args(
+        canonical_plan_id="plan:sha256:abc",
+        commit_id="commit:abc",
+        result_id="result:abc",
+    ) == [
+        "--xctx-plan-id",
+        "plan:sha256:abc",
+        "--xctx-commit-id",
+        "commit:abc",
+        "--xctx-result-id",
+        "result:abc",
+    ]
+
+
+def test_planning_execution_running_artifacts_include_lease_and_metadata() -> None:
+    ensure_libs_path()
+    from xctx.domain.planning_commit_state import RUNNING_CLAIM_STALE_SECONDS  # noqa: PLC0415
+    from xctx.domain.planning_execution import running_execution_artifacts  # noqa: PLC0415
+    from xctx.store.runtime_artifacts import parse_utc_timestamp  # noqa: PLC0415
+
+    now = datetime(2026, 5, 28, 12, 0, tzinfo=timezone.utc)
+    planned_effect = {
+        "agent_domain": "demo_domain",
+        "agent_subdomain": "demo_subdomain",
+        "action": "create",
+        "implemented_by": "demo_domain::demo_subdomain::create",
+        "commit_adapter_command": "create",
+        "ignored": "not framework metadata",
+        "running_heartbeat": {"phase": "custom", "message": "Running"},
+    }
+
+    commit, running_result = running_execution_artifacts(
+        canonical_plan_id="plan:sha256:abc",
+        commit_id="commit:abc",
+        result_id="result:abc",
+        planned_effect=planned_effect,
+        now=now,
+    )
+
+    assert commit["status"] == "claimed"
+    assert commit["planned_effect"] == {
+        "agent_domain": "demo_domain",
+        "agent_subdomain": "demo_subdomain",
+        "action": "create",
+        "implemented_by": "demo_domain::demo_subdomain::create",
+        "commit_adapter_command": "create",
+    }
+    assert running_result["status"] == "running"
+    assert running_result["heartbeat"] == {"phase": "custom", "message": "Running"}
+    assert running_result["payload"] is None
+    assert parse_utc_timestamp(running_result["lease_expires_at"]) - parse_utc_timestamp(
+        running_result["created_at"]
+    ) == timedelta(seconds=RUNNING_CLAIM_STALE_SECONDS)
+
+
+def test_planning_execution_materialized_artifact_state_transitions() -> None:
+    ensure_libs_path()
+    from xctx.domain.planning_execution import materialized_artifact_committed, materialized_artifact_committing  # noqa: PLC0415
+
+    base = {"plan_id": "plan:sha256:abc", "custom": "kept"}
+    committing = materialized_artifact_committing(
+        base,
+        commit_id="commit:abc",
+        result_id="result:abc",
+        committed_at="2026-05-28T12:00:00+00:00",
+    )
+    committed = materialized_artifact_committed(
+        base,
+        commit_id="commit:abc",
+        result_id="result:abc",
+        committed_at="2026-05-28T12:01:00+00:00",
+        failed=True,
+    )
+
+    assert base == {"plan_id": "plan:sha256:abc", "custom": "kept"}
+    assert committing["status"] == "committing"
+    assert committing["execution_status"] == "committing"
+    assert committing["custom"] == "kept"
+    assert committed["status"] == "committed"
+    assert committed["execution_status"] == "committed"
+    assert committed["failed"] is True
+
+
+def test_planning_execution_terminal_result_success_ttl_starts_at_finished_time() -> None:
+    ensure_libs_path()
+    from xctx.domain.planning_execution import terminal_result_payload  # noqa: PLC0415
+    from xctx.store.runtime_artifacts import parse_utc_timestamp  # noqa: PLC0415
+
+    running = {"created_at": "2026-05-28T11:00:00+00:00"}
+    finished = datetime(2026, 5, 28, 12, 0, tzinfo=timezone.utc)
+    payload = terminal_result_payload(
+        running_result=running,
+        canonical_plan_id="plan:sha256:abc",
+        commit_id="commit:abc",
+        result_id="result:abc",
+        planned_effect={"result_ttl_seconds": 900, "complete_heartbeat": {"phase": "done", "message": "Ready"}},
+        live_payload={"object_type": "ok"},
+        failed=False,
+        finished=finished,
+    )
+
+    assert payload["status"] == "ready"
+    assert payload["created_at"] == running["created_at"]
+    assert payload["completed_at"] == "2026-05-28T12:00:00Z"
+    assert payload["payload"] == {"object_type": "ok"}
+    assert payload["heartbeat"] == {"phase": "done", "message": "Ready"}
+    assert parse_utc_timestamp(payload["expires_at"]) - parse_utc_timestamp(payload["completed_at"]) == timedelta(
+        seconds=900
+    )
+
+
+def test_planning_execution_terminal_result_failure_redacts_failure_payload() -> None:
+    ensure_libs_path()
+    from xctx.domain.planning_execution import terminal_result_payload  # noqa: PLC0415
+
+    payload = terminal_result_payload(
+        running_result={"created_at": "2026-05-28T11:00:00+00:00"},
+        canonical_plan_id="plan:sha256:abc",
+        commit_id="commit:abc",
+        result_id="result:abc",
+        planned_effect={"result_ttl_seconds": 300},
+        live_payload={"object_type": "adapter_error", "api_key": "secret-token"},
+        failed=True,
+        finished=datetime(2026, 5, 28, 12, 0, tzinfo=timezone.utc),
+    )
+
+    assert payload["status"] == "failed"
+    assert payload["payload"] is None
+    assert payload["failure_payload"]["api_key"] == "<redacted>"
+    assert payload["heartbeat"] == {"phase": "failed", "message": "Scoped adapter returned a failure payload."}
+
+
+def test_planning_execution_final_response_counts_mutation_only_on_success() -> None:
+    ensure_libs_path()
+    from xctx.domain.planning_execution import final_execute_response  # noqa: PLC0415
+
+    resolved = type("Resolved", (), {"matches": ["abc"]})()
+    success = final_execute_response(
+        requested_plan="plan:sha256:abc",
+        plan={"operation": "demo"},
+        resolved=resolved,
+        canonical_plan_id="plan:sha256:abc",
+        receipt="abc",
+        commit_id="commit:abc",
+        result_id="result:abc",
+        context_matches=True,
+        planned_context_sha="a" * 64,
+        current_context_sha="a" * 64,
+        planned_effect={"writes_to_db": True},
+        failed=False,
+    )
+    failure = final_execute_response(
+        requested_plan="plan:sha256:abc",
+        plan={"operation": "demo"},
+        resolved=resolved,
+        canonical_plan_id="plan:sha256:abc",
+        receipt="abc",
+        commit_id="commit:abc",
+        result_id="result:abc",
+        context_matches=True,
+        planned_context_sha="a" * 64,
+        current_context_sha="a" * 64,
+        planned_effect={"writes_to_db": True},
+        failed=True,
+    )
+
+    assert success["ok"] is True
+    assert success["status"] == "committed"
+    assert success["mutations_applied"] == 1
+    assert success["observe_result_cmd"] == "./xctx observe result:abc"
+    assert len(success["execution_receipt_sha256"]) == 64
+    assert failure["ok"] is False
+    assert failure["status"] == "failed"
+    assert failure["error"] == "planned_effect_commit_failed"
+    assert failure["mutations_applied"] == 0
 
 
 def test_execute_commit_exists_result_missing_does_not_reinvoke_adapter(tmp_path, monkeypatch) -> None:
