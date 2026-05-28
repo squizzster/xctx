@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import shlex
 from typing import Any
 
 from xctx.protocol.command_policy import (
@@ -40,14 +41,19 @@ def scope_run_cmd(store: dict[str, Any], command: str) -> str:
     if not command:
         return command
 
-    parts = command.split()
+    try:
+        parts = shlex.split(command)
+    except ValueError:
+        return command
+    if not parts:
+        return command
     executable = parts[0]
     if executable not in {"xctx", "./xctx"}:
         return command
 
     scoped_parts = ["./xctx"]
     scoped_parts.extend(parts[1:])
-    return " ".join(scoped_parts)
+    return " ".join(shlex.quote(part) if any(ch.isspace() for ch in part) else part for part in scoped_parts)
 
 
 def format_run_cmd(store: dict[str, Any], template: str, **context: Any) -> str:

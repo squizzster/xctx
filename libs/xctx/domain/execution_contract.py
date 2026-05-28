@@ -54,5 +54,5 @@ def parse_execute_request(args: list[str], *, commit: bool) -> ExecuteRequest:
     if not cleaned:
         raise XctxError("missing execute target", next_moves=[EXECUTE_USAGE])
     if len(cleaned) != 1:
-        raise XctxError("expected exactly one plan id or receipt to execute")
+        raise XctxError("expected exactly one canonical plan id to execute")
     return ExecuteRequest(plan_identifier=cleaned[0], commit=commit)

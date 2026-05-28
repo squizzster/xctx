@@ -60,7 +60,7 @@ domain:
   observation: explicit_scoped_read_only_observation
   audit: fail_closed_health_payloads
   repair: offline_and_maintenance_guidance
-  planning: deterministic_plan_receipts
+  planning: unique_plan_ids_with_canonical_intent_hashes
 ports:
   external_command: connector_supervisor_invocation
 connectors:

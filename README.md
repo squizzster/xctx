@@ -88,8 +88,9 @@ redaction:
 ./xctx discover stock_intelligence_hub::equity_filing
 ./xctx observe stock_intelligence_hub::market_data_gateway instrument:aapl --bars 5
 ./xctx audit root
+./xctx audit root --scope framework
 ./xctx plan bring_online stock_intelligence_hub::market_data_gateway
-./xctx execute <plan_id_or_receipt> --commit
+./xctx execute plan:sha256:<sha256> --commit
 ```
 
 ## Refusals

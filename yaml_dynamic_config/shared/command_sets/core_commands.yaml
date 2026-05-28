@@ -4,11 +4,11 @@ xctx:
   observe:
     Observe a discovered object, agent domain, agent subdomain, or target-specific result in detail. Domain data is read-only; bounded protocol-local artifacts such as exports require explicit scoped options.: '[TARGET] [ID] [--id ID] [CONFIGURED_OPTIONS...]'
   plan:
-    Rehearse an operation without mutating domain/business state and return the lawful next move plus deterministic sha256/sha5 receipts. Plans are recorded in the local protocol ledger.: '[OPERATION] [TARGET]'
+    Rehearse an operation without mutating domain/business state and return the lawful next move plus a canonical plan:sha256 id. Plans are recorded in the local protocol ledger.: '[OPERATION] [TARGET]'
   execute:
-    Execute a committed plan only when the active surface exposes a lawful commit path.: '[PLAN_ID|SHA256|SHA5] [--commit]'
+    Execute a committed plan only when the active surface exposes a lawful commit path.: '[plan:sha256:<SHA256>] [--commit]'
   audit:
-    Audit root, agent-domain, or agent-subdomain availability and live adapter health.: '[SCOPE]'
+    Audit root, agent-domain, or agent-subdomain framework contracts and live adapter health.: '[SCOPE] [--scope framework|live|all]'
   repair:
     Return repair guidance for an audit finding or terminal maintenance state.: '<FINDING_ID|TARGET>'
 xctx_other:

@@ -13,7 +13,14 @@ from xctx.domain.actions import (
     subdomain_action_config,
     validate_declared_action_args,
 )
-from xctx.domain.core import compact_domain, compact_subdomain, offline_subdomain_payload, resolve_domain, resolve_subdomain
+from xctx.domain.core import (
+    attach_agent_subdomain_identity,
+    compact_domain,
+    compact_subdomain,
+    offline_subdomain_payload,
+    resolve_domain,
+    resolve_subdomain,
+)
 from xctx.domain.interfaces import scoped_mode_interface_payload
 from xctx.domain.routing import parse_ref, parse_scoped_action, scoped_action_run_cmd
 from xctx.errors import XctxError
@@ -177,11 +184,10 @@ def subdomain_discovery_payload(
     live = call_external_command(store, subdomain, ["discover", *query_parts])
     actions = subdomain.get("actions", {})
     payload = {
-        "agent_domain": domain_id,
-        "agent_subdomain": compact_subdomain(store, domain_id, subdomain),
         "description": selected_description(store, subdomain),
         "live_data": live,
     }
+    attach_agent_subdomain_identity(payload, store, domain_id, subdomain)
     if detail_at_least(store, "more"):
         payload["configured_options"] = target_option_surface(store, subdomain)
     if projection:
@@ -214,8 +220,8 @@ def scoped_action_discovery_payload(
         return {
             "action": action_name,
             "action_status": "subdomain_not_online",
-            "agent_domain": domain_id,
             "agent_subdomain": offline_subdomain_payload(store, domain_id, subdomain),
+            "agent_subdomain_id": f"{domain_id}::{subdomain_id}",
         }
     query = " ".join(query_parts).strip()
     if action.get("query_required", True) and not query:
@@ -228,13 +234,12 @@ def scoped_action_discovery_payload(
     payload = {
         "action": action_name,
         "domain_affordance": True,
-        "agent_domain": domain_id,
-        "agent_subdomain": subdomain_id,
         "implemented_by": implemented_by,
         "implemented_by_run_cmd": f"./xctx discover {implemented_by}",
         "action_description": action.get("desc"),
         "live_data": live,
     }
+    attach_agent_subdomain_identity(payload, store, domain_id, subdomain)
     if source_action != action_name:
         payload["implemented_action"] = source_action
     if query and action.get("query_required", True):
@@ -260,12 +265,11 @@ def scoped_subdomain_action_payload(
     live_command = action.get("entrypoint_command", action_name)
     live = call_external_command(store, subdomain, [live_command, *action_args])
     payload = {
-        "agent_domain": domain_id,
-        "agent_subdomain": compact_subdomain(store, domain_id, subdomain),
         "action": action_name,
         "action_description": action.get("desc"),
         "live_data": live,
     }
+    attach_agent_subdomain_identity(payload, store, domain_id, subdomain)
     if action.get("domain_affordance"):
         domain_action_name = str(action.get("domain_action_name") or action_name)
         payload["domain_affordance"] = True
@@ -283,7 +287,7 @@ def discover_payload(
 ) -> tuple[str, dict[str, Any]]:
     if target is None:
         return "root", root_discovery_payload(store)
-    if any(is_runtime_ref(kind, target) for kind in ("master_plan", "sub_plan", "commit")):
+    if any(is_runtime_ref(kind, target) for kind in ("plan_manifest", "master_plan", "sub_plan", "commit")):
         if query_parts:
             raise XctxError(f"runtime artifact discovery does not accept extra arguments: {target}")
         return "root", runtime_artifact_discovery_payload(store, target)

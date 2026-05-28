@@ -18,7 +18,8 @@ from xctx.errors import XctxError
 
 HEX_DIGITS = set("0123456789abcdef")
 FULL_SHA256_LENGTH = 64
-ARTIFACT_KINDS = frozenset({"master_plan", "sub_plan", "commit", "result"})
+ARTIFACT_KINDS = frozenset({"plan_manifest", "master_plan", "sub_plan", "commit", "result"})
+COMMIT_CLAIM_DIR_NAME = "commit_claims"
 
 
 def utc_now() -> datetime:
@@ -73,12 +74,35 @@ def _artifact_path(store: dict[str, Any], kind: str, digest: str) -> Path:
     return runtime_artifact_dir(store, kind) / f"{normalized}.json"
 
 
-def write_runtime_artifact(store: dict[str, Any], kind: str, digest: str, payload: dict[str, Any]) -> None:
-    path = _artifact_path(store, kind, digest)
+def _commit_claim_path(store: dict[str, Any], digest: str) -> Path:
+    normalized = digest.lower()
+    if not is_sha256_hex(normalized):
+        raise ValueError("commit claim digest must be a 64-character lowercase sha256 hex")
+    return runtime_root(store) / COMMIT_CLAIM_DIR_NAME / f"{normalized}.json"
+
+
+def _atomic_write_json(path: Path, payload: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(f"{path.name}.tmp.{os.getpid()}")
-    tmp.write_text(json.dumps(payload, sort_keys=True, indent=2) + "\n", encoding="utf-8")
+    data = json.dumps(payload, sort_keys=True, indent=2).encode("utf-8") + b"\n"
+    with tmp.open("wb") as handle:
+        handle.write(data)
+        handle.flush()
+        os.fsync(handle.fileno())
     tmp.replace(path)
+    try:
+        directory_fd = os.open(path.parent, os.O_RDONLY)
+    except OSError:
+        return
+    try:
+        os.fsync(directory_fd)
+    finally:
+        os.close(directory_fd)
+
+
+def write_runtime_artifact(store: dict[str, Any], kind: str, digest: str, payload: dict[str, Any]) -> None:
+    path = _artifact_path(store, kind, digest)
+    _atomic_write_json(path, payload)
 
 
 def read_runtime_artifact(store: dict[str, Any], kind: str, digest: str) -> dict[str, Any] | None:
@@ -93,6 +117,50 @@ def read_runtime_artifact(store: dict[str, Any], kind: str, digest: str) -> dict
     except (OSError, json.JSONDecodeError):
         return None
     return payload if isinstance(payload, dict) else None
+
+
+def create_commit_execution_claim(store: dict[str, Any], digest: str, payload: dict[str, Any]) -> bool:
+    """Create a private execution claim exactly once for a plan receipt."""
+
+    path = _commit_claim_path(store, digest)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    data = json.dumps(payload, sort_keys=True, indent=2).encode("utf-8") + b"\n"
+    try:
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    except FileExistsError:
+        return False
+    with os.fdopen(fd, "wb") as handle:
+        handle.write(data)
+        handle.flush()
+        os.fsync(handle.fileno())
+    try:
+        directory_fd = os.open(path.parent, os.O_RDONLY)
+    except OSError:
+        return True
+    try:
+        os.fsync(directory_fd)
+    finally:
+        os.close(directory_fd)
+    return True
+
+
+def read_commit_execution_claim(store: dict[str, Any], digest: str) -> dict[str, Any] | None:
+    try:
+        path = _commit_claim_path(store, digest)
+    except ValueError:
+        return None
+    if not path.exists():
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
+def write_commit_execution_claim(store: dict[str, Any], digest: str, payload: dict[str, Any]) -> None:
+    path = _commit_claim_path(store, digest)
+    _atomic_write_json(path, payload)
 
 
 def extract_runtime_ref(kind: str, value: str) -> str | None:

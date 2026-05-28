@@ -117,6 +117,9 @@ def run(argv: Sequence[str] | None = None, root: Path | None = None) -> int:
     args, unknown_args = parser.parse_known_args(selection.argv)
     args.cmdline_arg = selection.cmdline_arg or shlex.join(selection.argv)
     canonical = canonical_command(store, args.command)
+    if canonical == "observe":
+        args.observe_args = list(selection.argv[1:])
+        unknown_args = []
     if unknown_args:
         raise XctxError(f"unrecognized arguments: {' '.join(unknown_args)}")
     handler = handlers.get(canonical)

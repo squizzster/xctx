@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from xctx.domain.core import compact_subdomain
+from xctx.domain.core import attach_agent_subdomain_identity
 from xctx.protocol.guidance import command_hint
 
 
@@ -25,14 +25,13 @@ def scoped_mode_interface_payload(
     run_cmd = public_action.get("run_cmd")
     payload: dict[str, Any] = {
         "object_type": "xctx_action_discovery_interface",
-        "agent_domain": domain_id,
-        "agent_subdomain": compact_subdomain(store, domain_id, subdomain) if compact else subdomain["id"],
         "action": action_name,
         "action_description": public_action.get("desc"),
         "query_required": query_required,
         "configured_action": public_action,
         "data_boundary": "Interface only. Provide a query to execute this discovery action.",
     }
+    attach_agent_subdomain_identity(payload, store, domain_id, subdomain)
     if public_action.get("domain_affordance"):
         domain_action_name = str(public_action.get("domain_action_name") or action_name)
         payload["domain_affordance"] = True

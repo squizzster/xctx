@@ -12,9 +12,10 @@ from xctx.protocol.emitter import emit_final_stderr, emit_record, emit_stderr_ev
 def handle(store: dict, args: argparse.Namespace) -> int:
     command = "audit"
     called_as = cmdline_arg(args, command)
-    emit_stderr_event(store, command, "start", "auditing agent-domain surface", scope=args.scope)
+    audit_scope = getattr(args, "audit_scope", "all")
+    emit_stderr_event(store, command, "start", "auditing agent-domain surface", scope=args.scope, audit_scope=audit_scope)
     domain_level = audit_domain_level(store, args.scope)
-    payload = audit_payload(store, args.scope)
+    payload = audit_payload(store, args.scope, audit_scope=audit_scope)
     ok = not any(audit_check_failed(check) for check in payload.get("checks", []))
     emit_record(store, command, "audit", payload, ok=ok, cmdline_arg=called_as, domain_level=domain_level)
     emit_final_stderr(store, command, ok, "audit complete", records=1)

@@ -169,6 +169,42 @@ def test_next_moves_are_command_hint_objects() -> None:
         assert_no_string_next_moves(payload)
 
 
+def test_scope_run_cmd_preserves_shell_quoted_arguments() -> None:
+    ensure_libs_path()
+    from xctx.config.loader import load_store  # noqa: PLC0415
+    from xctx.protocol.accessors import scope_run_cmd  # noqa: PLC0415
+
+    store = load_store(root=ROOT)
+
+    assert (
+        scope_run_cmd(store, "xctx observe stock_intelligence_hub::equity_filing 'form:DEF 14A'")
+        == "./xctx observe stock_intelligence_hub::equity_filing 'form:DEF 14A'"
+    )
+
+
+def test_scope_run_cmd_keeps_placeholder_tokens_readable() -> None:
+    ensure_libs_path()
+    from xctx.config.loader import load_store  # noqa: PLC0415
+    from xctx.protocol.accessors import scope_run_cmd  # noqa: PLC0415
+
+    store = load_store(root=ROOT)
+
+    assert (
+        scope_run_cmd(store, "xctx observe <agent_domain>::<agent_subdomain> --id <id>")
+        == "./xctx observe <agent_domain>::<agent_subdomain> --id <id>"
+    )
+
+
+def test_scope_run_cmd_leaves_non_xctx_commands_unchanged() -> None:
+    ensure_libs_path()
+    from xctx.config.loader import load_store  # noqa: PLC0415
+    from xctx.protocol.accessors import scope_run_cmd  # noqa: PLC0415
+
+    store = load_store(root=ROOT)
+
+    assert scope_run_cmd(store, "python -m tool 'hello world'") == "python -m tool 'hello world'"
+
+
 def test_protocol_walker_uses_visible_command_surface_only() -> None:
     text = (ROOT / "bin" / "protocol_walker").read_text(encoding="utf-8")
     assert "xctx_other" not in text

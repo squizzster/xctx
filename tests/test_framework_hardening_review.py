@@ -114,7 +114,7 @@ def test_audit_status_treats_malformed_checks_as_failure(monkeypatch: pytest.Mon
     monkeypatch.setattr(
         audit_command,
         "audit_payload",
-        lambda _store, _scope: {
+        lambda _store, _scope, audit_scope="all": {
             "summary": {},
             "checks": ["not-a-check", {"id": "missing_status"}, {"id": "bad_status", "status": "unknown"}],
             "findings": [],

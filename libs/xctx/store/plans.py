@@ -15,7 +15,6 @@ from typing import Any
 
 HEX_DIGITS = set("0123456789abcdef")
 FULL_RECEIPT_LENGTH = 64
-SHORT_RECEIPT_LENGTH = 5
 PLAN_RECEIPT_PREFIX = "plan:sha256:"
 REQUIRED_PLAN_KEYS = frozenset({"plan_id", "receipt_sha256", "planner_id", "operation", "status"})
 
@@ -27,6 +26,14 @@ class ResolvedPlan:
     requested_plan: str
     plan: dict[str, Any] | None
     matches: list[str]
+
+
+@dataclass(frozen=True)
+class PlanRef:
+    ok: bool
+    error: str | None
+    requested: str
+    receipt_sha256: str | None
 
 
 def _is_hex(value: str, *, length: int) -> bool:
@@ -100,46 +107,28 @@ def read_plan(store: dict[str, Any], receipt_sha256: str) -> dict[str, Any] | No
     return payload if ok else None
 
 
-def _known_receipts(store: dict[str, Any]) -> list[str]:
-    directory = plan_store_dir(store)
-    if not directory.exists():
-        return []
-    receipts: list[str] = []
-    for path in directory.glob("*.json"):
-        stem = path.stem.lower()
-        if _is_hex(stem, length=FULL_RECEIPT_LENGTH):
-            receipts.append(stem)
-    return sorted(receipts)
+def parse_plan_ref(value: str) -> PlanRef:
+    """Parse the only executable plan reference form.
 
+    Short receipts and raw sha256 values are useful debug identifiers, but the
+    execute contract requires the explicit ``plan:sha256:<digest>`` bearer id.
+    """
 
-def _extract_receipt(value: str) -> tuple[str | None, str]:
     requested = value.strip()
     lowered = requested.lower()
-    if lowered.startswith(PLAN_RECEIPT_PREFIX):
-        return lowered[len(PLAN_RECEIPT_PREFIX) :], requested
-    return lowered, requested
+    if not lowered.startswith(PLAN_RECEIPT_PREFIX):
+        return PlanRef(False, "plan_id_required", requested, None)
+    receipt = lowered[len(PLAN_RECEIPT_PREFIX) :]
+    if not _is_hex(receipt, length=FULL_RECEIPT_LENGTH):
+        return PlanRef(False, "invalid_plan_receipt", requested, None)
+    return PlanRef(True, None, requested, receipt)
 
 
 def resolve_plan(store: dict[str, Any], value: str) -> ResolvedPlan:
-    extracted, requested = _extract_receipt(value)
-    if not extracted:
-        return ResolvedPlan(False, "invalid_plan_receipt", requested, None, [])
-
-    if _is_hex(extracted, length=FULL_RECEIPT_LENGTH):
-        plan = read_plan(store, extracted)
-        if plan is None:
-            return ResolvedPlan(False, "unknown_plan_receipt", requested, None, [])
-        return ResolvedPlan(True, None, requested, plan, [extracted])
-
-    if _is_hex(extracted, length=SHORT_RECEIPT_LENGTH):
-        matches = [receipt for receipt in _known_receipts(store) if receipt.startswith(extracted)]
-        if not matches:
-            return ResolvedPlan(False, "unknown_plan_receipt", requested, None, [])
-        if len(matches) > 1:
-            return ResolvedPlan(False, "ambiguous_plan_receipt", requested, None, matches)
-        plan = read_plan(store, matches[0])
-        if plan is None:
-            return ResolvedPlan(False, "unknown_plan_receipt", requested, None, matches)
-        return ResolvedPlan(True, None, requested, plan, matches)
-
-    return ResolvedPlan(False, "invalid_plan_receipt", requested, None, [])
+    parsed = parse_plan_ref(value)
+    if not parsed.ok or not parsed.receipt_sha256:
+        return ResolvedPlan(False, parsed.error or "invalid_plan_receipt", parsed.requested, None, [])
+    plan = read_plan(store, parsed.receipt_sha256)
+    if plan is None:
+        return ResolvedPlan(False, "unknown_plan_receipt", parsed.requested, None, [])
+    return ResolvedPlan(True, None, parsed.requested, plan, [parsed.receipt_sha256])

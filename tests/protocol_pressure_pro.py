@@ -253,7 +253,8 @@ def assert_scoped_filing_affordance_routing() -> None:
     assert any(item["id"] == "family:ANNUAL_REPORT" for item in family["results"]["live_data"]["matches"])
     assert len(family["results"]["live_data"]["matches"]) > 1
     priority = run_engine(["discover", "stock_intelligence_hub::search_priority_bucket", "critical"])
-    assert priority["results"]["agent_subdomain"] == "equity_filing"
+    assert priority["results"]["agent_subdomain_id"] == "stock_intelligence_hub::equity_filing"
+    assert priority["results"]["agent_subdomain"]["subdomain_id"] == "equity_filing"
     assert priority["results"]["live_data"]["matches"][0]["id"] == "priority:critical_always"
 
     form_mode = run_engine(["discover", "stock_intelligence_hub::equity_filing::search_forms"])
@@ -418,7 +419,8 @@ def assert_observe_error_and_cross_domain_routes() -> None:
     missing_range_target = run_engine(["observe", "stock_intelligence_hub::market_data_gateway", "--bars", "5"], code=1)
     assert missing_range_target["error"] == "missing observation target before configured observe options"
     spaced_form = run_engine(["observe", "stock_intelligence_hub::equity_filing", "form:DEF 14A"])
-    assert spaced_form["results"]["agent_subdomain"] == "equity_filing"
+    assert spaced_form["results"]["agent_subdomain_id"] == "stock_intelligence_hub::equity_filing"
+    assert spaced_form["results"]["agent_subdomain"]["subdomain_id"] == "equity_filing"
     assert spaced_form["results"]["live_data"]["id"] == "form:DEF 14A"
     range_conflict = run_engine(
         ["observe", "stock_intelligence_hub::market_data_gateway", "AAPL", "--bars", "1", "--calendar-days", "1"],
