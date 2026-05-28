@@ -461,6 +461,62 @@ def test_planned_effect_execution_module_uses_moved_adapter_call_boundary(tmp_pa
     assert not hasattr(planning_execute, "call_external_command")
 
 
+def test_planned_effect_start_publishes_running_artifacts(tmp_path, monkeypatch) -> None:
+    ensure_libs_path()
+    from xctx.domain.planning_planned_effect_start import publish_running_execution_artifacts  # noqa: PLC0415
+    from xctx.store.runtime_artifacts import read_runtime_artifact  # noqa: PLC0415
+
+    store = _load_store(tmp_path, monkeypatch)
+    state = _terminal_planned_effect_state(store)
+
+    commit, running_result = publish_running_execution_artifacts(
+        store=store,
+        receipt=state.receipt,
+        canonical_plan_id=state.plan["plan_id"],
+        commit_id=state.commit_id,
+        result_id=state.result_id,
+        planned_effect=state.planned_effect,
+        master_plan=state.master_plan,
+        sub_plan=state.sub_plan,
+    )
+    persisted_commit = read_runtime_artifact(store, "commit", state.receipt)
+    persisted_result = read_runtime_artifact(store, "result", state.receipt)
+    master_plan = read_runtime_artifact(store, "master_plan", state.receipt)
+    sub_plan = read_runtime_artifact(store, "sub_plan", state.receipt)
+
+    assert commit["status"] == "claimed"
+    assert running_result["status"] == "running"
+    assert persisted_commit == commit
+    assert persisted_result == running_result
+    assert master_plan is not None and master_plan["execution_status"] == "committing"
+    assert sub_plan is not None and sub_plan["execution_status"] == "committing"
+
+
+def test_planned_effect_start_marks_commit_and_claim_running(tmp_path, monkeypatch) -> None:
+    ensure_libs_path()
+    from xctx.domain.planning_planned_effect_start import mark_execution_started  # noqa: PLC0415
+    from xctx.store.runtime_artifacts import read_commit_execution_claim, read_runtime_artifact  # noqa: PLC0415
+
+    store = _load_store(tmp_path, monkeypatch)
+    state = _terminal_planned_effect_state(store)
+
+    running_commit, running_claim = mark_execution_started(
+        store=store,
+        receipt=state.receipt,
+        commit=state.commit,
+        claim=state.claim,
+    )
+    persisted_commit = read_runtime_artifact(store, "commit", state.receipt)
+    persisted_claim = read_commit_execution_claim(store, state.receipt)
+
+    assert running_commit["status"] == "running"
+    assert running_claim["status"] == "running"
+    assert running_claim["started_at"]
+    assert running_claim["heartbeat_at"] == running_claim["started_at"]
+    assert persisted_commit == running_commit
+    assert persisted_claim == running_claim
+
+
 def test_planned_effect_terminal_success_persists_committed_artifacts(tmp_path, monkeypatch) -> None:
     ensure_libs_path()
     from xctx.domain.planning_planned_effect_terminal import finalize_adapter_execution  # noqa: PLC0415

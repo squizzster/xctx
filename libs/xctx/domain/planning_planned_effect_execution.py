@@ -11,14 +11,14 @@ from xctx.domain.planning_commit_state import (
     mark_claim_abandoned_if_stale,
     new_execution_claim,
 )
-from xctx.domain.planning_execution import (
-    commit_context_args,
-    materialized_artifact_committing,
-    running_execution_artifacts,
-)
+from xctx.domain.planning_execution import commit_context_args
 from xctx.domain.planning_ledger import plan_is_committed
 from xctx.domain.planning_materialization import verify_plan_materialization
 from xctx.domain.planning_payloads import execution_claim_refusal_payload, plan_already_committed_payload
+from xctx.domain.planning_planned_effect_start import (
+    mark_execution_started,
+    publish_running_execution_artifacts,
+)
 from xctx.domain.planning_planned_effect_terminal import (
     adapter_exception_failure_response,
     finalize_adapter_execution,
@@ -26,13 +26,9 @@ from xctx.domain.planning_planned_effect_terminal import (
 from xctx.ports.external_command import call_external_command
 from xctx.store.runtime_artifacts import (
     create_commit_execution_claim,
-    isoformat_utc,
     read_commit_execution_claim,
     read_runtime_artifact,
     runtime_artifact_ref,
-    utc_now,
-    write_commit_execution_claim,
-    write_runtime_artifact,
 )
 
 
@@ -149,44 +145,19 @@ def execute_planned_effect_payload(
             claim=existing_claim,
         )
 
-    commit, running_result = running_execution_artifacts(
+    commit, running_result = publish_running_execution_artifacts(
+        store=store,
+        receipt=receipt,
         canonical_plan_id=canonical_plan_id,
         commit_id=commit_id,
         result_id=result_id,
         planned_effect=planned_effect,
-        now=utc_now(),
-    )
-    write_runtime_artifact(store, "commit", receipt, commit)
-    write_runtime_artifact(store, "result", receipt, running_result)
-    write_runtime_artifact(
-        store,
-        "master_plan",
-        receipt,
-        materialized_artifact_committing(
-            master_plan,
-            commit_id=commit_id,
-            result_id=result_id,
-            committed_at=running_result["created_at"],
-        ),
-    )
-    write_runtime_artifact(
-        store,
-        "sub_plan",
-        receipt,
-        materialized_artifact_committing(
-            sub_plan,
-            commit_id=commit_id,
-            result_id=result_id,
-            committed_at=running_result["created_at"],
-        ),
+        master_plan=master_plan,
+        sub_plan=sub_plan,
     )
 
     try:
-        started = isoformat_utc(utc_now())
-        commit["status"] = "running"
-        write_runtime_artifact(store, "commit", receipt, commit)
-        claim = {**claim, "status": "running", "started_at": started, "heartbeat_at": started}
-        write_commit_execution_claim(store, receipt, claim)
+        commit, claim = mark_execution_started(store=store, receipt=receipt, commit=commit, claim=claim)
         subdomain = resolve_subdomain(
             store,
             str(planned_effect["agent_domain"]),
