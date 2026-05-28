@@ -798,7 +798,7 @@ def assert_connector_supervisor_middleware() -> None:
     assert "connector" not in live_files
     assert "external_command" not in live_files
     assert "command_status" not in live_files
-    assert "pagination" not in live_files
+    assert live_files["pagination"]["returned_count"] == 1
     assert live_files["files"][0]["id"] == "file:README.txt"
     assert "This is a bundled file-manager demo fixture" not in json.dumps(live_files)
 
@@ -861,7 +861,16 @@ def assert_connector_supervisor_middleware() -> None:
 
 
 def assert_plan_execute_other_and_output() -> None:
-    plan = one(["plan", "bring_online", "stock_intelligence_hub::market_data_gateway"])
+    plan = one(
+        [
+            "plan",
+            "guess_the_number_game::choose_random_number::choose_between_bounds",
+            "--minimum",
+            "1",
+            "--maximum",
+            "10",
+        ]
+    )
     results = plan["results"]
     assert plan["record_type"] == "plan"
     assert re.fullmatch(r"[0-9a-f]{64}", results["planner_id"])
@@ -872,7 +881,7 @@ def assert_plan_execute_other_and_output() -> None:
     execute_full = one(["execute", results["plan_id"], "--commit"])
     assert execute_full["record_type"] == "execution_result"
     assert execute_full["ok"] is True
-    assert execute_full["results"]["mutations_applied"] == 0
+    assert execute_full["results"]["mutations_applied"] == 1
 
     refused = one(["execute", "not-a-plan", "--commit"], expected_code=1)
     assert refused["ok"] is False

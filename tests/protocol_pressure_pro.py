@@ -292,7 +292,7 @@ def assert_scoped_file_affordance_routing() -> None:
     assert file_list["results"]["live_data"]["object_type"] == "external_command_filesystem_file_list"
     assert "connector" not in file_list["results"]["live_data"]
     assert file_list["results"]["live_data"]["files"][0]["id"] == "file:README.txt"
-    assert "pagination" not in file_list["results"]["live_data"]
+    assert file_list["results"]["live_data"]["pagination"]["returned_count"] == 1
     assert "external_command" not in file_list["results"]["live_data"]
     assert "command_status" not in file_list["results"]["live_data"]
     assert "This is a bundled file-manager demo fixture" not in json.dumps(file_list["results"]["live_data"])
@@ -486,7 +486,16 @@ def assert_plan_execute_binding() -> None:
     random_full = run_engine(["execute", "plan:sha256:" + "a" * 64, "--commit"], code=1)
     assert random_full["error"] == "unknown_plan_receipt"
 
-    plan = run_engine(["plan", "bring_online", "stock_intelligence_hub::market_data_gateway"])
+    plan = run_engine(
+        [
+            "plan",
+            "guess_the_number_game::choose_random_number::choose_between_bounds",
+            "--minimum",
+            "1",
+            "--maximum",
+            "10",
+        ]
+    )
     results = plan["results"]
     assert re.fullmatch(r"[0-9a-f]{64}", results["receipt_sha256"])
     assert re.fullmatch(r"[0-9a-f]{5}", results["receipt_sha5"])
@@ -518,7 +527,16 @@ def assert_real_cli_launcher_and_ledger_probe() -> None:
     assert_cmd(root, record_type="discovery", level="root")
     unknown = run_engine(["execute", "abcde", "--commit"], code=1)
     assert unknown["error"] == "plan_id_required"
-    plan = run_engine(["plan", "bring_online", "stock_intelligence_hub::market_data_gateway"])
+    plan = run_engine(
+        [
+            "plan",
+            "guess_the_number_game::choose_random_number::choose_between_bounds",
+            "--minimum",
+            "1",
+            "--maximum",
+            "10",
+        ]
+    )
     executed = run_engine(["--max", "execute", plan["results"]["plan_id"], "--commit"])
     assert executed["results"]["planner_binding"]["verified"] is True
 

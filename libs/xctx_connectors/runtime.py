@@ -212,14 +212,20 @@ def parse_controls(args: list[str], *, default_limit: int, max_limit: int) -> tu
                 raise ValueError(f"{token} requires a value")
             value = args[index + 1]
             if token == "--limit":
-                limit = int(value)
+                try:
+                    limit = int(value)
+                except ValueError as exc:
+                    raise ValueError("--limit requires an integer") from exc
                 if limit < 1:
                     raise ValueError("--limit must be at least 1")
                 if limit > max_limit:
                     raise ValueError(f"--limit exceeds maximum {max_limit}")
                 controls["limit"] = limit
             elif token == "--cursor":
-                cursor = int(value)
+                try:
+                    cursor = int(value)
+                except ValueError as exc:
+                    raise ValueError("--cursor requires an integer") from exc
                 if cursor < 0:
                     raise ValueError("--cursor cannot be negative")
                 controls["cursor"] = cursor

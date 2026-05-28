@@ -312,7 +312,7 @@ def test_external_command_filesystem_discovery_and_observation() -> None:
     assert "connector" not in file_live
     assert file_live["files"][0]["id"] == "file:README.txt"
     assert file_live["files"][0]["observe_cmd"] == "./xctx observe file_manager::home_directory file:README.txt"
-    assert "pagination" not in file_live
+    assert file_live["pagination"]["returned_count"] == 1
     assert "external_command" not in file_live
     assert "command_status" not in file_live
     assert "This is a bundled file-manager demo fixture" not in json.dumps(file_live)

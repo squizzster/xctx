@@ -200,3 +200,58 @@ def test_unknown_game_result_rejected_at_plan_time(monkeypatch: pytest.MonkeyPat
     assert payload["ok"] is False
     assert payload["error"] == f"unknown game result handle: {bogus}"
     assert "plan_id" not in json.dumps(payload)
+
+
+# Adapter/file-manager tests
+
+
+def test_file_manager_list_files_always_includes_pagination() -> None:
+    rc, payload = run_runtime_json(
+        [
+            "discover",
+            "file_manager::home_directory::list_files",
+            "--limit",
+            "3",
+        ]
+    )
+
+    assert rc == 0
+    live = payload["results"]["live_data"]
+    assert "pagination" in live
+    assert live["pagination"]["total_count"] >= live["pagination"]["returned_count"]
+    assert {"total_count", "returned_count", "limit", "cursor", "next_cursor", "has_more"} <= set(
+        live["pagination"]
+    )
+
+
+def test_file_manager_not_found_guidance_uses_canonical_action_ref() -> None:
+    rc, payload = run_runtime_json(
+        [
+            "observe",
+            "file_manager::home_directory",
+            "file:does-not-exist.txt",
+        ]
+    )
+
+    assert rc == 0
+    live = payload["results"]["live_data"]
+    assert live["found"] is False
+    moves = json.dumps(live["next_moves"])
+    assert "./xctx discover file_manager::home_directory::list_files" in moves
+    assert "./xctx discover file_manager::home_directory list_files" not in moves
+
+
+def test_file_manager_bad_cursor_returns_clean_connector_error() -> None:
+    rc, payload = run_runtime_json(
+        [
+            "discover",
+            "file_manager::home_directory::list_files",
+            "--cursor",
+            "abc",
+        ]
+    )
+
+    assert rc == 1
+    assert payload["ok"] is False
+    assert payload["error"] == "--cursor requires an integer"
+    assert "invalid literal" not in json.dumps(payload)

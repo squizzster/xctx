@@ -282,13 +282,7 @@ def _list_filesystem(
     if runtime.detail_is_max(context):
         payload["external_command"] = " ".join(shlex.quote(item) for item in result["argv"])
         payload["command_status"] = runtime.command_status_from_external_result(result, include_argv=True)
-    if projection == "full" or not (
-        pagination["total_count"] == 1
-        and pagination["returned_count"] == 1
-        and pagination["cursor"] is None
-        and pagination["next_cursor"] is None
-    ):
-        payload["pagination"] = pagination
+    payload["pagination"] = pagination
     return payload
 
 
@@ -334,7 +328,10 @@ def _filesystem_not_found(context: Any, relative: str, *, expected: str, runtime
         "expected_type": expected,
         "relative_path": relative,
         "status": "not_found",
-        "next_moves": [f"./xctx discover {context.adapter_ref} list_files"],
+        "next_moves": [
+            f"./xctx discover {context.adapter_ref}::list_files",
+            f"./xctx discover {context.adapter_ref}::list_directories",
+        ],
     }
     if runtime.detail_is_max(context):
         payload["command_status"] = runtime.command_status(ok=True)
