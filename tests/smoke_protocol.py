@@ -18,6 +18,7 @@ ROOT = Path(__file__).resolve().parents[1]
 LIBS = ROOT / "libs"
 XCTX = ROOT / "xctx"
 FILE_MANAGER_README = ROOT / "data" / "file_manager_home" / "README.txt"
+TEST_MARKET_DATA_SQLITE = ROOT / "data" / "mini_stocks.example.sqlite"
 
 if str(LIBS) not in sys.path:
     sys.path.insert(0, str(LIBS))
@@ -46,23 +47,22 @@ def capture_engine(
     expected_code: int = 0,
     stdout: io.StringIO | None = None,
 ) -> tuple[str, str]:
+    effective_env = {"XCTX_MARKET_DATA_SQLITE": str(TEST_MARKET_DATA_SQLITE), **(env or {})}
     old_env: dict[str, str | None] = {}
-    if env:
-        for key, value in env.items():
-            old_env[key] = os.environ.get(key)
-            os.environ[key] = value
+    for key, value in effective_env.items():
+        old_env[key] = os.environ.get(key)
+        os.environ[key] = value
     out = stdout or io.StringIO()
     err = io.StringIO()
     try:
         with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
             code = xctx_main(list(args), root=ROOT)
     finally:
-        if env:
-            for key, value in old_env.items():
-                if value is None:
-                    os.environ.pop(key, None)
-                else:
-                    os.environ[key] = value
+        for key, value in old_env.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
     assert code == expected_code, out.getvalue() + err.getvalue()
     assert err.getvalue() == "", err.getvalue()
     return out.getvalue(), err.getvalue()
@@ -169,7 +169,7 @@ def assert_modular_layout() -> None:
         "data/file_manager_home/README.txt",
         "data/file_manager_home/docs/manual.txt",
         "data/edgar_form_reference_taxonomy.sqlite",
-        "data/mini_stocks.sqlite",
+        "data/mini_stocks.example.sqlite",
     ]
     for rel in expected:
         assert (ROOT / rel).exists(), rel
@@ -722,7 +722,7 @@ def assert_observe_audit_repair() -> None:
     market_audit = one(["audit", "stock_intelligence_hub::market_data_gateway"])
     market_check_ids = {item["id"] for item in market_audit["results"]["checks"]}
     assert "audit:market_data_gateway:aapl_latest_price_resolves" in market_check_ids
-    assert "audit:market_data_gateway:mini_stocks_sqlite_exists" in market_check_ids
+    assert "audit:market_data_gateway:market_data_sqlite_available" in market_check_ids
 
     file_audit = one(["audit", "file_manager::home_directory"])
     file_check_ids = {item["id"] for item in file_audit["results"]["checks"]}

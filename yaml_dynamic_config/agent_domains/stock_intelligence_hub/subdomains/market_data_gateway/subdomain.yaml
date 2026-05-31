@@ -1,11 +1,11 @@
 id: market_data_gateway
 kind: agent_subdomain
 status: online
-basic_description: Market data gateway for canonical equity instrument identity and bundled OHLCV series lookup.
+basic_description: Market data gateway for canonical equity instrument identity and read-only OHLCV series lookup.
 full_description: >-
-  This subdomain is the stock-domain market data gateway surface. It exposes a small curated canonical instrument inventory for trusted cross-subdomain handoff and a bundled read-only SQLite OHLCV fixture for discovering observable market-series objects. It is not a live quote feed and does not mutate provider-backed data.
+  This subdomain is the stock-domain market data gateway surface. It exposes a curated canonical instrument inventory for trusted cross-subdomain handoff and a read-only SQLite OHLCV database for discovering observable market-series objects. It is not a live quote feed and does not mutate provider-backed data.
 data_description: >-
-  Bundled read-only YAML reference data for canonical instrument IDs plus bundled read-only SQLite mini_stocks market-series fixture. Instrument IDs are stable stock_intelligence_hub identifiers; market_series IDs identify local OHLCV fixtures.
+  Bundled read-only YAML reference data for canonical instrument IDs plus a read-only SQLite market-series database. data/mini_stocks.sqlite is the ignored local runtime slot; data/mini_stocks.example.sqlite is the tracked seed fallback. Instrument IDs are stable stock_intelligence_hub identifiers; market_series IDs identify local OHLCV series.
 entrypoint:
   file: connector_supervisor.py
   protocol: json_stdout
@@ -15,10 +15,14 @@ connector:
   target_entrypoint: examples/stock_intelligence_hub/adapters/market_data_gateway.py
   timeout_seconds: 30
   max_output_bytes: 65536
+  env_passthrough:
+    - XCTX_MARKET_DATA_SQLITE
 data:
   storage_engine: mixed_yaml_sqlite
   instrument_path: yaml_dynamic_config/agent_domains/stock_intelligence_hub/subdomains/market_data_gateway/instruments.yaml
   market_data_path: data/mini_stocks.sqlite
+  example_market_data_path: data/mini_stocks.example.sqlite
+  env_override: XCTX_MARKET_DATA_SQLITE
   read_only: true
 actions:
   discover:
@@ -51,7 +55,7 @@ actions:
     entrypoint_command: search-market-series
     query_required: true
     mode_kind: search
-    desc: Discover bundled read-only OHLCV market-series objects by ticker, issuer, provider, or local series id without returning bar values.
+    desc: Discover read-only OHLCV market-series objects by ticker, issuer, provider, or local series id without returning bar values.
     collection:
       result_path: matches
       default_limit: 10
@@ -71,7 +75,7 @@ actions:
     priority: 27
     entrypoint_command: latest-price
     query_required: true
-    desc: latest_price discovers the latest available bundled price point; observe returns the price data. Not a live quote feed.
+    desc: latest_price discovers the latest available local database price point; observe returns the price data. Not a live quote feed.
     run_cmd: ./xctx discover stock_intelligence_hub::market_data_gateway::latest_price <ticker|instrument_id|CIK|market_series:ticker:daily>
   list_instruments:
     priority: 30

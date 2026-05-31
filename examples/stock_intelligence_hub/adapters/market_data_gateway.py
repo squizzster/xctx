@@ -141,50 +141,53 @@ def main(argv: list[str] | None = None) -> int:
     command = args[0] if args else "discover"
     rest = args[1:]
 
-    if command == "discover":
-        try:
-            query, projection = parse_discover_args(rest)
-        except ValueError as exc:
-            return usage_error(str(exc))
-        payload = instrument_search_payload(ROOT, query) if query else instrument_registry_discovery(ROOT, projection=projection)
-    elif command in {"search", "search_entity_instrument", "search-instruments", "search-instrument", "search_entity"}:
-        query = joined_query(rest)
-        if not query:
-            return usage_error("search requires a company, ticker, CIK, issuer id, instrument id, or alias")
-        payload = instrument_search_payload(ROOT, query)
-    elif command in {"search-market-series", "search_market_series", "search-series", "search_series"}:
-        try:
-            query, limit, projection = parse_search_args(rest)
-        except ValueError as exc:
-            return usage_error(str(exc))
-        if not query:
-            return usage_error("search-market-series requires a ticker, issuer, provider, or text query")
-        payload = market_series_search_payload(ROOT, query, limit=limit, projection=projection)
-    elif command in {"latest-price", "latest_price", "latest", "quote", "latest_quote"}:
-        query = joined_query(rest)
-        if not query:
-            return usage_error("latest-price requires a ticker, instrument id, CIK, issuer id, or market_series id")
-        payload = latest_price_discovery(ROOT, query)
-    elif command in {"list", "list_instruments", "list-instruments"}:
-        try:
-            payload = list_instruments(ROOT, rest)
-        except ValueError as exc:
-            return usage_error(str(exc))
-    elif command == "observe":
-        try:
-            identifier, range_request = parse_observe_args(rest)
-        except ValueError as exc:
-            return usage_error(str(exc))
-        if not identifier:
-            return usage_error("observe requires an instrument id, ticker, CIK, issuer id, or market_series id")
-        try:
-            payload = instrument_observation(ROOT, identifier, range_request)
-        except ValueError as exc:
-            return usage_error(str(exc))
-    elif command == "audit":
-        payload = instrument_audit(ROOT)
-    else:
-        return usage_error(f"unknown market_data_gateway command: {command}")
+    try:
+        if command == "discover":
+            try:
+                query, projection = parse_discover_args(rest)
+            except ValueError as exc:
+                return usage_error(str(exc))
+            payload = instrument_search_payload(ROOT, query) if query else instrument_registry_discovery(ROOT, projection=projection)
+        elif command in {"search", "search_entity_instrument", "search-instruments", "search-instrument", "search_entity"}:
+            query = joined_query(rest)
+            if not query:
+                return usage_error("search requires a company, ticker, CIK, issuer id, instrument id, or alias")
+            payload = instrument_search_payload(ROOT, query)
+        elif command in {"search-market-series", "search_market_series", "search-series", "search_series"}:
+            try:
+                query, limit, projection = parse_search_args(rest)
+            except ValueError as exc:
+                return usage_error(str(exc))
+            if not query:
+                return usage_error("search-market-series requires a ticker, issuer, provider, or text query")
+            payload = market_series_search_payload(ROOT, query, limit=limit, projection=projection)
+        elif command in {"latest-price", "latest_price", "latest", "quote", "latest_quote"}:
+            query = joined_query(rest)
+            if not query:
+                return usage_error("latest-price requires a ticker, instrument id, CIK, issuer id, or market_series id")
+            payload = latest_price_discovery(ROOT, query)
+        elif command in {"list", "list_instruments", "list-instruments"}:
+            try:
+                payload = list_instruments(ROOT, rest)
+            except ValueError as exc:
+                return usage_error(str(exc))
+        elif command == "observe":
+            try:
+                identifier, range_request = parse_observe_args(rest)
+            except ValueError as exc:
+                return usage_error(str(exc))
+            if not identifier:
+                return usage_error("observe requires an instrument id, ticker, CIK, issuer id, or market_series id")
+            try:
+                payload = instrument_observation(ROOT, identifier, range_request)
+            except ValueError as exc:
+                return usage_error(str(exc))
+        elif command == "audit":
+            payload = instrument_audit(ROOT)
+        else:
+            return usage_error(f"unknown market_data_gateway command: {command}")
+    except FileNotFoundError as exc:
+        return usage_error(str(exc))
 
     emit_json(payload, compact=compact)
     return 0

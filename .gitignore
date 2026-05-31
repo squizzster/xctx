@@ -7,10 +7,13 @@ tmp_experiments_go_here/
 sql_id_library
 
 *.sqlite
-!data/*.sqlite
+!data/edgar_form_reference_taxonomy.sqlite
+!data/mini_stocks.example.sqlite
 *.sqlite3
 *.db
 *.db-journal
+*.sqlite-shm
+*.sqlite-wal
 *.sqlite-journal
 
 .pytest_cache/

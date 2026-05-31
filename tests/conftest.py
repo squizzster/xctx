@@ -6,16 +6,21 @@ import os
 import shutil
 import signal
 import tempfile
+from pathlib import Path
 
 import pytest
 
 from framework_helpers import ensure_test_process_scope, kill_process_rows, local_gate_process_rows
+
+ROOT = Path(__file__).resolve().parents[1]
+TEST_MARKET_DATA_SQLITE = ROOT / "data" / "mini_stocks.example.sqlite"
 
 
 @pytest.fixture(autouse=True)
 def isolate_xctx_runtime_dir(monkeypatch):
     runtime_dir = tempfile.mkdtemp(prefix="xctx_pytest_runtime_")
     monkeypatch.setenv("XCTX_RUNTIME_DIR", str(runtime_dir))
+    monkeypatch.setenv("XCTX_MARKET_DATA_SQLITE", str(TEST_MARKET_DATA_SQLITE))
     try:
         yield runtime_dir
     finally:

@@ -13,7 +13,9 @@ from typing import Any
 from xctx_live.common import load_yaml, normalize_search_text
 
 INSTRUMENT_DATA = Path("yaml_dynamic_config/agent_domains/stock_intelligence_hub/subdomains/market_data_gateway/instruments.yaml")
-MINI_STOCKS_DB = Path("data/mini_stocks.sqlite")
+MARKET_DATA_DB = Path("data/mini_stocks.sqlite")
+MARKET_DATA_EXAMPLE_DB = Path("data/mini_stocks.example.sqlite")
+MARKET_DATA_DB_ENV = "XCTX_MARKET_DATA_SQLITE"
 PRICE_SCALE = 1_000_000
 DEFAULT_SEARCH_LIMIT = 10
 SEARCH_MAX_LIMIT = 50
@@ -118,14 +120,68 @@ def instrument_data_path(root: Path) -> Path:
     return root / INSTRUMENT_DATA
 
 
+def _market_db_candidate(root: Path, value: str | Path) -> Path:
+    path = Path(value).expanduser()
+    if path.is_absolute():
+        return path
+    return root / path
+
+
+def _market_db_display_path(root: Path, path: Path) -> str:
+    try:
+        return str(path.resolve().relative_to(root.resolve()))
+    except ValueError:
+        return str(path.resolve())
+    except OSError:
+        return str(path)
+
+
+def market_db_selection(root: Path) -> dict[str, Any]:
+    env_value = os.environ.get(MARKET_DATA_DB_ENV)
+    if env_value:
+        path = _market_db_candidate(root, env_value)
+        return {
+            "source": "env_override",
+            "env_var": MARKET_DATA_DB_ENV,
+            "configured_path": env_value,
+            "path": path,
+            "display_path": _market_db_display_path(root, path),
+            "exists": path.exists(),
+            "strict": True,
+            "fallback_paths": [],
+        }
+
+    runtime_path = root / MARKET_DATA_DB
+    example_path = root / MARKET_DATA_EXAMPLE_DB
+    if runtime_path.exists():
+        path = runtime_path
+        source = "local_runtime"
+    else:
+        path = example_path
+        source = "example_fixture"
+    return {
+        "source": source,
+        "env_var": MARKET_DATA_DB_ENV,
+        "configured_path": str(MARKET_DATA_DB),
+        "path": path,
+        "display_path": _market_db_display_path(root, path),
+        "exists": path.exists(),
+        "strict": False,
+        "fallback_paths": [str(MARKET_DATA_DB), str(MARKET_DATA_EXAMPLE_DB)],
+    }
+
+
 def market_db_path(root: Path) -> Path:
-    return root / MINI_STOCKS_DB
+    return Path(market_db_selection(root)["path"])
 
 
 def connect_market(root: Path) -> sqlite3.Connection:
-    path = market_db_path(root)
+    selection = market_db_selection(root)
+    path = Path(selection["path"])
     if not path.exists():
-        raise FileNotFoundError(f"mini_stocks sqlite not found: {path}")
+        source = selection["source"]
+        env_var = selection["env_var"]
+        raise FileNotFoundError(f"market data sqlite not found from {source} ({env_var}): {path}")
     conn = sqlite3.connect(f"file:{path.resolve()}?mode=ro", uri=True)
     conn.row_factory = sqlite3.Row
     return conn
@@ -276,16 +332,18 @@ def _instrument_lookup_token(identifier: str) -> str | None:
 
 
 def load_reference_instruments(root: Path) -> list[dict[str, Any]]:
-    """Load canonical instrument candidates from the bundled market fixture.
+    """Load canonical instrument candidates from the selected market database.
 
-    The YAML seed remains the curated canonical handoff sample. The SQLite market
-    fixture adds the larger real reference universe used for ticker-first search,
-    e.g. a query of "A" can resolve the ticker A before broader text matches.
-    Ticker aliases from the fixture are also folded into identity resolution so
-    former or provider-observed symbols can lead back to the canonical object.
+    The YAML seed remains the curated canonical handoff sample. The selected
+    SQLite market database adds the larger real reference universe used for
+    ticker-first search, e.g. a query of "A" can resolve the ticker A before
+    broader text matches. Ticker aliases from the database are also folded into
+    identity resolution so former or provider-observed symbols can lead back to
+    the canonical object.
     """
-    path = market_db_path(root)
-    if not path.exists():
+    selection = market_db_selection(root)
+    path = Path(selection["path"])
+    if not path.exists() and not selection["strict"]:
         return []
     with connect_market(root) as conn:
         rows = conn.execute(
@@ -346,7 +404,7 @@ def load_reference_instruments(root: Path) -> list[dict[str, Any]]:
                 "provider": row["provider"],
                 "composite_figi": row["composite_figi"],
                 "share_class_figi": row["share_class_figi"],
-                "data_origin": "mini_stocks.reference_universe_snapshots",
+                "data_origin": f"{selection['source']}.reference_universe_snapshots",
             }
         )
     return out
@@ -814,14 +872,21 @@ def _table_count(conn: sqlite3.Connection, table: str) -> int:
 
 
 def market_stats(root: Path) -> dict[str, Any]:
+    selection = market_db_selection(root)
     with connect_market(root) as conn:
         meta = {row[0]: row[1] for row in conn.execute("SELECT key, value FROM schema_metadata").fetchall()}
+        mini_fixture = meta.get("mini_fixture") == "true"
         return {
             "storage_engine": "sqlite",
             "read_only": True,
-            "database_path": str(MINI_STOCKS_DB),
+            "database_path": selection["display_path"],
+            "database_source": selection["source"],
+            "database_env_var": selection["env_var"],
+            "runtime_database_path": str(MARKET_DATA_DB),
+            "example_database_path": str(MARKET_DATA_EXAMPLE_DB),
             "schema_version": meta.get("schema_version"),
-            "mini_fixture": meta.get("mini_fixture") == "true",
+            "mini_fixture": mini_fixture,
+            "fixture_kind": "example" if mini_fixture else "production_or_runtime",
             "reference_universe_snapshots": _table_count(conn, "reference_universe_snapshots"),
             "ohlcv_series": _table_count(conn, "ohlcv_series"),
             "bar_datasets": _table_count(conn, "bar_datasets"),
@@ -920,10 +985,10 @@ def _empty_market_series_guidance(record: dict[str, Any] | None) -> str:
         ticker = str(record.get("ticker") or "").upper()
         subject = ticker or str(record.get("instrument_id") or "the resolved instrument")
         return (
-            f"Known instrument {subject} was resolved, but no bundled market_series fixture is available for it. "
-            "Try a ticker from the bundled mini fixture, for example AAPL, A, AA, ABNB, or CBOE."
+            f"Known instrument {subject} was resolved, but no selected market_series is available for it. "
+            "Try a ticker from the selected market database, for example AAPL, A, AA, ABNB, or CBOE."
         )
-    return "Try a ticker from the bundled mini fixture, for example AAPL, A, AA, ABNB, or CBOE."
+    return "Try a ticker from the selected market database, for example AAPL, A, AA, ABNB, or CBOE."
 
 
 def _csv_safe_token(value: Any) -> str:
@@ -1506,7 +1571,7 @@ def instrument_registry_discovery(root: Path, *, projection: str = "compact") ->
         "projection": "full",
         "context_state": "without_equity",
         "description": "Search this subdomain first when an agent has a company, ticker, CIK, or alias and needs the canonical local ID or a bundled OHLCV series.",
-        "data_description": "Bundled read-only canonical instrument seed set plus bundled read-only mini_stocks SQLite market-series fixture.",
+        "data_description": "Bundled read-only canonical instrument seed set plus read-only SQLite market-series database. data/mini_stocks.sqlite is the ignored local runtime slot; data/mini_stocks.example.sqlite is the tracked seed fallback.",
         "stats": stats_payload,
         "search_fields": ["instrument_id", "issuer_id", "ticker", "name", "cik", "aliases", "ticker_aliases", "exchange", "mic", "market_series_id", "provider", "figi"],
         "actions": {
@@ -1633,7 +1698,8 @@ def instrument_observation(root: Path, identifier: str, range_request: dict[str,
 def instrument_audit(root: Path) -> dict[str, Any]:
     instruments = load_all_instruments(root)
     ids = [item.get("instrument_id") for item in instruments]
-    ciks = [item.get("cik") for item in instruments]
+    ciks = [str(item.get("cik") or "") for item in instruments]
+    invalid_ciks = [cik for cik in ciks if cik and not (len(cik) == 10 and cik.isdigit())]
     checks = [
         {
             "id": "audit:market_data_gateway:instrument_data_file_exists",
@@ -1641,9 +1707,10 @@ def instrument_audit(root: Path) -> dict[str, Any]:
             "path": str(INSTRUMENT_DATA),
         },
         {
-            "id": "audit:market_data_gateway:mini_stocks_sqlite_exists",
-            "status": "pass" if market_db_path(root).exists() else "fail",
-            "path": str(MINI_STOCKS_DB),
+            "id": "audit:market_data_gateway:market_data_sqlite_available",
+            "status": "pass" if market_db_selection(root)["exists"] else "fail",
+            "path": market_db_selection(root)["display_path"],
+            "source": market_db_selection(root)["source"],
         },
         {
             "id": "audit:market_data_gateway:instrument_count",
@@ -1657,11 +1724,13 @@ def instrument_audit(root: Path) -> dict[str, Any]:
         },
         {
             "id": "audit:market_data_gateway:cik_pattern",
-            "status": "pass" if all(isinstance(cik, str) and len(cik) == 10 and cik.isdigit() for cik in ciks) else "fail",
-            "value": len(ciks),
+            "status": "pass" if not invalid_ciks else "fail",
+            "value": len(ciks) - ciks.count(""),
+            "missing_cik_count": ciks.count(""),
+            "invalid_cik_count": len(invalid_ciks),
         },
     ]
-    if market_db_path(root).exists():
+    if market_db_selection(root)["exists"]:
         mstats = market_stats(root)
         checks.extend(
             [
@@ -1674,4 +1743,4 @@ def instrument_audit(root: Path) -> dict[str, Any]:
                 {"id": "audit:market_data_gateway:apple_punctuation_name_resolves", "status": "pass" if (search_instruments(root, "Apple, Inc.", limit=1) or [{}])[0].get("ticker") == "AAPL" else "warn"},
             ]
         )
-    return {"object_type": "market_data_gateway_audit", "checks": checks, "stats": {"canonical_instruments": len(instruments), **(market_stats(root) if market_db_path(root).exists() else {})}}
+    return {"object_type": "market_data_gateway_audit", "checks": checks, "stats": {"canonical_instruments": len(instruments), **(market_stats(root) if market_db_selection(root)["exists"] else {})}}

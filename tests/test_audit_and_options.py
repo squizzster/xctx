@@ -58,7 +58,7 @@ def test_framework_audit_scope_never_calls_live_connectors(monkeypatch: pytest.M
     assert payload["summary"]["audit_scope"] == "framework"
     assert "audit:xctx:config_fingerprint" in check_ids
     assert "audit:xctx:command_surface" in check_ids
-    assert not any("mini_stocks_sqlite_exists" in check_id for check_id in check_ids)
+    assert not any("market_data_sqlite_available" in check_id for check_id in check_ids)
 
 
 def test_live_audit_scope_skips_framework_checks_and_targets_live_connector(

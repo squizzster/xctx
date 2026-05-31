@@ -371,7 +371,7 @@ def main() -> int:
         for token in (
             "external_command:",
             "aapl_latest_price_resolves",
-            "mini_stocks_sqlite",
+            "market_data_sqlite_available",
             "edgar_form_reference",
         ):
             if not _contains_token(root_audit, token):

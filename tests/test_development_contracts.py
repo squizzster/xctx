@@ -142,7 +142,7 @@ def test_root_audit_exposes_loaded_config_fingerprint() -> None:
     assert len(fingerprint["sha256"]) == 64
     assert fingerprint["config_file_count"] == len(fingerprint["config_files"])
     assert all(entry["available"] for entry in fingerprint["config_files"])
-    assert "audit:market_data_gateway:mini_stocks_sqlite_exists" in check_ids
+    assert "audit:market_data_gateway:market_data_sqlite_available" in check_ids
     assert "audit:file_manager:home_directory:external_command:ls" in check_ids
 
 

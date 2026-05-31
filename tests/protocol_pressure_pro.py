@@ -22,6 +22,7 @@ ROOT = Path(__file__).resolve().parents[1]
 LIBS = ROOT / "libs"
 XCTX = ROOT / "xctx"
 FILE_MANAGER_README = ROOT / "data" / "file_manager_home" / "README.txt"
+TEST_MARKET_DATA_SQLITE = ROOT / "data" / "mini_stocks.example.sqlite"
 if str(LIBS) not in sys.path:
     sys.path.insert(0, str(LIBS))
 
@@ -32,8 +33,16 @@ from xctx.process.runtime import main as xctx_main  # noqa: E402
 def run_engine(args: Iterable[str], code: int = 0) -> dict:
     out = io.StringIO()
     err = io.StringIO()
-    with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
-        rc = xctx_main(["--json", *list(args)], root=ROOT)
+    old_market_db = os.environ.get("XCTX_MARKET_DATA_SQLITE")
+    os.environ["XCTX_MARKET_DATA_SQLITE"] = str(TEST_MARKET_DATA_SQLITE)
+    try:
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            rc = xctx_main(["--json", *list(args)], root=ROOT)
+    finally:
+        if old_market_db is None:
+            os.environ.pop("XCTX_MARKET_DATA_SQLITE", None)
+        else:
+            os.environ["XCTX_MARKET_DATA_SQLITE"] = old_market_db
     assert rc == code, f"args={list(args)} rc={rc}\nSTDOUT={out.getvalue()}\nSTDERR={err.getvalue()}"
     assert err.getvalue() == "", err.getvalue()
     lines = [line for line in out.getvalue().splitlines() if line.strip()]
@@ -43,7 +52,8 @@ def run_engine(args: Iterable[str], code: int = 0) -> dict:
 
 def run_cli(args: Iterable[str], code: int = 0) -> dict:
     argv = [str(XCTX), "--json", *list(args)]
-    captured = capture_process(argv, cwd=ROOT, timeout=30, max_output_bytes=131072)
+    env = {**os.environ, "XCTX_MARKET_DATA_SQLITE": str(TEST_MARKET_DATA_SQLITE)}
+    captured = capture_process(argv, cwd=ROOT, env=env, timeout=30, max_output_bytes=131072)
     assert not captured.timed_out, f"args={list(args)} timed out\nSTDOUT={captured.stdout}\nSTDERR={captured.stderr}"
     assert captured.returncode == code, (
         f"args={list(args)} rc={captured.returncode}\nSTDOUT={captured.stdout}\nSTDERR={captured.stderr}"
@@ -457,7 +467,7 @@ def assert_audit_scope_results() -> None:
     check_ids = {item["id"] for item in audit["results"]["checks"]}
     assert "audit:xctx:config_fingerprint" in check_ids
     assert "audit:market_data_gateway:aapl_latest_price_resolves" in check_ids
-    assert "audit:market_data_gateway:mini_stocks_sqlite_exists" in check_ids
+    assert "audit:market_data_gateway:market_data_sqlite_available" in check_ids
     assert "audit:file_manager:home_directory:external_command:ls" in check_ids
     findings = {item["id"]: item for item in audit["results"]["findings"]}
     assert findings["down_for_maintenance:stock_intelligence_hub::fundamentals_gateway"]["repairable"] is False
