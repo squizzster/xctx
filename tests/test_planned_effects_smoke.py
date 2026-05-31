@@ -238,6 +238,43 @@ def test_planning_intent_parse_args_coerces_and_encodes_options() -> None:
     assert parsed.adapter_args == ["--minimum", "1", "--maximum", "1000"]
 
 
+def test_planning_intent_parse_args_accepts_declared_positional_option() -> None:
+    ensure_libs_path()
+    from xctx.config.loader import load_store  # noqa: PLC0415
+    from xctx.domain.planning_intent import PlannedAction, parse_planned_action_args, resolve_planned_action  # noqa: PLC0415
+    from xctx.errors import XctxError  # noqa: PLC0415
+
+    store = load_store(root=ROOT)
+    planned = resolve_planned_action(
+        store,
+        "guess_the_number_game::choose_random_number::choose_between_bounds",
+        ["5", "--maximum", "10"],
+    )
+    assert planned is not None
+    action = dict(planned.action)
+    cli_options = [dict(spec) for spec in action["cli_options"]]
+    cli_options[0]["positional_arg"] = 0
+    action["cli_options"] = cli_options
+    planned_with_positional = PlannedAction(
+        domain_id=planned.domain_id,
+        subdomain_id=planned.subdomain_id,
+        action_name=planned.action_name,
+        action=action,
+        planning=planned.planning,
+        domain_action_name=planned.domain_action_name,
+    )
+
+    parsed = parse_planned_action_args(store, planned_with_positional, ["5", "--maximum", "10"])
+
+    assert parsed.values == {"minimum": 5, "maximum": 10}
+    assert parsed.positional_args == []
+    assert parsed.adapter_args == ["--minimum", "5", "--maximum", "10"]
+    with pytest.raises(XctxError, match="provide either positional argument 1 or --minimum"):
+        parse_planned_action_args(store, planned_with_positional, ["5", "--minimum", "6", "--maximum", "10"])
+    with pytest.raises(XctxError, match="unexpected positional plan argument: extra"):
+        parse_planned_action_args(store, planned_with_positional, ["5", "extra", "--maximum", "10"])
+
+
 def test_planning_intent_parse_args_rejects_missing_required_option() -> None:
     ensure_libs_path()
     from xctx.config.loader import load_store  # noqa: PLC0415

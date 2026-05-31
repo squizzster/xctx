@@ -137,6 +137,31 @@ def parse_planned_action_args(
         positional.append(token)
         index += 1
 
+    consumed_positionals: set[int] = set()
+    for spec in specs:
+        raw_index = spec.get("positional_arg", spec.get("positional_index"))
+        if raw_index is None:
+            continue
+        try:
+            positional_index = int(raw_index)
+        except (TypeError, ValueError) as exc:
+            raise XctxError(f"invalid positional_arg for {spec.get('_primary_flag') or spec.get('_dest')}") from exc
+        if positional_index < 0:
+            raise XctxError(f"invalid positional_arg for {spec.get('_primary_flag') or spec.get('_dest')}")
+        if positional_index >= len(positional):
+            continue
+        dest = str(spec["_dest"])
+        if dest in values:
+            flag = str(spec.get("_primary_flag") or dest)
+            raise XctxError(f"ambiguous plan argument: provide either positional argument {positional_index + 1} or {flag}, not both")
+        values[dest] = coerce_plan_option(positional[positional_index], spec)
+        consumed_positionals.add(positional_index)
+    if consumed_positionals:
+        leftover_positionals = [value for offset, value in enumerate(positional) if offset not in consumed_positionals]
+        if leftover_positionals:
+            raise XctxError(f"unexpected positional plan argument: {leftover_positionals[0]}")
+        positional = leftover_positionals
+
     for spec in specs:
         dest = str(spec["_dest"])
         if dest in values:
