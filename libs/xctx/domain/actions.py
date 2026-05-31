@@ -299,54 +299,66 @@ def compact_action_index(actions: dict[str, Any]) -> dict[str, dict[str, Any]]:
         out[name] = {key: value for key, value in entry.items() if value is not None}
     return out
 
-def validate_declared_action_args(action: dict[str, Any], action_args: list[str]) -> None:
+def validate_declared_action_args(
+    action: dict[str, Any],
+    action_args: list[str],
+    *,
+    next_moves: list[Any] | None = None,
+) -> None:
     ## Protocol boundary: validate generic controls only when a scoped pack
     ## declares them. Cursor and projection values stay opaque to xctx.
     collection = _collection_contract(action)
     declared_options = _declared_option_flags(action)
     declared_positionals = _declared_positional_prefixes(action)
     arbitrary_query_allowed = bool(action.get("allow_arbitrary_query", action.get("query_required", True)))
+    recovery_moves = list(next_moves or [])
+    if not recovery_moves and action.get("run_cmd"):
+        recovery_moves = [str(action["run_cmd"])]
+
+    def fail(message: str) -> None:
+        raise XctxError(message, next_moves=recovery_moves)
+
     index = 0
     while index < len(action_args):
         token = action_args[index]
         if token == "--shape":
-            raise XctxError("unsupported --shape; use --projection compact|full")
+            fail("unsupported --shape; use --projection compact|full")
         if token.startswith("--") and token not in declared_options:
-            raise XctxError(f"unsupported action option for this action: {token}")
+            fail(f"unsupported action option for this action: {token}")
         if token not in {"--limit", "--cursor", "--projection"}:
             if token in declared_options:
                 if index + 1 >= len(action_args):
-                    raise XctxError(f"missing value for {token}")
+                    fail(f"missing value for {token}")
                 index += 2
                 continue
             if not arbitrary_query_allowed and not any(token.startswith(prefix) for prefix in declared_positionals):
-                raise XctxError(f"unexpected argument for non-query action: {token}")
+                fail(f"unexpected argument for non-query action: {token}")
             index += 1
             continue
         if index + 1 >= len(action_args):
-            raise XctxError(f"missing value for {token}")
+            fail(f"missing value for {token}")
         value = action_args[index + 1]
         if token == "--cursor":
             if not collection:
-                raise XctxError(f"unsupported collection control for this action: {token}")
+                fail(f"unsupported collection control for this action: {token}")
             if not _has_collection_cursor(collection):
-                raise XctxError("--cursor is not supported by this collection")
+                fail("--cursor is not supported by this collection")
         elif token == "--projection":
             projections = _action_projections(action)
             if not projections:
-                raise XctxError("--projection is not supported by this action")
+                fail("--projection is not supported by this action")
             if value not in projections:
-                raise XctxError(f"unsupported --projection value: {value} (allowed: {'|'.join(sorted(projections))})")
+                fail(f"unsupported --projection value: {value} (allowed: {'|'.join(sorted(projections))})")
         elif token == "--limit":
             if not collection:
-                raise XctxError(f"unsupported collection control for this action: {token}")
+                fail(f"unsupported collection control for this action: {token}")
             try:
                 limit = int(value)
             except ValueError as exc:
-                raise XctxError("--limit requires an integer") from exc
+                raise XctxError("--limit requires an integer", next_moves=recovery_moves) from exc
             if limit < 1:
-                raise XctxError("--limit must be at least 1")
+                fail("--limit must be at least 1")
             max_limit = collection.get("max_limit")
             if max_limit is not None and limit > int(max_limit):
-                raise XctxError(f"--limit exceeds maximum {max_limit}")
+                fail(f"--limit exceeds maximum {max_limit}")
         index += 2

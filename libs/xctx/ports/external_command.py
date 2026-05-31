@@ -123,6 +123,11 @@ def _adapter_env(
         env[RESOLVED_CONTEXT_ENV] = str(resolved_context_path)
     if config_fingerprint is not None:
         env[CONFIG_FINGERPRINT_ENV] = config_fingerprint
+    connector = subdomain.get("connector") or {}
+    for key in connector.get("env_passthrough") or []:
+        text_key = str(key)
+        if text_key in os.environ and (text_key in SAFE_ENV_KEYS or text_key.startswith("XCTX_")):
+            env[text_key] = os.environ[text_key]
     return env
 
 

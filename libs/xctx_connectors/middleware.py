@@ -169,12 +169,17 @@ def _with_capture_metadata(payload: dict[str, Any], result: dict[str, Any]) -> d
 
 
 def _passthrough_env(context: runtime.ConnectorContext) -> dict[str, str | None]:
-    return {
+    env: dict[str, str | None] = {
         "XCTX_AGENT_DOMAIN": context.domain_id,
         "XCTX_AGENT_SUBDOMAIN": context.subdomain_id,
         "XCTX_DETAIL_LEVEL": context.detail_level,
         "XCTX_RUNTIME_DIR": os.environ.get("XCTX_RUNTIME_DIR"),
     }
+    for key in context.connector_config.get("env_passthrough") or []:
+        text_key = str(key)
+        if text_key in os.environ and (text_key in runtime.SAFE_ENV_KEYS or text_key.startswith("XCTX_")):
+            env[text_key] = os.environ[text_key]
+    return env
 
 
 def _passthrough(context: runtime.ConnectorContext, args: list[str], *, compact: bool) -> dict[str, Any]:
