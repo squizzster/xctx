@@ -245,6 +245,9 @@ def test_undeclared_secret_action_option_is_rejected_before_adapter_and_redacted
     assert rc == 1
     assert payload["record_type"] == "error"
     assert payload["error"] == "unsupported action option for this action: --api-key"
+    assert payload["next_moves"] == [
+        {"run_cmd": "./xctx discover stock_intelligence_hub::market_data_gateway [--projection compact|full]"}
+    ]
     assert secret not in serialized
     assert "<redacted>" in serialized
 

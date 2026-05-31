@@ -43,6 +43,32 @@ def test_connector_subprocess_env_does_not_inherit_pythonpath_or_pythonhome(monk
     assert "PYTHONHOME" not in env
 
 
+def test_connector_env_passthrough_is_explicit_and_xctx_scoped(monkeypatch) -> None:
+    ensure_libs_path()
+    from xctx.ports import external_command  # noqa: PLC0415
+    from xctx_connectors import middleware  # noqa: PLC0415
+
+    monkeypatch.setenv("XCTX_TEST_CONNECTOR_TOKEN", "test identity")
+    monkeypatch.setenv("UNSAFE_SECRET", "must not pass")
+    subdomain = {
+        "_domain_id": "generic_domain",
+        "id": "generic_subdomain",
+        "connector": {
+            "kind": "xctx_native_passthrough",
+            "env_passthrough": ["XCTX_TEST_CONNECTOR_TOKEN", "UNSAFE_SECRET"],
+        },
+    }
+
+    parent_env = external_command._adapter_env({"root": ROOT}, subdomain)
+    assert parent_env["XCTX_TEST_CONNECTOR_TOKEN"] == "test identity"
+    assert "UNSAFE_SECRET" not in parent_env
+
+    context = middleware._context_from_subdomain(ROOT, subdomain)
+    child_env = middleware._passthrough_env(context)
+    assert child_env["XCTX_TEST_CONNECTOR_TOKEN"] == "test identity"
+    assert "UNSAFE_SECRET" not in child_env
+
+
 def test_readonly_mapping_deep_freezes_nested_values() -> None:
     ensure_libs_path()
     from xctx_connectors import runtime  # noqa: PLC0415
