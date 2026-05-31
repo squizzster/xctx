@@ -175,10 +175,7 @@ def _passthrough_env(context: runtime.ConnectorContext) -> dict[str, str | None]
         "XCTX_DETAIL_LEVEL": context.detail_level,
         "XCTX_RUNTIME_DIR": os.environ.get("XCTX_RUNTIME_DIR"),
     }
-    for key in context.connector_config.get("env_passthrough") or []:
-        text_key = str(key)
-        if text_key in os.environ and (text_key in runtime.SAFE_ENV_KEYS or text_key.startswith("XCTX_")):
-            env[text_key] = os.environ[text_key]
+    env.update(runtime.connector_passthrough_env(context.connector_config))
     return env
 
 
@@ -197,6 +194,7 @@ def _passthrough(context: runtime.ConnectorContext, args: list[str], *, compact:
         env=_passthrough_env(context),
         timeout=limits.timeout_seconds,
         max_output_bytes=limits.max_output_bytes,
+        allow_explicit_env=True,
     )
     if result["timed_out"]:
         payload: dict[str, Any] = {

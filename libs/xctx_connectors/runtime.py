@@ -9,7 +9,7 @@ from types import MappingProxyType
 from typing import Any, Mapping
 
 from xctx.process.capture import capture_process
-from xctx.process.env import SAFE_ENV_KEYS, sanitized_env
+from xctx.process.env import SAFE_ENV_KEYS, connector_passthrough_env, sanitized_env
 from xctx.process.limits import ConnectorLimits
 from xctx.process.redaction import redact_argv_values, redact_preview, redact_value
 from xctx.protocol.guidance import command_hints
@@ -138,8 +138,12 @@ def command_status(
     return {key: value for key, value in payload.items() if value is not None}
 
 
-def sanitized_connector_env(extra: Mapping[str, str] | None = None) -> dict[str, str]:
-    return sanitized_env(extra)
+def sanitized_connector_env(
+    extra: Mapping[str, str] | None = None,
+    *,
+    allow_explicit_extra: bool = False,
+) -> dict[str, str]:
+    return sanitized_env(extra, allow_explicit_extra=allow_explicit_extra)
 
 
 def command_status_from_external_result(result: Mapping[str, Any], *, include_argv: bool = True) -> dict[str, Any]:
@@ -247,6 +251,7 @@ def run_external(
     cwd: Path | None = None,
     env: Mapping[str, str] | None = None,
     max_output_bytes: int | None = None,
+    allow_explicit_env: bool = False,
 ) -> dict[str, Any]:
     argv = [str(part) for part in argv]
     if not argv or not argv[0].strip():
@@ -271,7 +276,7 @@ def run_external(
         captured = capture_process(
             argv,
             cwd=cwd,
-            env=sanitized_connector_env(env),
+            env=sanitized_connector_env(env, allow_explicit_extra=allow_explicit_env),
             timeout=limits.timeout_seconds,
             max_output_bytes=limits.max_output_bytes,
         )

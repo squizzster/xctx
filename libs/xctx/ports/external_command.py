@@ -15,7 +15,7 @@ from typing import Any
 
 from xctx.errors import XctxError
 from xctx.process.capture import capture_process
-from xctx.process.env import SAFE_ENV_KEYS, sanitized_env
+from xctx.process.env import SAFE_ENV_KEYS, connector_passthrough_env, sanitized_env
 from xctx.process.limits import ConnectorLimits
 from xctx.process.python_subprocess import python_entrypoint_argv
 from xctx.process.redaction import redact_preview
@@ -124,10 +124,7 @@ def _adapter_env(
     if config_fingerprint is not None:
         env[CONFIG_FINGERPRINT_ENV] = config_fingerprint
     connector = subdomain.get("connector") or {}
-    for key in connector.get("env_passthrough") or []:
-        text_key = str(key)
-        if text_key in os.environ and (text_key in SAFE_ENV_KEYS or text_key.startswith("XCTX_")):
-            env[text_key] = os.environ[text_key]
+    env.update(connector_passthrough_env(connector))
     return env
 
 
@@ -230,7 +227,8 @@ def _call_python_entrypoint_subprocess(
                     subdomain,
                     resolved_context_path=resolved_context_path,
                     config_fingerprint=config_fingerprint,
-                )
+                ),
+                allow_explicit_extra=True,
             ),
             timeout=timeout,
             max_output_bytes=max_output_bytes,

@@ -46,27 +46,36 @@ def test_connector_subprocess_env_does_not_inherit_pythonpath_or_pythonhome(monk
 def test_connector_env_passthrough_is_explicit_and_xctx_scoped(monkeypatch) -> None:
     ensure_libs_path()
     from xctx.ports import external_command  # noqa: PLC0415
+    from xctx.process.env import sanitized_env  # noqa: PLC0415
     from xctx_connectors import middleware  # noqa: PLC0415
 
     monkeypatch.setenv("XCTX_TEST_CONNECTOR_TOKEN", "test identity")
+    monkeypatch.setenv("GENERIC_ADAPTER_IDENTITY", "adapter identity")
     monkeypatch.setenv("UNSAFE_SECRET", "must not pass")
+    monkeypatch.setenv("PYTHONPATH", "/tmp/xctx-poison-path")
     subdomain = {
         "_domain_id": "generic_domain",
         "id": "generic_subdomain",
         "connector": {
             "kind": "xctx_native_passthrough",
             "env_passthrough": ["XCTX_TEST_CONNECTOR_TOKEN", "UNSAFE_SECRET"],
+            "adapter_env_passthrough": ["GENERIC_ADAPTER_IDENTITY", "PYTHONPATH"],
         },
     }
 
     parent_env = external_command._adapter_env({"root": ROOT}, subdomain)
     assert parent_env["XCTX_TEST_CONNECTOR_TOKEN"] == "test identity"
+    assert parent_env["GENERIC_ADAPTER_IDENTITY"] == "adapter identity"
     assert "UNSAFE_SECRET" not in parent_env
+    assert "PYTHONPATH" not in parent_env
+    assert sanitized_env(parent_env, allow_explicit_extra=True)["GENERIC_ADAPTER_IDENTITY"] == "adapter identity"
 
     context = middleware._context_from_subdomain(ROOT, subdomain)
     child_env = middleware._passthrough_env(context)
     assert child_env["XCTX_TEST_CONNECTOR_TOKEN"] == "test identity"
+    assert child_env["GENERIC_ADAPTER_IDENTITY"] == "adapter identity"
     assert "UNSAFE_SECRET" not in child_env
+    assert "PYTHONPATH" not in child_env
 
 
 def test_readonly_mapping_deep_freezes_nested_values() -> None:
