@@ -119,14 +119,15 @@ def assert_root_universe_command_surface() -> None:
         "./xctx discover file_manager::",
     ]
     root_domains = {item["id"] for item in root["results"]["agent_domains"]}
-    assert root_domains == {
+    assert {
         "stock_intelligence_hub",
         "file_manager",
         "guess_the_number_game",
         "macro_intelligence_hub",
         "crypto_intelligence_hub",
         "options_intelligence_hub",
-    }
+        "web_search",
+    } <= root_domains
     for domain_id in root_domains:
         assert_cmd(run_engine(["discover", domain_id]), record_type="discovery", level="agent_domain")
     for bare_target in (

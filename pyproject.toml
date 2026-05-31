@@ -7,7 +7,7 @@ name = "xctx-modular-workspace"
 version = "4.2.3"
 description = "Hardened xctx protocol development workspace with modular command, domain, audit, repair, and planning layers."
 requires-python = ">=3.10"
-dependencies = ["PyYAML>=6.0", "edgartools>=5,<6"]
+dependencies = ["PyYAML>=6.0", "edgartools>=5,<6", "exa-py>=2,<3"]
 
 [project.scripts]
 xctx = "xctx.cli:main"
@@ -41,6 +41,8 @@ where = ["libs"]
 "xctx_workspace/yaml_dynamic_config/agent_domains/stock_intelligence_hub/subdomains/equity_filing" = ["yaml_dynamic_config/agent_domains/stock_intelligence_hub/subdomains/equity_filing/*.yaml"]
 "xctx_workspace/yaml_dynamic_config/agent_domains/stock_intelligence_hub/subdomains/fundamentals_gateway" = ["yaml_dynamic_config/agent_domains/stock_intelligence_hub/subdomains/fundamentals_gateway/*.yaml"]
 "xctx_workspace/yaml_dynamic_config/agent_domains/stock_intelligence_hub/subdomains/market_data_gateway" = ["yaml_dynamic_config/agent_domains/stock_intelligence_hub/subdomains/market_data_gateway/*.yaml"]
+"xctx_workspace/yaml_dynamic_config/agent_domains/web_search" = ["yaml_dynamic_config/agent_domains/web_search/*.yaml"]
+"xctx_workspace/yaml_dynamic_config/agent_domains/web_search/subdomains/exa_search" = ["yaml_dynamic_config/agent_domains/web_search/subdomains/exa_search/*.yaml"]
 "xctx_workspace/data" = ["data/*.sqlite"]
 "xctx_workspace/data/file_manager_home" = ["data/file_manager_home/*.txt"]
 "xctx_workspace/data/file_manager_home/archive" = ["data/file_manager_home/archive/.keep"]
@@ -48,6 +50,7 @@ where = ["libs"]
 "xctx_workspace/data/file_manager_home/reports" = ["data/file_manager_home/reports/*.txt"]
 "xctx_workspace/examples/stock_intelligence_hub" = ["examples/stock_intelligence_hub/*.md"]
 "xctx_workspace/examples/stock_intelligence_hub/adapters" = ["examples/stock_intelligence_hub/adapters/*.py"]
+"xctx_workspace/examples/web_search/adapters" = ["examples/web_search/adapters/*.py"]
 
 [tool.xctx]
 engine = "libs/xctx"
@@ -62,6 +65,7 @@ markers = [
     "integration: connector/subprocess integration coverage",
     "local_gate: required local development gate coverage",
     "live_edgar: opt-in live SEC EDGAR coverage; skipped unless explicitly enabled",
+    "live_exa: opt-in live Exa web search coverage; skipped unless explicitly enabled",
     "slow: slow protocol matrix coverage",
     "timeout(seconds): per-test timeout in seconds",
 ]

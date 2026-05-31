@@ -38,3 +38,5 @@ agent_domains:
     path: agent_domains/crypto_intelligence_hub/domain.yaml
   - id: options_intelligence_hub
     path: agent_domains/options_intelligence_hub/domain.yaml
+  - id: web_search
+    path: agent_domains/web_search/domain.yaml

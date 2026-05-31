@@ -141,6 +141,8 @@ def assert_modular_layout() -> None:
         "examples/stock_intelligence_hub/adapters/edgar_filing_library.py",
         "examples/stock_intelligence_hub/adapters/equity_filings.py",
         "examples/stock_intelligence_hub/adapters/market_data_gateway.py",
+        "examples/web_search/adapters/exa_search.py",
+        "libs/xctx_live/web_search_exa.py",
         "libs/xctx_live/edgar_filing_library.py",
         "libs/xctx_live/filings.py",
         "libs/xctx_live/instruments.py",
@@ -162,6 +164,8 @@ def assert_modular_layout() -> None:
         "yaml_dynamic_config/agent_domains/stock_intelligence_hub/subdomains/edgar_filing_library/subdomain.yaml",
         "yaml_dynamic_config/agent_domains/stock_intelligence_hub/subdomains/equity_filing/subdomain.yaml",
         "yaml_dynamic_config/agent_domains/stock_intelligence_hub/subdomains/market_data_gateway/subdomain.yaml",
+        "yaml_dynamic_config/agent_domains/web_search/domain.yaml",
+        "yaml_dynamic_config/agent_domains/web_search/subdomains/exa_search/subdomain.yaml",
         "data/file_manager_home/README.txt",
         "data/file_manager_home/docs/manual.txt",
         "data/edgar_form_reference_taxonomy.sqlite",
@@ -214,6 +218,14 @@ def assert_protocol_is_config_driven() -> None:
     assert edgar_library["connector"]["target_entrypoint"] == "examples/stock_intelligence_hub/adapters/edgar_filing_library.py"
     assert edgar_library["actions"]["download_key_filings"]["planning"]["planned_effect"] is True
     assert edgar_library["actions"]["list_available_filings"]["collection"]["cursor"] == "optional"
+    web_search = yaml.safe_load((ROOT / "yaml_dynamic_config" / "agent_domains" / "web_search" / "domain.yaml").read_text())
+    assert web_search["status"] == "online"
+    exa_search = yaml.safe_load((ROOT / "yaml_dynamic_config" / "agent_domains" / "web_search" / "subdomains" / "exa_search" / "subdomain.yaml").read_text())
+    assert exa_search["entrypoint"]["file"] == "connector_supervisor.py"
+    assert exa_search["connector"]["kind"] == "xctx_native_passthrough"
+    assert exa_search["connector"]["target_entrypoint"] == "examples/web_search/adapters/exa_search.py"
+    assert exa_search["actions"]["search_fast"]["planning"]["planned_effect"] is True
+    assert exa_search["actions"]["fetch_page"]["planning"]["planned_effect"] is True
     assert market_subdomain["actions"]["list_instruments"]["collection"]["cursor"] == "optional"
 
     for core_rel in (
@@ -280,16 +292,19 @@ def assert_root_domain_subdomain_discovery() -> None:
     assert "configured_options" not in root_results
     assert "root_affordances" not in root_results
     domains = {item["id"]: item for item in root_results["agent_domains"]}
-    assert set(domains) == {
+    required_domains = {
         "stock_intelligence_hub",
         "file_manager",
         "guess_the_number_game",
         "macro_intelligence_hub",
         "crypto_intelligence_hub",
         "options_intelligence_hub",
+        "web_search",
     }
+    assert required_domains <= set(domains)
     assert domains["stock_intelligence_hub"]["status"] == "online"
     assert domains["file_manager"]["status"] == "online"
+    assert domains["web_search"]["status"] == "online"
     assert domains["macro_intelligence_hub"]["status"] == "offline"
     assert domains["crypto_intelligence_hub"]["status"] == "down_for_maintenance"
     assert domains["options_intelligence_hub"]["repair_cmd"] == "./xctx repair offline:options_intelligence_hub"

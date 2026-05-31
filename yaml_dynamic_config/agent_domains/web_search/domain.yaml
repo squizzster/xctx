@@ -1,0 +1,22 @@
+id: web_search
+kind: agent_domain
+status: online
+health: online
+basic_description: Web-search and page-retrieval domain for planned live search acquisition and local artifact observation.
+full_description: >-
+  web_search is the trusted namespace for web-search workflows. Its first
+  provider subdomain, exa_search, can plan and commit live Exa searches or exact
+  page-content fetches, write canonical run artifacts under the xctx runtime
+  directory, index results into a SQLite registry, and expose bounded
+  observations without leaking provider credentials into the generic xctx
+  framework.
+canonical_identity_policy:
+  trusted_id_scope: web_search
+  search_run_id_format: search_run:<provider_run_id>
+  web_result_id_format: web_result:<provider_result_digest>
+  web_artifact_id_format: web_artifact:<artifact_digest>
+  cross_subdomain_rule: Web-search identifiers are scoped to provider subdomains and must be observed through the provider that emitted them.
+agent_subdomains:
+  exa_search:
+    path: subdomains/exa_search/subdomain.yaml
+    priority: 10

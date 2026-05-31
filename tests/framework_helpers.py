@@ -24,6 +24,7 @@ LOCAL_GATE_PATTERNS = (
     "market_data_gateway.py",
     "equity_filings.py",
     "edgar_filing_library.py",
+    "exa_search.py",
     "xctx_local_gate_detached_child",
 )
 

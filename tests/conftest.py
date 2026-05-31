@@ -43,6 +43,7 @@ def pytest_configure(config) -> None:
     config.addinivalue_line("markers", "integration: connector/subprocess integration coverage")
     config.addinivalue_line("markers", "local_gate: required local development gate coverage")
     config.addinivalue_line("markers", "live_edgar: opt-in live SEC EDGAR coverage")
+    config.addinivalue_line("markers", "live_exa: opt-in live Exa web search coverage")
     config.addinivalue_line("markers", "slow: slow protocol matrix coverage")
     config.addinivalue_line("markers", "timeout(seconds): per-test timeout in seconds")
 

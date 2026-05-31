@@ -1,0 +1,381 @@
+id: exa_search
+kind: agent_subdomain
+status: online
+basic_description: Exa-backed web search, deep search, exact page fetch, local run registry, and bounded result observation.
+full_description: >-
+  This subdomain owns Exa provider behavior for the web_search domain. It keeps
+  a runtime SQLite registry of search runs, result cards, artifact files, and
+  provider rate-limit state; supports planned-effect live acquisition and
+  fixture-backed import; and observes only bounded previews unless an artifact
+  is explicitly requested with a preview limit.
+data_description: >-
+  Runtime SQLite registry under XCTX_RUNTIME_DIR or .xctx_runtime, plus search
+  artifacts under the web_search/exa_search/artifacts runtime directory. The
+  registry stores work-run, result, and artifact-file records.
+entrypoint:
+  file: connector_supervisor.py
+  protocol: json_stdout
+  timeout_seconds: 180
+  max_output_bytes: 120000
+connector:
+  kind: xctx_native_passthrough
+  target_entrypoint: examples/web_search/adapters/exa_search.py
+  timeout_seconds: 180
+  max_output_bytes: 120000
+  env_passthrough:
+    - XCTX_EXA_API_KEY
+  adapter_env_passthrough:
+    - EXA_API_KEY
+    - EXA_SEARCH_QPS
+    - EXA_CONTENTS_QPS
+    - EXA_RETRIES
+    - EXA_RETRY_BASE_SECONDS
+    - EXA_RETRY_MAX_SECONDS
+    - EXA_TIMEOUT_RETRY_SECONDS
+    - EXA_RATE_LIMIT_STATE_DIR
+data:
+  storage_engine: sqlite
+  path: .xctx_runtime/web_search/exa_search/registry.sqlite
+  artifact_root: .xctx_runtime/web_search/exa_search/artifacts
+  read_only: false
+planning_defaults:
+  result_ttl_seconds: 1800
+  writes_to_db: true
+  can_be_reversed: false
+  can_be_repaired: true
+actions:
+  discover:
+    priority: 10
+    entrypoint_command: discover
+    desc: Discover the Exa search adapter, credential readiness, local registry status, observable refs, and planned acquisition helpers.
+    projections:
+      default: compact
+      allowed:
+        - compact
+        - full
+    argument_patterns:
+      - "[--projection compact|full]"
+    examples:
+      - query: compact Exa search discovery
+        run_cmd: ./xctx discover web_search::exa_search
+      - query: full Exa search discovery
+        run_cmd: ./xctx discover web_search::exa_search --projection full
+    returns: web_search_exa_discovery
+    run_cmd: ./xctx discover web_search::exa_search [--projection compact|full]
+  list_search_runs:
+    domain_affordance: true
+    domain_action_name: list_web_search_runs
+    priority: 20
+    entrypoint_command: list-search-runs
+    query_required: false
+    allow_arbitrary_query: true
+    mode_kind: list
+    desc: List local Exa search/page-fetch runs already present in the SQLite-backed web search registry.
+    collection:
+      result_path: runs
+      default_limit: 10
+      max_limit: 100
+      cursor: optional
+      cursor_type: offset
+      filters:
+        - --operation
+        - --status
+    argument_patterns:
+      - "[query text]"
+      - "[--operation search_fast|search_deep|fetch_page]"
+      - "[--status ok|failed]"
+      - "[--limit N]"
+      - "[--cursor CURSOR]"
+    examples:
+      - query: list recent search runs
+        run_cmd: ./xctx discover web_search::exa_search::list_search_runs
+      - query: domain affordance recent search runs
+        run_cmd: ./xctx discover web_search::list_web_search_runs
+    related_commands:
+      - ./xctx plan web_search::exa_search::search_fast --query "latest SEC EDGAR rate limits"
+      - ./xctx discover web_search::exa_search::list_results
+    returns: web_search_exa_run_list
+    run_cmd: ./xctx discover web_search::exa_search::list_search_runs [query] [--operation search_fast|search_deep|fetch_page] [--status ok|failed] [--limit N] [--cursor CURSOR]
+  list_results:
+    domain_affordance: true
+    domain_action_name: list_web_results
+    priority: 30
+    entrypoint_command: list-results
+    query_required: false
+    allow_arbitrary_query: true
+    mode_kind: list
+    desc: List indexed web result cards already available from prior Exa searches or page fetches.
+    collection:
+      result_path: results
+      default_limit: 10
+      max_limit: 100
+      cursor: optional
+      cursor_type: offset
+      filters:
+        - --query
+        - --operation
+    argument_patterns:
+      - "[query text]"
+      - "[--query TEXT]"
+      - "[--operation search_fast|search_deep|fetch_page]"
+      - "[--limit N]"
+      - "[--cursor CURSOR]"
+    examples:
+      - query: list indexed web results
+        run_cmd: ./xctx discover web_search::exa_search::list_results
+      - query: filter indexed web results
+        run_cmd: ./xctx discover web_search::exa_search::list_results --query "EDGAR"
+      - query: domain affordance indexed web results
+        run_cmd: ./xctx discover web_search::list_web_results
+    related_commands:
+      - ./xctx observe web_search::exa_search web_result:<id>
+      - ./xctx plan web_search::exa_search::search_fast --query "latest SEC EDGAR rate limits"
+    returns: web_search_exa_result_list
+    run_cmd: ./xctx discover web_search::exa_search::list_results [query] [--query TEXT] [--operation search_fast|search_deep|fetch_page] [--limit N] [--cursor CURSOR]
+  search_fast:
+    domain_affordance: true
+    domain_action_name: search_web
+    priority: 40
+    entrypoint_command: search-fast
+    desc: Plan and commit a fast Exa web search with highlights, writing raw JSON, result cards, markdown, manifest, and registry rows.
+    argument_patterns:
+      - "<query>"
+      - "--query TEXT"
+      - "[--fast-source live|fixture]"
+      - "[--fixture-path PATH]"
+      - "[--num-results N]"
+    run_cmd: ./xctx plan web_search::exa_search::search_fast --query "latest SEC EDGAR rate limits"
+    planning:
+      mode: planned_effect
+      planned_effect: true
+      preflight_adapter_command: validate-search-fast
+      commit_adapter_command: search-fast
+      writes_to_db: true
+      can_be_reversed: false
+      can_be_repaired: true
+      result_ttl_seconds: 1800
+      description_of_what_will_happen: The Exa search adapter will run a fast search for {{query}}, write canonical artifacts, index result cards in SQLite, and return {{result_id}}.
+      running_heartbeat:
+        phase: acquiring_exa_search
+        message: Commit accepted; the Exa adapter is searching and writing artifacts.
+      complete_heartbeat:
+        phase: web_search_ready
+        message: Search artifacts are ready; observe the result handle or list web results.
+      blocked_paths:
+        - affordance: direct_unscoped_exa_search
+          reason: Live web search must be planned and committed through the scoped Exa search adapter.
+    cli_options:
+      - flags:
+          - --query
+        dest: query
+        type: str
+        required: true
+        commands:
+          - plan
+        adapter_arg: --query
+        positional_arg: 0
+        desc: Search query text.
+      - flags:
+          - --fast-source
+        dest: fast_source
+        type: str
+        choices:
+          - live
+          - fixture
+        default: live
+        commands:
+          - plan
+        adapter_arg: --source
+        desc: live uses Exa; fixture imports an existing Exa-style JSON response.
+      - flags:
+          - --fixture-path
+        dest: fixture_path
+        type: str
+        commands:
+          - plan
+        adapter_arg: --fixture-path
+        desc: Exa-style JSON fixture path used when --source fixture is selected.
+      - flags:
+          - --num-results
+        dest: num_results
+        type: int
+        min: 1
+        max: 10
+        default: 6
+        commands:
+          - plan
+        adapter_arg: --num-results
+        desc: Maximum Exa result cards requested for a fast search.
+  search_deep:
+    domain_affordance: true
+    domain_action_name: search_web_deep
+    priority: 45
+    entrypoint_command: search-deep
+    desc: Plan and commit a deeper Exa search for focused research, writing artifacts and registry rows.
+    argument_patterns:
+      - "<query>"
+      - "--deep-query TEXT"
+      - "[--deep-source live|fixture]"
+      - "[--deep-fixture-path PATH]"
+      - "[--deep-num-results N]"
+    run_cmd: ./xctx plan web_search::exa_search::search_deep --deep-query "OpenAI latest model documentation"
+    planning:
+      mode: planned_effect
+      planned_effect: true
+      preflight_adapter_command: validate-search-deep
+      commit_adapter_command: search-deep
+      writes_to_db: true
+      can_be_reversed: false
+      can_be_repaired: true
+      result_ttl_seconds: 1800
+      description_of_what_will_happen: The Exa search adapter will run a deep search for {{deep_query}}, write canonical artifacts, index result cards in SQLite, and return {{result_id}}.
+      running_heartbeat:
+        phase: acquiring_exa_deep_search
+        message: Commit accepted; the Exa adapter is running a deep search and writing artifacts.
+      complete_heartbeat:
+        phase: web_search_ready
+        message: Deep-search artifacts are ready; observe the result handle or list web results.
+    cli_options:
+      - flags:
+          - --deep-query
+        dest: deep_query
+        type: str
+        required: true
+        commands:
+          - plan
+        adapter_arg: --query
+        positional_arg: 0
+        desc: Focused research query text.
+      - flags:
+          - --deep-source
+        dest: deep_source
+        type: str
+        choices:
+          - live
+          - fixture
+        default: live
+        commands:
+          - plan
+        adapter_arg: --source
+        desc: live uses Exa; fixture imports an existing Exa-style JSON response.
+      - flags:
+          - --deep-fixture-path
+        dest: deep_fixture_path
+        type: str
+        commands:
+          - plan
+        adapter_arg: --fixture-path
+        desc: Exa-style JSON fixture path used when --source fixture is selected.
+      - flags:
+          - --deep-num-results
+        dest: deep_num_results
+        type: int
+        min: 1
+        max: 5
+        default: 3
+        commands:
+          - plan
+        adapter_arg: --num-results
+        desc: Maximum Exa result cards requested for a deep search.
+  fetch_page:
+    domain_affordance: true
+    domain_action_name: fetch_web_page
+    priority: 50
+    entrypoint_command: fetch-page
+    desc: Plan and commit exact URL content retrieval through Exa, writing page artifacts and registry rows.
+    argument_patterns:
+      - "<url>"
+      - "--url https://example.com/page"
+      - "[--page-source live|fixture]"
+      - "[--page-fixture-path PATH]"
+      - "[--max-characters N]"
+    run_cmd: ./xctx plan web_search::exa_search::fetch_page --url https://docs.exa.ai/reference/search
+    planning:
+      mode: planned_effect
+      planned_effect: true
+      preflight_adapter_command: validate-fetch-page
+      commit_adapter_command: fetch-page
+      writes_to_db: true
+      can_be_reversed: false
+      can_be_repaired: true
+      result_ttl_seconds: 1800
+      description_of_what_will_happen: The Exa search adapter will retrieve {{url}}, write canonical page artifacts, index the page result in SQLite, and return {{result_id}}.
+      running_heartbeat:
+        phase: acquiring_exa_page
+        message: Commit accepted; the Exa adapter is fetching the page and writing artifacts.
+      complete_heartbeat:
+        phase: web_page_ready
+        message: Page artifacts are ready; observe the result handle or web_result ref.
+    cli_options:
+      - flags:
+          - --url
+        dest: url
+        type: str
+        required: true
+        commands:
+          - plan
+        adapter_arg: --url
+        positional_arg: 0
+        desc: Absolute http or https URL to retrieve.
+      - flags:
+          - --page-source
+        dest: page_source
+        type: str
+        choices:
+          - live
+          - fixture
+        default: live
+        commands:
+          - plan
+        adapter_arg: --source
+        desc: live uses Exa; fixture imports an existing Exa contents-style JSON response.
+      - flags:
+          - --page-fixture-path
+        dest: page_fixture_path
+        type: str
+        commands:
+          - plan
+        adapter_arg: --fixture-path
+        desc: Exa contents-style JSON fixture path used when --source fixture is selected.
+      - flags:
+          - --max-characters
+        dest: max_characters
+        type: int
+        min: 256
+        max: 20000
+        default: 4096
+        commands:
+          - plan
+        adapter_arg: --max-characters
+        desc: Maximum highlighted/content characters requested for a page fetch.
+  observe:
+    priority: 70
+    entrypoint_command: observe
+    mode_kind: observe
+    desc: Observe Exa search status, a search_run:<id>, web_result:<id>, or web_artifact:<id> without returning unbounded bodies.
+    argument_patterns:
+      - "status"
+      - "search_run:<id>"
+      - "web_result:<id>"
+      - "web_artifact:<id>"
+      - "[--web-preview-chars N]"
+    cli_options:
+      - flags:
+          - --web-preview-chars
+        dest: web_preview_chars
+        type: int
+        min: 0
+        max: 4000
+        commands:
+          - observe
+        adapter_arg: --preview-chars
+        desc: Return a bounded preview from markdown, content, or artifact payloads.
+    examples:
+      - query: observe Exa search status
+        run_cmd: ./xctx observe web_search::exa_search status
+      - query: observe a search run
+        run_cmd: ./xctx observe web_search::exa_search search_run:<id>
+      - query: observe a web result with preview
+        run_cmd: ./xctx observe web_search::exa_search web_result:<id> --web-preview-chars 800
+    returns: web_search_exa_observation
+    run_cmd: "./xctx observe web_search::exa_search <status|search_run:id|web_result:id|web_artifact:id> [--web-preview-chars N]"
