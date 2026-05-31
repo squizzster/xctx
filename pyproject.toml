@@ -7,7 +7,7 @@ name = "xctx-modular-workspace"
 version = "4.2.3"
 description = "Hardened xctx protocol development workspace with modular command, domain, audit, repair, and planning layers."
 requires-python = ">=3.10"
-dependencies = ["PyYAML>=6.0"]
+dependencies = ["PyYAML>=6.0", "edgartools>=5,<6"]
 
 [project.scripts]
 xctx = "xctx.cli:main"
@@ -37,6 +37,7 @@ where = ["libs"]
 "xctx_workspace/yaml_dynamic_config/agent_domains/macro_intelligence_hub" = ["yaml_dynamic_config/agent_domains/macro_intelligence_hub/*.yaml"]
 "xctx_workspace/yaml_dynamic_config/agent_domains/options_intelligence_hub" = ["yaml_dynamic_config/agent_domains/options_intelligence_hub/*.yaml"]
 "xctx_workspace/yaml_dynamic_config/agent_domains/stock_intelligence_hub" = ["yaml_dynamic_config/agent_domains/stock_intelligence_hub/*.yaml"]
+"xctx_workspace/yaml_dynamic_config/agent_domains/stock_intelligence_hub/subdomains/edgar_filing_library" = ["yaml_dynamic_config/agent_domains/stock_intelligence_hub/subdomains/edgar_filing_library/*.yaml"]
 "xctx_workspace/yaml_dynamic_config/agent_domains/stock_intelligence_hub/subdomains/equity_filing" = ["yaml_dynamic_config/agent_domains/stock_intelligence_hub/subdomains/equity_filing/*.yaml"]
 "xctx_workspace/yaml_dynamic_config/agent_domains/stock_intelligence_hub/subdomains/fundamentals_gateway" = ["yaml_dynamic_config/agent_domains/stock_intelligence_hub/subdomains/fundamentals_gateway/*.yaml"]
 "xctx_workspace/yaml_dynamic_config/agent_domains/stock_intelligence_hub/subdomains/market_data_gateway" = ["yaml_dynamic_config/agent_domains/stock_intelligence_hub/subdomains/market_data_gateway/*.yaml"]

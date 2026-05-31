@@ -138,8 +138,10 @@ def assert_modular_layout() -> None:
         "libs/xctx/protocol/option_surface.py",
         "libs/xctx/ports/external_command.py",
         "examples/stock_intelligence_hub/README.md",
+        "examples/stock_intelligence_hub/adapters/edgar_filing_library.py",
         "examples/stock_intelligence_hub/adapters/equity_filings.py",
         "examples/stock_intelligence_hub/adapters/market_data_gateway.py",
+        "libs/xctx_live/edgar_filing_library.py",
         "libs/xctx_live/filings.py",
         "libs/xctx_live/instruments.py",
         "connector_supervisor.py",
@@ -157,6 +159,7 @@ def assert_modular_layout() -> None:
         "yaml_dynamic_config/agent_domains/file_manager/domain.yaml",
         "yaml_dynamic_config/agent_domains/file_manager/subdomains/home_directory/subdomain.yaml",
         "yaml_dynamic_config/agent_domains/stock_intelligence_hub/domain.yaml",
+        "yaml_dynamic_config/agent_domains/stock_intelligence_hub/subdomains/edgar_filing_library/subdomain.yaml",
         "yaml_dynamic_config/agent_domains/stock_intelligence_hub/subdomains/equity_filing/subdomain.yaml",
         "yaml_dynamic_config/agent_domains/stock_intelligence_hub/subdomains/market_data_gateway/subdomain.yaml",
         "data/file_manager_home/README.txt",
@@ -205,6 +208,12 @@ def assert_protocol_is_config_driven() -> None:
     assert filing_subdomain["actions"]["list_forms"]["query_required"] is False
     assert filing_subdomain["actions"]["list_forms"]["collection"]["default"] == "compact"
     assert filing_subdomain["actions"]["list_forms"]["collection"]["cursor"] == "optional"
+    edgar_library = yaml.safe_load((ROOT / "yaml_dynamic_config" / "agent_domains" / "stock_intelligence_hub" / "subdomains" / "edgar_filing_library" / "subdomain.yaml").read_text())
+    assert edgar_library["entrypoint"]["file"] == "connector_supervisor.py"
+    assert edgar_library["connector"]["kind"] == "xctx_native_passthrough"
+    assert edgar_library["connector"]["target_entrypoint"] == "examples/stock_intelligence_hub/adapters/edgar_filing_library.py"
+    assert edgar_library["actions"]["download_key_filings"]["planning"]["planned_effect"] is True
+    assert edgar_library["actions"]["list_available_filings"]["collection"]["cursor"] == "optional"
     assert market_subdomain["actions"]["list_instruments"]["collection"]["cursor"] == "optional"
 
     for core_rel in (
@@ -335,10 +344,12 @@ def assert_root_domain_subdomain_discovery() -> None:
     subdomains = {item["id"]: item for item in domain["results"]["agent_subdomains"]}
     assert subdomains["market_data_gateway"]["status"] == "online"
     assert subdomains["equity_filing"]["status"] == "online"
+    assert subdomains["edgar_filing_library"]["status"] == "online"
     assert subdomains["fundamentals_gateway"]["terminal_reason"] == "down_for_maintenance"
     assert "no bundled fundamentals adapter" in subdomains["fundamentals_gateway"]["offline_reason"]
     assert "latest_price" in domain["results"]["domain_affordances"]
     assert "search_filing_form" in domain["results"]["domain_affordances"]
+    assert "list_available_filings" in domain["results"]["domain_affordances"]
 
     domain_without_colons = one(["discover", "stock_intelligence_hub"])
     assert domain_without_colons["domain_level"] == "agent_domain"

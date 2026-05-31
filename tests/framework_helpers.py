@@ -23,6 +23,7 @@ LOCAL_GATE_PATTERNS = (
     "connector_supervisor.py",
     "market_data_gateway.py",
     "equity_filings.py",
+    "edgar_filing_library.py",
     "xctx_local_gate_detached_child",
 )
 

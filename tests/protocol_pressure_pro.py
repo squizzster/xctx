@@ -194,10 +194,12 @@ def assert_domain_subdomain_discovery() -> None:
     subdomains = {item["id"]: item for item in domain["results"]["agent_subdomains"]}
     assert subdomains["market_data_gateway"]["status"] == "online"
     assert subdomains["equity_filing"]["status"] == "online"
+    assert subdomains["edgar_filing_library"]["status"] == "online"
     assert subdomains["fundamentals_gateway"]["terminal_reason"] == "down_for_maintenance"
     assert "no bundled fundamentals adapter" in subdomains["fundamentals_gateway"]["offline_reason"]
     assert "latest_price" in domain["results"]["domain_affordances"]
     assert "search_filing_form" in domain["results"]["domain_affordances"]
+    assert "list_available_filings" in domain["results"]["domain_affordances"]
 
     macro = run_engine(["discover", "macro_intelligence_hub::"])
     assert macro["results"]["status"] == "offline"

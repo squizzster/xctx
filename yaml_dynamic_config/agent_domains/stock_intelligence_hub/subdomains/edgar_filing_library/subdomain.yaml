@@ -1,0 +1,368 @@
+id: edgar_filing_library
+kind: agent_subdomain
+status: online
+basic_description: Runtime SEC/EDGAR filing acquisition, local artifact inventory, and bounded filing observation.
+full_description: >-
+  This subdomain owns the real EDGAR filing library for stock intelligence workflows. It keeps a runtime SQLite registry of filings and artifact files that are present on disk, supports planned-effect acquisition of key filings from live EDGAR, can index existing local EdgarTools artifact trees, and observes filing metadata plus bounded artifact references without returning whole filing bodies by default.
+data_description: >-
+  Runtime SQLite registry under XCTX_RUNTIME_DIR or .xctx_runtime, plus filing artifacts under the stock_intelligence_hub/edgar_filing_library/artifacts runtime directory. The registry stores issuer, filing, artifact-file, and work-run records.
+entrypoint:
+  file: connector_supervisor.py
+  protocol: json_stdout
+  timeout_seconds: 180
+  max_output_bytes: 60000
+connector:
+  kind: xctx_native_passthrough
+  target_entrypoint: examples/stock_intelligence_hub/adapters/edgar_filing_library.py
+  timeout_seconds: 180
+  max_output_bytes: 60000
+  env_passthrough:
+    - XCTX_EDGAR_IDENTITY
+data:
+  storage_engine: sqlite
+  path: .xctx_runtime/stock_intelligence_hub/edgar_filing_library/registry.sqlite
+  artifact_root: .xctx_runtime/stock_intelligence_hub/edgar_filing_library/artifacts
+  read_only: false
+planning_defaults:
+  result_ttl_seconds: 1800
+  writes_to_db: true
+  can_be_reversed: false
+  can_be_repaired: true
+actions:
+  discover:
+    priority: 10
+    entrypoint_command: discover
+    desc: Discover the runtime EDGAR filing library, local registry status, observable filing refs, and acquisition plans.
+    projections:
+      default: compact
+      allowed:
+        - compact
+        - full
+    argument_patterns:
+      - "[--projection compact|full]"
+    examples:
+      - query: compact filing library discovery
+        run_cmd: ./xctx discover stock_intelligence_hub::edgar_filing_library
+      - query: full filing library discovery
+        run_cmd: ./xctx discover stock_intelligence_hub::edgar_filing_library --projection full
+    run_cmd: ./xctx discover stock_intelligence_hub::edgar_filing_library [--projection compact|full]
+  list_key_filings:
+    domain_affordance: true
+    domain_action_name: list_key_filings
+    priority: 20
+    entrypoint_command: list-key-filings
+    query_required: false
+    mode_kind: list
+    desc: List the critical EDGAR filing forms and show which of those filings are already local for an optional issuer.
+    collection:
+      result_path: groups
+      cursor: none
+      filters:
+        - --identifier
+    argument_patterns:
+      - "[--identifier TICKER|CIK|company]"
+    examples:
+      - query: list key filing classes
+        run_cmd: ./xctx discover stock_intelligence_hub::edgar_filing_library::list_key_filings
+      - query: list local key filing availability for Apple
+        run_cmd: ./xctx discover stock_intelligence_hub::edgar_filing_library::list_key_filings --identifier AAPL
+      - query: domain affordance key filings
+        run_cmd: ./xctx discover stock_intelligence_hub::list_key_filings --identifier AAPL
+    related_commands:
+      - ./xctx discover stock_intelligence_hub::edgar_filing_library::list_available_filings --identifier AAPL
+      - ./xctx plan stock_intelligence_hub::edgar_filing_library::download_key_filings --identifier AAPL --forms critical
+    returns: edgar_key_filing_catalog
+    run_cmd: ./xctx discover stock_intelligence_hub::edgar_filing_library::list_key_filings [--identifier TICKER|CIK|company]
+  list_available_filings:
+    domain_affordance: true
+    domain_action_name: list_available_filings
+    priority: 30
+    entrypoint_command: list-available-filings
+    query_required: false
+    mode_kind: list
+    desc: List filings already present in the local SQLite-backed filing library without planning a download.
+    collection:
+      result_path: filings
+      default_limit: 10
+      max_limit: 100
+      cursor: optional
+      cursor_type: offset
+      filters:
+        - --identifier
+        - --form
+    argument_patterns:
+      - "[query text]"
+      - "[--identifier TICKER|CIK|company]"
+      - "[--form FORM]"
+      - "[--limit N]"
+      - "[--cursor CURSOR]"
+    examples:
+      - query: list all available filings
+        run_cmd: ./xctx discover stock_intelligence_hub::edgar_filing_library::list_available_filings
+      - query: list local 10-K filings for Apple
+        run_cmd: ./xctx discover stock_intelligence_hub::edgar_filing_library::list_available_filings --identifier AAPL --form 10-K
+      - query: domain affordance local filings
+        run_cmd: ./xctx discover stock_intelligence_hub::list_available_filings --identifier AAPL
+    related_commands:
+      - ./xctx observe stock_intelligence_hub::edgar_filing_library filing:<accession>
+      - ./xctx plan stock_intelligence_hub::edgar_filing_library::download_key_filings --identifier AAPL --forms critical
+    returns: edgar_available_filing_list
+    run_cmd: ./xctx discover stock_intelligence_hub::edgar_filing_library::list_available_filings [query] [--identifier TICKER|CIK|company] [--form FORM] [--limit N] [--cursor CURSOR]
+  list_artifacts:
+    domain_affordance: true
+    domain_action_name: list_filing_artifacts
+    priority: 35
+    entrypoint_command: list-artifacts
+    query_required: false
+    mode_kind: list
+    desc: List local artifact files already indexed for filings, including CSV, JSON, manifests, markdown, sections, and text outputs.
+    collection:
+      result_path: artifacts
+      default_limit: 10
+      max_limit: 100
+      cursor: optional
+      cursor_type: offset
+      filters:
+        - --identifier
+        - --form
+        - --kind
+    argument_patterns:
+      - "[query text]"
+      - "[--identifier TICKER|CIK|company]"
+      - "[--form FORM]"
+      - "[--kind csv|json|manifest|markdown|text|sections]"
+      - "[--limit N]"
+      - "[--cursor CURSOR]"
+    examples:
+      - query: list local CSV filing artifacts for Apple
+        run_cmd: ./xctx discover stock_intelligence_hub::edgar_filing_library::list_artifacts --identifier AAPL --kind csv
+      - query: list all local filing artifacts
+        run_cmd: ./xctx discover stock_intelligence_hub::edgar_filing_library::list_artifacts
+      - query: domain affordance artifact inventory
+        run_cmd: ./xctx discover stock_intelligence_hub::list_filing_artifacts --identifier AAPL --kind csv
+    related_commands:
+      - ./xctx observe stock_intelligence_hub::edgar_filing_library artifact_file:<id> --preview-chars 800
+      - ./xctx plan stock_intelligence_hub::edgar_filing_library::company_pack --pack-identifier AAPL --pack-form 10-K
+    returns: edgar_artifact_file_list
+    run_cmd: ./xctx discover stock_intelligence_hub::edgar_filing_library::list_artifacts [query] [--identifier TICKER|CIK|company] [--form FORM] [--kind KIND] [--limit N] [--cursor CURSOR]
+  download_key_filings:
+    domain_affordance: true
+    domain_action_name: download_key_filings
+    priority: 40
+    entrypoint_command: download-key-filings
+    desc: Plan and commit acquisition of critical issuer filings into the local EDGAR filing library registry and artifact store.
+    run_cmd: ./xctx plan stock_intelligence_hub::edgar_filing_library::download_key_filings --identifier AAPL --forms critical
+    planning:
+      mode: planned_effect
+      planned_effect: true
+      preflight_adapter_command: validate-download-key-filings
+      commit_adapter_command: download-key-filings
+      writes_to_db: true
+      can_be_reversed: false
+      can_be_repaired: true
+      result_ttl_seconds: 1800
+      description_of_what_will_happen: The EDGAR filing library will fetch or import {{forms}} filings for {{identifier}}, write artifacts under the adapter runtime directory, and update the SQLite registry before returning {{result_id}}.
+      running_heartbeat:
+        phase: acquiring_edgar_filings
+        message: Commit accepted; the filing library adapter is acquiring filings and updating its registry.
+      complete_heartbeat:
+        phase: filing_library_updated
+        message: Filing library acquisition is complete; observe the result handle or list local filings.
+      blocked_paths:
+        - affordance: direct_unscoped_edgar_download
+          reason: Filing acquisition must be planned and committed through the scoped EDGAR filing library adapter.
+    cli_options:
+      - flags:
+          - --identifier
+        dest: identifier
+        type: str
+        required: true
+        commands:
+          - plan
+        adapter_arg: --identifier
+        desc: Ticker, CIK, or company name to fetch from EDGAR.
+      - flags:
+          - --forms
+        dest: forms
+        type: str
+        default: critical
+        commands:
+          - plan
+        adapter_arg: --forms
+        desc: Comma-separated SEC forms, or critical for the built-in key filing set.
+      - flags:
+          - --source
+        dest: source
+        type: str
+        choices:
+          - live
+          - fixture
+        default: live
+        commands:
+          - plan
+        adapter_arg: --source
+        desc: live uses EDGAR; fixture imports an existing local EdgarTools-style artifact tree.
+      - flags:
+          - --source-root
+        dest: source_root
+        type: str
+        commands:
+          - plan
+        adapter_arg: --source-root
+        desc: Existing local artifact root used when --source fixture is selected.
+      - flags:
+          - --per-form-limit
+        dest: limit
+        type: int
+        min: 1
+        max: 5
+        default: 1
+        commands:
+          - plan
+        adapter_arg: --limit
+        desc: Maximum latest filings per form to acquire.
+  company_pack:
+    domain_affordance: true
+    domain_action_name: company_pack
+    priority: 45
+    entrypoint_command: company-pack
+    desc: Plan and commit a company-pack acquisition or import for one issuer filing, indexing statements, facts, metrics, CSV, JSON, manifest, and narrative artifacts when present.
+    run_cmd: ./xctx plan stock_intelligence_hub::edgar_filing_library::company_pack --pack-identifier AAPL --pack-form 10-K
+    planning:
+      mode: planned_effect
+      planned_effect: true
+      preflight_adapter_command: validate-company-pack
+      commit_adapter_command: company-pack
+      writes_to_db: true
+      can_be_reversed: false
+      can_be_repaired: true
+      result_ttl_seconds: 1800
+      description_of_what_will_happen: The EDGAR filing library will create or import a company pack for {{pack_identifier}}, write/index its filing artifacts, and return {{result_id}}.
+      running_heartbeat:
+        phase: acquiring_company_pack
+        message: Commit accepted; the filing library adapter is creating or indexing the company pack.
+      complete_heartbeat:
+        phase: company_pack_indexed
+        message: Company-pack artifacts are indexed; list artifacts or observe artifact_file refs.
+      blocked_paths:
+        - affordance: direct_unscoped_company_pack
+          reason: Company-pack acquisition must be planned and committed through the scoped EDGAR filing library adapter.
+    cli_options:
+      - flags:
+          - --pack-identifier
+        dest: pack_identifier
+        type: str
+        required: true
+        commands:
+          - plan
+        adapter_arg: --identifier
+        desc: Ticker, CIK, or company name for the company pack.
+      - flags:
+          - --pack-form
+        dest: pack_form
+        type: str
+        default: 10-K
+        commands:
+          - plan
+        adapter_arg: --form
+        desc: SEC form to use for the company pack, typically 10-K, 10-Q, 20-F, or 40-F.
+      - flags:
+          - --pack-source
+        dest: pack_source
+        type: str
+        choices:
+          - live
+          - fixture
+        default: live
+        commands:
+          - plan
+        adapter_arg: --source
+        desc: live uses EDGAR; fixture imports an existing company-pack artifact tree.
+      - flags:
+          - --pack-source-root
+        dest: pack_source_root
+        type: str
+        commands:
+          - plan
+        adapter_arg: --source-root
+        desc: Existing company-pack artifact root used when --pack-source fixture is selected.
+      - flags:
+          - --pack-items
+        dest: pack_items
+        type: str
+        default: 1,1A,7,8,9A
+        commands:
+          - plan
+        adapter_arg: --items
+        desc: Comma-separated narrative item sections requested for the company pack.
+      - flags:
+          - --pack-concepts
+        dest: pack_concepts
+        type: str
+        default: us-gaap:Assets,us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax,us-gaap:NetIncomeLoss
+        commands:
+          - plan
+        adapter_arg: --concepts
+        desc: Comma-separated XBRL concepts requested for facts or metrics outputs.
+  index_local_artifacts:
+    priority: 60
+    entrypoint_command: index-local-artifacts
+    desc: Plan and commit indexing of an existing local EDGAR artifact tree into the SQLite filing registry.
+    run_cmd: ./xctx plan stock_intelligence_hub::edgar_filing_library::index_local_artifacts --artifact-root <existing-edgar-artifact-root>
+    planning:
+      mode: planned_effect
+      planned_effect: true
+      preflight_adapter_command: validate-index-local-artifacts
+      commit_adapter_command: index-local-artifacts
+      writes_to_db: true
+      can_be_reversed: false
+      can_be_repaired: true
+      result_ttl_seconds: 1800
+      description_of_what_will_happen: The EDGAR filing library will copy/index local artifacts from {{artifact_root}}, create or update the SQLite inventory, and return {{result_id}}.
+      running_heartbeat:
+        phase: indexing_local_edgar_artifacts
+        message: Commit accepted; the filing library adapter is indexing local artifacts.
+      complete_heartbeat:
+        phase: filing_registry_indexed
+        message: Local filing artifacts are now discoverable and observable through the filing library.
+    cli_options:
+      - flags:
+          - --artifact-root
+        dest: artifact_root
+        type: str
+        required: true
+        commands:
+          - plan
+        adapter_arg: --source-root
+        desc: Existing local EdgarTools-style artifact directory to copy/index.
+  observe:
+    priority: 70
+    entrypoint_command: observe
+    mode_kind: observe
+    desc: Observe the filing-library status, a local filing by filing:<accession>, or an indexed artifact_file:<id> without returning full filing bodies unless a bounded preview is requested.
+    argument_patterns:
+      - "status"
+      - "filing:<accession>"
+      - "artifact_file:<id>"
+      - "<accession>"
+      - "[--preview-chars N]"
+    cli_options:
+      - flags:
+          - --preview-chars
+        dest: preview_chars
+        type: int
+        min: 0
+        max: 2000
+        commands:
+          - observe
+        adapter_arg: --preview-chars
+        desc: Return a bounded text/markdown preview from a local filing artifact.
+    examples:
+      - query: observe filing library status
+        run_cmd: ./xctx observe stock_intelligence_hub::edgar_filing_library status
+      - query: observe a local filing
+        run_cmd: ./xctx observe stock_intelligence_hub::edgar_filing_library filing:<accession>
+      - query: observe an indexed artifact with bounded preview
+        run_cmd: ./xctx observe stock_intelligence_hub::edgar_filing_library artifact_file:<id> --preview-chars 800
+    returns: edgar_filing_observation
+    run_cmd: ./xctx observe stock_intelligence_hub::edgar_filing_library <status|filing:accession|artifact_file:id> [--preview-chars N]
