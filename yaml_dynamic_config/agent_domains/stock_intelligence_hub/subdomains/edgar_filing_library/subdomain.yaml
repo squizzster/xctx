@@ -9,13 +9,13 @@ data_description: >-
 entrypoint:
   file: connector_supervisor.py
   protocol: json_stdout
-  timeout_seconds: 180
-  max_output_bytes: 60000
+  timeout_seconds: 300
+  max_output_bytes: 120000
 connector:
   kind: xctx_native_passthrough
   target_entrypoint: examples/stock_intelligence_hub/adapters/edgar_filing_library.py
-  timeout_seconds: 180
-  max_output_bytes: 60000
+  timeout_seconds: 300
+  max_output_bytes: 120000
   env_passthrough:
     - XCTX_EDGAR_IDENTITY
   adapter_env_passthrough:
@@ -54,6 +54,7 @@ actions:
     priority: 20
     entrypoint_command: list-key-filings
     query_required: false
+    allow_arbitrary_query: true
     mode_kind: list
     desc: List the critical EDGAR filing forms and show which of those filings are already local for an optional issuer.
     collection:
@@ -62,6 +63,7 @@ actions:
       filters:
         - --identifier
     argument_patterns:
+      - "[identifier]"
       - "[--identifier TICKER|CIK|company]"
     examples:
       - query: list key filing classes
@@ -71,8 +73,9 @@ actions:
       - query: domain affordance key filings
         run_cmd: ./xctx discover stock_intelligence_hub::list_key_filings --identifier AAPL
     related_commands:
-      - ./xctx discover stock_intelligence_hub::edgar_filing_library::list_available_filings --identifier AAPL
+      - ./xctx plan stock_intelligence_hub::edgar_filing_library::super_pack --issuer AAPL
       - ./xctx plan stock_intelligence_hub::edgar_filing_library::download_key_filings --identifier AAPL --forms critical
+      - ./xctx discover stock_intelligence_hub::edgar_filing_library::list_available_filings --identifier AAPL
     returns: edgar_key_filing_catalog
     run_cmd: ./xctx discover stock_intelligence_hub::edgar_filing_library::list_key_filings [--identifier TICKER|CIK|company]
   list_available_filings:
@@ -81,6 +84,7 @@ actions:
     priority: 30
     entrypoint_command: list-available-filings
     query_required: false
+    allow_arbitrary_query: true
     mode_kind: list
     desc: List filings already present in the local SQLite-backed filing library without planning a download.
     collection:
@@ -106,6 +110,7 @@ actions:
       - query: domain affordance local filings
         run_cmd: ./xctx discover stock_intelligence_hub::list_available_filings --identifier AAPL
     related_commands:
+      - ./xctx plan stock_intelligence_hub::edgar_filing_library::super_pack --issuer AAPL
       - ./xctx observe stock_intelligence_hub::edgar_filing_library filing:<accession>
       - ./xctx plan stock_intelligence_hub::edgar_filing_library::download_key_filings --identifier AAPL --forms critical
     returns: edgar_available_filing_list
@@ -116,6 +121,7 @@ actions:
     priority: 35
     entrypoint_command: list-artifacts
     query_required: false
+    allow_arbitrary_query: true
     mode_kind: list
     desc: List local artifact files already indexed for filings, including CSV, JSON, manifests, markdown, sections, and text outputs.
     collection:
@@ -143,10 +149,34 @@ actions:
       - query: domain affordance artifact inventory
         run_cmd: ./xctx discover stock_intelligence_hub::list_filing_artifacts --identifier AAPL --kind csv
     related_commands:
+      - ./xctx plan stock_intelligence_hub::edgar_filing_library::super_pack --issuer AAPL
       - ./xctx observe stock_intelligence_hub::edgar_filing_library artifact_file:<id> --preview-chars 800
       - ./xctx plan stock_intelligence_hub::edgar_filing_library::company_pack --pack-identifier AAPL --pack-form 10-K
     returns: edgar_artifact_file_list
     run_cmd: ./xctx discover stock_intelligence_hub::edgar_filing_library::list_artifacts [query] [--identifier TICKER|CIK|company] [--form FORM] [--kind KIND] [--limit N] [--cursor CURSOR]
+  get_latest_filing:
+    domain_affordance: true
+    domain_action_name: get_latest_filing
+    priority: 38
+    entrypoint_command: get-latest-filing
+    query_required: false
+    allow_arbitrary_query: true
+    mode_kind: discover
+    desc: Return the latest local filing already present for an issuer and optional form, or point to planned acquisition helpers when absent.
+    argument_patterns:
+      - "[--identifier TICKER|CIK|company]"
+      - "[--form FORM]"
+      - "[query text]"
+    examples:
+      - query: get latest local annual filing for Apple
+        run_cmd: ./xctx discover stock_intelligence_hub::edgar_filing_library::get_latest_filing --identifier AAPL --form 10-K
+      - query: domain affordance latest filing helper
+        run_cmd: ./xctx discover stock_intelligence_hub::get_latest_filing --identifier AAPL --form 10-K
+    related_commands:
+      - ./xctx plan stock_intelligence_hub::edgar_filing_library::super_pack --issuer AAPL
+      - ./xctx discover stock_intelligence_hub::edgar_filing_library::list_available_filings --identifier AAPL
+    returns: edgar_latest_filing_lookup
+    run_cmd: ./xctx discover stock_intelligence_hub::edgar_filing_library::get_latest_filing [query] [--identifier TICKER|CIK|company] [--form FORM]
   download_key_filings:
     domain_affordance: true
     domain_action_name: download_key_filings
@@ -292,14 +322,134 @@ actions:
           - --pack-items
         dest: pack_items
         type: str
-        default: 1,1A,7,8,9A
+        default: auto
         commands:
           - plan
         adapter_arg: --items
-        desc: Comma-separated narrative item sections requested for the company pack.
+        desc: Comma-separated narrative item sections requested for the company pack, or auto for form-specific defaults.
       - flags:
           - --pack-concepts
         dest: pack_concepts
+        type: str
+        default: us-gaap:Assets,us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax,us-gaap:NetIncomeLoss
+        commands:
+          - plan
+        adapter_arg: --concepts
+        desc: Comma-separated XBRL concepts requested for facts or metrics outputs.
+  super_pack:
+    domain_affordance: true
+    domain_action_name: filing_super_pack
+    priority: 39
+    entrypoint_command: super-pack
+    desc: Plan and commit a smart issuer filing super-pack that materializes the latest annual report, latest quarterly report when available, current-report updates, company-pack CSV/JSON outputs, and split narrative item sections.
+    argument_patterns:
+      - "<issuer>"
+      - "--issuer TICKER|CIK|company"
+      - "[--super-source live|fixture]"
+      - "[--annual-forms 10-K,20-F,40-F]"
+      - "[--quarterly-forms 10-Q]"
+      - "[--update-forms 8-K,6-K]"
+    run_cmd: ./xctx plan stock_intelligence_hub::edgar_filing_library::super_pack --issuer AAPL
+    planning:
+      mode: planned_effect
+      planned_effect: true
+      preflight_adapter_command: validate-super-pack
+      commit_adapter_command: super-pack
+      writes_to_db: true
+      can_be_reversed: false
+      can_be_repaired: true
+      result_ttl_seconds: 1800
+      description_of_what_will_happen: The EDGAR filing library will select the latest annual, quarterly, and update filings for {{issuer}}, materialize company packs where supported, split item sections from filing markdown, index artifacts, and return {{result_id}}.
+      running_heartbeat:
+        phase: acquiring_edgar_super_pack
+        message: Commit accepted; the filing library adapter is probing annual, quarterly, and update filings, then materializing selected artifacts.
+      complete_heartbeat:
+        phase: edgar_super_pack_ready
+        message: Super-pack acquisition is complete; observe the result handle or list local artifacts.
+      blocked_paths:
+        - affordance: direct_unscoped_super_pack
+          reason: Smart filing super-pack acquisition must be planned and committed through the scoped EDGAR filing library adapter.
+    cli_options:
+      - flags:
+          - --issuer
+        dest: issuer
+        type: str
+        required: true
+        commands:
+          - plan
+        adapter_arg: --identifier
+        positional_arg: 0
+        desc: Ticker, CIK, or company name for the smart filing super-pack.
+      - flags:
+          - --super-source
+        dest: super_source
+        type: str
+        choices:
+          - live
+          - fixture
+        default: live
+        commands:
+          - plan
+        adapter_arg: --source
+        desc: live uses EDGAR; fixture imports an existing artifact tree as a super-pack result.
+      - flags:
+          - --super-source-root
+        dest: super_source_root
+        type: str
+        commands:
+          - plan
+        adapter_arg: --source-root
+        desc: Existing artifact root used when --source fixture is selected.
+      - flags:
+          - --annual-forms
+        dest: annual_forms
+        type: str
+        default: 10-K,20-F,40-F
+        commands:
+          - plan
+        adapter_arg: --annual-forms
+        desc: Annual-report form priority; the first available form is selected.
+      - flags:
+          - --quarterly-forms
+        dest: quarterly_forms
+        type: str
+        default: 10-Q
+        commands:
+          - plan
+        adapter_arg: --quarterly-forms
+        desc: Quarterly-report form priority; the first available form is selected.
+      - flags:
+          - --update-forms
+        dest: update_forms
+        type: str
+        default: 8-K,6-K
+        commands:
+          - plan
+        adapter_arg: --update-forms
+        desc: Current-report or foreign-update forms to include when available.
+      - flags:
+          - --update-limit
+        dest: update_limit
+        type: int
+        min: 0
+        max: 5
+        default: 1
+        commands:
+          - plan
+        adapter_arg: --update-limit
+        desc: Maximum latest update filings per update form.
+      - flags:
+          - --items
+        dest: items
+        type: str
+        default: auto
+        commands:
+          - plan
+        adapter_arg: --items
+        desc: Comma-separated item sections for company-pack filings, or auto for form-specific defaults.
+      - flags:
+          - --concepts
+        dest: concepts
         type: str
         default: us-gaap:Assets,us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax,us-gaap:NetIncomeLoss
         commands:

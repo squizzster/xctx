@@ -31,8 +31,10 @@ from xctx_live.edgar_filing_library import (  # noqa: E402
     commit_company_pack,
     commit_download_key_filings,
     commit_index_local_artifacts,
+    commit_super_pack,
     discover_library,
     filing_audit,
+    get_latest_filing,
     list_artifacts,
     list_available_filings,
     list_key_filings,
@@ -41,6 +43,7 @@ from xctx_live.edgar_filing_library import (  # noqa: E402
     validate_company_pack,
     validate_download_key_filings,
     validate_index_local_artifacts,
+    validate_super_pack,
 )
 
 
@@ -99,9 +102,15 @@ def main(argv: list[str] | None = None) -> int:
             payload = list_available_filings(ROOT, rest)
         elif command == "list-artifacts":
             payload = list_artifacts(ROOT, rest)
+        elif command == "get-latest-filing":
+            payload = get_latest_filing(ROOT, rest)
         elif command == "observe":
             identifier, option_args = _parse_observe_args(rest)
             payload = observe_filing(ROOT, identifier, option_args)
+        elif command == "validate-super-pack":
+            payload = validate_super_pack(ROOT, rest)
+        elif command == "super-pack":
+            payload = commit_super_pack(ROOT, rest)
         elif command == "validate-company-pack":
             payload = validate_company_pack(ROOT, rest)
         elif command == "company-pack":

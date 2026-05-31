@@ -1,15 +1,27 @@
 from __future__ import annotations
 
 import csv
+import contextlib
+import fcntl
 import hashlib
 import json
 import os
+import random
 import re
 import shutil
 import sqlite3
+import tempfile
+import time
 from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
+
+from xctx_live.edgar_sections import (
+    default_items_for_form,
+    make_company_pack_sections_optional,
+    write_located_sections,
+)
 
 
 SCHEMA_VERSION = "1"
@@ -18,12 +30,26 @@ REGISTRY_FILENAME = "registry.sqlite"
 ARTIFACTS_DIRNAME = "artifacts"
 LIST_DEFAULT_LIMIT = 10
 LIST_MAX_LIMIT = 100
-COMPANY_PACK_DEFAULT_ITEMS = "1,1A,7,8,9A"
+COMPANY_PACK_DEFAULT_ITEMS = "auto"
 COMPANY_PACK_DEFAULT_CONCEPTS = (
     "us-gaap:Assets,"
     "us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax,"
     "us-gaap:NetIncomeLoss"
 )
+SUPER_PACK_ANNUAL_FORMS: tuple[str, ...] = ("10-K", "20-F", "40-F")
+SUPER_PACK_QUARTERLY_FORMS: tuple[str, ...] = ("10-Q",)
+SUPER_PACK_UPDATE_FORMS: tuple[str, ...] = ("8-K", "6-K")
+SUPER_PACK_COMPANY_PACK_FORMS: tuple[str, ...] = (
+    "10-K",
+    "10-K/A",
+    "20-F",
+    "20-F/A",
+    "40-F",
+    "40-F/A",
+    "10-Q",
+    "10-Q/A",
+)
+NO_FILING_MARKERS = ("no filings found", "no filing found")
 
 KEY_FORM_GROUPS: tuple[dict[str, Any], ...] = (
     {
@@ -62,6 +88,15 @@ KEY_FORMS: tuple[str, ...] = tuple(form for group in KEY_FORM_GROUPS for form in
 AMENDMENT_FORMS: tuple[str, ...] = tuple(f"{form}/A" for form in KEY_FORMS if not form.endswith("/A"))
 CRITICAL_FORM_SET: tuple[str, ...] = tuple(dict.fromkeys([*KEY_FORMS, *AMENDMENT_FORMS]))
 ACCESSION_RE = re.compile(r"^[0-9]{10}-[0-9]{2}-[0-9]{6}$")
+EDGAR_RETRYABLE_STATUS_CODES = {408, 429, 500, 502, 503, 504}
+EDGAR_RETRY_MAX_ATTEMPTS = 4
+EDGAR_RETRY_BASE_SECONDS = 0.75
+EDGAR_RETRY_MAX_SECONDS = 30.0
+EDGAR_TIMEOUT_RETRY_SECONDS = 30.0
+EDGAR_MIN_REQUEST_INTERVAL_SECONDS = 0.5
+EDGAR_RATE_LIMIT_FILENAME = "sec_rate_limits.sqlite"
+EDGAR_RATE_LIMIT_LOCK_FILENAME = "sec_rate_limits.lock"
+EDGAR_RATE_LIMIT_SCOPE = "sec_edgar"
 
 
 def _now() -> str:
@@ -307,9 +342,52 @@ def _edgar_identity_status() -> dict[str, Any]:
     return {"available": False, "source": None, "value_printed": False}
 
 
+EDGAR_LIBRARY_REF = "stock_intelligence_hub::edgar_filing_library"
+
+
+def _issuer_hint(identifier: str | None = None) -> str:
+    return str(identifier or "AAPL").strip() or "AAPL"
+
+
+def _super_pack_plan_cmd(identifier: str | None = None) -> str:
+    return f"./xctx plan {EDGAR_LIBRARY_REF}::super_pack --issuer {_issuer_hint(identifier)}"
+
+
+def _download_key_plan_cmd(identifier: str | None = None, forms: str = "critical") -> str:
+    return f"./xctx plan {EDGAR_LIBRARY_REF}::download_key_filings --identifier {_issuer_hint(identifier)} --forms {forms}"
+
+
+def _company_pack_plan_cmd(identifier: str | None = None, form: str = "10-K") -> str:
+    return f"./xctx plan {EDGAR_LIBRARY_REF}::company_pack --pack-identifier {_issuer_hint(identifier)} --pack-form {form}"
+
+
+def _index_local_artifacts_cmd() -> str:
+    return f"./xctx plan {EDGAR_LIBRARY_REF}::index_local_artifacts --artifact-root <existing-edgar-artifact-root>"
+
+
+def _list_available_filings_cmd(identifier: str | None = None, form: str | None = None) -> str:
+    cmd = f"./xctx discover {EDGAR_LIBRARY_REF}::list_available_filings"
+    if identifier:
+        cmd += f" --identifier {identifier}"
+    if form:
+        cmd += f" --form {form}"
+    return cmd
+
+
+def _list_artifacts_cmd(identifier: str | None = None, kind: str | None = None, form: str | None = None) -> str:
+    cmd = f"./xctx discover {EDGAR_LIBRARY_REF}::list_artifacts"
+    if identifier:
+        cmd += f" --identifier {identifier}"
+    if kind:
+        cmd += f" --kind {kind}"
+    if form:
+        cmd += f" --form {form}"
+    return cmd
+
+
 def discover_library(root: Path, projection: str = "compact") -> dict[str, Any]:
     stats = registry_stats(root)
-    ref = "stock_intelligence_hub::edgar_filing_library"
+    ref = EDGAR_LIBRARY_REF
     payload: dict[str, Any] = {
         "object_type": "edgar_filing_library_discovery",
         "projection": projection,
@@ -351,6 +429,10 @@ def discover_library(root: Path, projection: str = "compact") -> dict[str, Any]:
                 "id": "list_artifacts",
                 "run_cmd": f"./xctx discover {ref}::list_artifacts [--identifier AAPL] [--kind csv]",
             },
+            {
+                "id": "get_latest_filing",
+                "run_cmd": f"./xctx discover {ref}::get_latest_filing --identifier AAPL --form 10-K",
+            },
         ],
         "observable_patterns": [
             {
@@ -364,23 +446,29 @@ def discover_library(root: Path, projection: str = "compact") -> dict[str, Any]:
         ],
         "planned_effects": [
             {
+                "action": "super_pack",
+                "recommended": True,
+                "run_cmd": _super_pack_plan_cmd("AAPL"),
+            },
+            {
                 "action": "download_key_filings",
-                "run_cmd": f"./xctx plan {ref}::download_key_filings --identifier AAPL --forms critical",
+                "run_cmd": _download_key_plan_cmd("AAPL"),
             },
             {
                 "action": "company_pack",
-                "run_cmd": f"./xctx plan {ref}::company_pack --pack-identifier AAPL --pack-form 10-K",
+                "run_cmd": _company_pack_plan_cmd("AAPL", "10-K"),
             },
             {
                 "action": "index_local_artifacts",
-                "run_cmd": f"./xctx plan {ref}::index_local_artifacts --artifact-root <existing-edgar-artifact-root>",
+                "run_cmd": _index_local_artifacts_cmd(),
             },
         ],
         "next_moves": [
-            {"run_cmd": f"./xctx discover {ref}::list_available_filings"},
-            {"run_cmd": f"./xctx discover {ref}::list_artifacts --kind csv"},
+            {"run_cmd": _super_pack_plan_cmd("AAPL")},
+            {"run_cmd": f"./xctx discover {ref}::get_latest_filing --identifier AAPL --form 10-K"},
+            {"run_cmd": f"./xctx discover {ref}::list_artifacts --identifier AAPL --kind csv"},
+            {"run_cmd": f"./xctx discover {ref}::list_available_filings --identifier AAPL"},
             {"run_cmd": f"./xctx discover {ref}::list_key_filings --identifier AAPL"},
-            {"run_cmd": f"./xctx plan {ref}::download_key_filings --identifier AAPL --forms critical"},
         ],
     }
     if projection == "full":
@@ -523,12 +611,8 @@ def list_available_filings(root: Path, args: list[str]) -> dict[str, Any]:
             },
             "registry_initialized": False,
             "next_moves": [
-                {
-                    "run_cmd": "./xctx plan stock_intelligence_hub::edgar_filing_library::download_key_filings --identifier AAPL --forms critical"
-                },
-                {
-                    "run_cmd": "./xctx plan stock_intelligence_hub::edgar_filing_library::index_local_artifacts --artifact-root <existing-edgar-artifact-root>"
-                },
+                {"run_cmd": _super_pack_plan_cmd(identifier)},
+                {"run_cmd": _index_local_artifacts_cmd()},
             ],
         }
 
@@ -645,12 +729,9 @@ def list_artifacts(root: Path, args: list[str]) -> dict[str, Any]:
             },
             "registry_initialized": False,
             "next_moves": [
-                {
-                    "run_cmd": "./xctx plan stock_intelligence_hub::edgar_filing_library::company_pack --pack-identifier AAPL --pack-form 10-K"
-                },
-                {
-                    "run_cmd": "./xctx plan stock_intelligence_hub::edgar_filing_library::index_local_artifacts --artifact-root <existing-edgar-artifact-root>"
-                },
+                {"run_cmd": _super_pack_plan_cmd(identifier)},
+                {"run_cmd": _company_pack_plan_cmd(identifier, form or "10-K")},
+                {"run_cmd": _index_local_artifacts_cmd()},
             ],
         }
 
@@ -768,10 +849,8 @@ def list_key_filings(root: Path, args: list[str]) -> dict[str, Any]:
                     "available_count": counts.get(form, 0),
                     "amendment_available_count": counts.get(amendments, 0),
                     "latest_available": latest.get(form),
-                    "plan_cmd": (
-                        "./xctx plan stock_intelligence_hub::edgar_filing_library::download_key_filings "
-                        f"--identifier {identifier or '<identifier>'} --forms {form}"
-                    ),
+                    "plan_cmd": _super_pack_plan_cmd(identifier),
+                    "specific_form_plan_cmd": _download_key_plan_cmd(identifier, form),
                 }
             )
         groups.append(
@@ -788,19 +867,82 @@ def list_key_filings(root: Path, args: list[str]) -> dict[str, Any]:
         "registry_initialized": conn is not None,
         "groups": groups,
         "next_moves": [
+            {"run_cmd": _super_pack_plan_cmd(identifier)},
             {
-                "run_cmd": (
-                    "./xctx plan stock_intelligence_hub::edgar_filing_library::download_key_filings "
-                    f"--identifier {identifier or 'AAPL'} --forms critical"
-                )
+                "run_cmd": _list_available_filings_cmd(identifier)
             },
             {
-                "run_cmd": (
-                    "./xctx discover stock_intelligence_hub::edgar_filing_library::list_available_filings"
-                    + (f" --identifier {identifier}" if identifier else "")
-                )
+                "run_cmd": _download_key_plan_cmd(identifier)
             },
         ],
+    }
+
+
+def get_latest_filing(root: Path, args: list[str]) -> dict[str, Any]:
+    identifier = _option(args, "--identifier")
+    form = _option(args, "--form")
+    query = _positional_query(args, {"--identifier", "--form"})
+    effective_identifier = identifier or query or None
+    conn = _connect_existing(root)
+    if conn is None:
+        return {
+            "object_type": "edgar_latest_filing_lookup",
+            "found": False,
+            "identifier": effective_identifier,
+            "form": form,
+            "registry_initialized": False,
+            "local_only": True,
+            "next_moves": [
+                _super_pack_plan_cmd(effective_identifier),
+                _company_pack_plan_cmd(effective_identifier, form or "10-K"),
+            ],
+        }
+
+    where = "WHERE 1=1"
+    params: list[Any] = []
+    if form:
+        where += " AND upper(form) = upper(?)"
+        params.append(_normalize_form(form))
+    extra, extra_params = _identifier_filter_sql(effective_identifier)
+    where += extra
+    params.extend(extra_params)
+    with conn:
+        row = conn.execute(
+            f"""
+            SELECT f.*, COUNT(a.id) AS artifact_count
+            FROM filings f
+            LEFT JOIN artifact_files a ON a.accession = f.accession
+            {where}
+            GROUP BY f.accession
+            ORDER BY COALESCE(f.filing_date, '') DESC, f.accession DESC
+            LIMIT 1
+            """,
+            params,
+        ).fetchone()
+    found = row is not None
+    return {
+        "object_type": "edgar_latest_filing_lookup",
+        "found": found,
+        "identifier": effective_identifier,
+        "form": form,
+        "registry_initialized": True,
+        "local_only": True,
+        "latest": _filing_projection(row) if row else None,
+        "next_moves": (
+            [
+                _filing_projection(row)["observe_cmd"],
+                (
+                    "./xctx discover stock_intelligence_hub::edgar_filing_library::list_artifacts "
+                    f"--identifier {effective_identifier or '<identifier>'}"
+                    + (f" --form {form}" if form else "")
+                ),
+            ]
+            if row
+            else [
+                _super_pack_plan_cmd(effective_identifier),
+                _company_pack_plan_cmd(effective_identifier, form or "10-K"),
+            ]
+        ),
     }
 
 
@@ -840,6 +982,8 @@ def _issuer_key(metadata: dict[str, Any]) -> str:
 def _file_kind(path: Path) -> str:
     name = path.name.lower()
     suffix = path.suffix.lower()
+    if path.parent.name.lower() == "sections" and (name.startswith("item_") or name == "index.json"):
+        return "sections"
     if name == "metadata.json" or name.endswith(".metadata.json"):
         return "metadata"
     if name.endswith("manifest.json"):
@@ -1115,7 +1259,14 @@ def _copy_into_artifact_root(root: Path, source_root: Path, result_id: str) -> P
     if target.exists():
         return target
     target.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copytree(source, target)
+    tmp_target = target.parent / f".{target.name}.{os.getpid()}.{random.randrange(1_000_000_000):09d}.tmp"
+    try:
+        shutil.copytree(source, tmp_target)
+        os.replace(tmp_target, target)
+        _fsync_parent(target)
+    finally:
+        if tmp_target.exists():
+            shutil.rmtree(tmp_target, ignore_errors=True)
     return target
 
 
@@ -1181,8 +1332,9 @@ def validate_download_key_filings(root: Path, args: list[str]) -> dict[str, Any]
             "ok": False,
             "error": str(exc),
             "next_moves": [
-                "./xctx plan stock_intelligence_hub::edgar_filing_library::download_key_filings --identifier AAPL --forms critical",
-                "./xctx plan stock_intelligence_hub::edgar_filing_library::index_local_artifacts --artifact-root <existing-edgar-artifact-root>",
+                _super_pack_plan_cmd("AAPL"),
+                _download_key_plan_cmd("AAPL"),
+                _index_local_artifacts_cmd(),
             ],
         }
     return {
@@ -1209,6 +1361,20 @@ def _csv_tokens(value: str | None, default: str) -> list[str]:
     return tokens
 
 
+def _items_for_form(form: str, raw_items: str | None) -> list[str]:
+    text = str(raw_items if raw_items is not None else COMPANY_PACK_DEFAULT_ITEMS).strip()
+    if not text or text.lower() in {"auto", "default", "form-default", "form_defaults"}:
+        return default_items_for_form(form)
+    return _csv_tokens(text, ",".join(default_items_for_form(form)))
+
+
+def _forms_option(args: list[str], flag: str, default: tuple[str, ...]) -> list[str]:
+    value = _option(args, flag)
+    if value is None or not str(value).strip():
+        return list(default)
+    return parse_forms(str(value))
+
+
 def validate_company_pack(root: Path, args: list[str]) -> dict[str, Any]:
     try:
         identifier = str(_option(args, "--identifier", required=True)).strip()
@@ -1220,7 +1386,7 @@ def validate_company_pack(root: Path, args: list[str]) -> dict[str, Any]:
         source = str(_option(args, "--source", "live"))
         if source not in {"live", "fixture"}:
             raise ValueError("--source must be live or fixture")
-        items = _csv_tokens(_option(args, "--items", COMPANY_PACK_DEFAULT_ITEMS), COMPANY_PACK_DEFAULT_ITEMS)
+        items = _items_for_form(form, _option(args, "--items"))
         concepts = _csv_tokens(
             _option(args, "--concepts", COMPANY_PACK_DEFAULT_CONCEPTS),
             COMPANY_PACK_DEFAULT_CONCEPTS,
@@ -1243,8 +1409,9 @@ def validate_company_pack(root: Path, args: list[str]) -> dict[str, Any]:
             "ok": False,
             "error": str(exc),
             "next_moves": [
-                "./xctx plan stock_intelligence_hub::edgar_filing_library::company_pack --pack-identifier AAPL --pack-form 10-K",
-                "./xctx plan stock_intelligence_hub::edgar_filing_library::index_local_artifacts --artifact-root <existing-edgar-artifact-root>",
+                _super_pack_plan_cmd("AAPL"),
+                _company_pack_plan_cmd("AAPL", "10-K"),
+                _index_local_artifacts_cmd(),
             ],
         }
     return {
@@ -1329,9 +1496,401 @@ def _company_artifact_dir(root: Path, identifier: str, metadata: dict[str, Any])
     return paths["artifacts"] / cik / ticker / accession
 
 
-def _write_text(path: Path, text: str | None) -> dict[str, Any]:
+def _fsync_parent(path: Path) -> None:
+    try:
+        directory_fd = os.open(path.parent, os.O_RDONLY)
+    except OSError:
+        return
+    try:
+        os.fsync(directory_fd)
+    finally:
+        os.close(directory_fd)
+
+
+def _atomic_write_text(path: Path, text: str | None) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(text or "", encoding="utf-8")
+    tmp_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            "w",
+            encoding="utf-8",
+            dir=path.parent,
+            prefix=f".{path.name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as handle:
+            tmp_path = Path(handle.name)
+            handle.write(text or "")
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(tmp_path, path)
+        _fsync_parent(path)
+        tmp_path = None
+    finally:
+        if tmp_path is not None:
+            try:
+                tmp_path.unlink()
+            except OSError:
+                pass
+
+
+def _atomic_write_with_path(path: Path, writer: Callable[[Path], None]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path: Path | None = None
+    try:
+        fd, raw_tmp_path = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")
+        os.close(fd)
+        tmp_path = Path(raw_tmp_path)
+        writer(tmp_path)
+        with tmp_path.open("rb") as handle:
+            os.fsync(handle.fileno())
+        os.replace(tmp_path, path)
+        _fsync_parent(path)
+        tmp_path = None
+    finally:
+        if tmp_path is not None:
+            try:
+                tmp_path.unlink()
+            except OSError:
+                pass
+
+
+def _retry_after_seconds(exc: BaseException, *, now: Callable[[], float] = time.time) -> float | None:
+    values: list[Any] = []
+    for attr in ("retry_after", "retry_after_seconds"):
+        if hasattr(exc, attr):
+            values.append(getattr(exc, attr))
+    response = getattr(exc, "response", None)
+    headers = getattr(response, "headers", None) or getattr(exc, "headers", None) or {}
+    if isinstance(headers, dict):
+        for key, value in headers.items():
+            if str(key).lower() == "retry-after":
+                values.append(value)
+                break
+    for value in values:
+        if value is None:
+            continue
+        text = str(value).strip()
+        if not text:
+            continue
+        try:
+            seconds = float(text)
+        except ValueError:
+            try:
+                parsed = parsedate_to_datetime(text)
+            except (TypeError, ValueError):
+                continue
+            seconds = parsed.timestamp() - now()
+        return max(0.0, min(seconds, EDGAR_RETRY_MAX_SECONDS))
+    return None
+
+
+def _exception_status_code(exc: BaseException) -> int | None:
+    for source in (getattr(exc, "response", None), exc):
+        for attr in ("status_code", "status", "code"):
+            value = getattr(source, attr, None)
+            try:
+                code = int(value)
+            except (TypeError, ValueError):
+                continue
+            if 100 <= code <= 599:
+                return code
+    text = str(exc)
+    match = re.search(r"\b(429|500|502|503|504)\b", text)
+    return int(match.group(1)) if match else None
+
+
+def _is_retryable_edgar_exception(exc: BaseException) -> bool:
+    status_code = _exception_status_code(exc)
+    if status_code in EDGAR_RETRYABLE_STATUS_CODES:
+        return True
+    if _is_timeout_exception(exc):
+        return True
+    text = str(exc).lower()
+    transient_markers = (
+        "too many requests",
+        "rate limit",
+        "temporarily unavailable",
+        "service unavailable",
+        "gateway timeout",
+        "bad gateway",
+        "connection reset",
+        "connection aborted",
+        "read timed out",
+        "timeout",
+    )
+    return any(marker in text for marker in transient_markers)
+
+
+def _is_timeout_exception(exc: BaseException) -> bool:
+    if isinstance(exc, TimeoutError):
+        return True
+    text = f"{exc.__class__.__name__} {exc}".lower()
+    timeout_markers = ("timeout", "timed out", "readtimeout", "connecttimeout")
+    return any(marker in text for marker in timeout_markers)
+
+
+def _edgar_retry_reason(exc: BaseException) -> str:
+    status_code = _exception_status_code(exc)
+    if status_code is not None:
+        return f"http_{status_code}"
+    if _is_timeout_exception(exc):
+        return "timeout"
+    return "transient"
+
+
+def _compact_edgar_label(label: str) -> str:
+    text = str(label)
+    return text if len(text) <= 80 else f"{text[:77]}..."
+
+
+def _retry_delay_seconds(
+    attempt_index: int,
+    exc: BaseException,
+    *,
+    random_func: Callable[[], float] = random.random,
+    now_func: Callable[[], float] = time.time,
+) -> float:
+    retry_after = _retry_after_seconds(exc, now=now_func)
+    if retry_after is not None:
+        return retry_after
+    if _is_timeout_exception(exc):
+        return EDGAR_TIMEOUT_RETRY_SECONDS
+    exponential = min(EDGAR_RETRY_BASE_SECONDS * (2 ** max(0, attempt_index)), EDGAR_RETRY_MAX_SECONDS)
+    jitter = random_func() * min(1.0, exponential)
+    return min(exponential + jitter, EDGAR_RETRY_MAX_SECONDS)
+
+
+@contextlib.contextmanager
+def _exclusive_lock(lock_path: Path):
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    with lock_path.open("a+", encoding="utf-8") as handle:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+        try:
+            yield handle
+        finally:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+
+
+def _connect_rate_limit_db(path: Path) -> sqlite3.Connection:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(path, timeout=30)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA busy_timeout = 30000")
+    conn.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS rate_limit_state (
+          scope TEXT PRIMARY KEY,
+          last_request_at REAL NOT NULL,
+          next_available_at REAL NOT NULL DEFAULT 0,
+          cooldown_until REAL NOT NULL DEFAULT 0,
+          min_interval_seconds REAL NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+        """
+    )
+    columns = {row["name"] for row in conn.execute("PRAGMA table_info(rate_limit_state)")}
+    if "next_available_at" not in columns:
+        conn.execute("ALTER TABLE rate_limit_state ADD COLUMN next_available_at REAL NOT NULL DEFAULT 0")
+    if "cooldown_until" not in columns:
+        conn.execute("ALTER TABLE rate_limit_state ADD COLUMN cooldown_until REAL NOT NULL DEFAULT 0")
+    return conn
+
+
+def _reserve_edgar_slot(
+    root: Path,
+    *,
+    scope: str = EDGAR_RATE_LIMIT_SCOPE,
+    min_interval_seconds: float = EDGAR_MIN_REQUEST_INTERVAL_SECONDS,
+    now_func: Callable[[], float] = time.time,
+) -> float:
+    if min_interval_seconds <= 0:
+        return 0.0
+    paths = library_paths(root)
+    db_path = paths["base"] / EDGAR_RATE_LIMIT_FILENAME
+    lock_path = paths["base"] / EDGAR_RATE_LIMIT_LOCK_FILENAME
+    with _exclusive_lock(lock_path) as _handle, _connect_rate_limit_db(db_path) as conn:
+        row = conn.execute(
+            "SELECT last_request_at, next_available_at, cooldown_until FROM rate_limit_state WHERE scope = ?",
+            (scope,),
+        ).fetchone()
+        current = now_func()
+        next_available = float(row["next_available_at"] or 0.0) if row else 0.0
+        cooldown_until = float(row["cooldown_until"] or 0.0) if row else 0.0
+        reservation_at = max(current, next_available, cooldown_until)
+        next_slot = reservation_at + min_interval_seconds
+        conn.execute(
+            """
+            INSERT INTO rate_limit_state(
+              scope, last_request_at, next_available_at, cooldown_until, min_interval_seconds, updated_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(scope) DO UPDATE SET
+              last_request_at = excluded.last_request_at,
+              next_available_at = excluded.next_available_at,
+              cooldown_until = max(rate_limit_state.cooldown_until, excluded.cooldown_until),
+              min_interval_seconds = excluded.min_interval_seconds,
+              updated_at = excluded.updated_at
+            """,
+            (scope, reservation_at, next_slot, cooldown_until, min_interval_seconds, _now()),
+        )
+        conn.commit()
+    _fsync_parent(db_path)
+    return max(0.0, reservation_at - current)
+
+
+def _edgar_throttle(
+    root: Path,
+    *,
+    scope: str = EDGAR_RATE_LIMIT_SCOPE,
+    min_interval_seconds: float = EDGAR_MIN_REQUEST_INTERVAL_SECONDS,
+    sleep_func: Callable[[float], None] = time.sleep,
+    now_func: Callable[[], float] = time.time,
+    progress_events: list[dict[str, Any]] | None = None,
+    label: str = "edgar_call",
+) -> None:
+    while True:
+        wait = _reserve_edgar_slot(
+            root,
+            scope=scope,
+            min_interval_seconds=min_interval_seconds,
+            now_func=now_func,
+        )
+        if wait > 0:
+            _edgar_heartbeat(progress_events, "sec_queue_wait", label, wait, scope=scope)
+            sleep_func(wait)
+        cooldown_wait = _edgar_cooldown_wait(root, scope=scope, now_func=now_func)
+        if cooldown_wait <= 0:
+            return
+        _edgar_heartbeat(progress_events, "sec_cooldown_wait", label, cooldown_wait, scope=scope)
+        sleep_func(cooldown_wait)
+
+
+def _edgar_cooldown_wait(
+    root: Path,
+    *,
+    scope: str = EDGAR_RATE_LIMIT_SCOPE,
+    now_func: Callable[[], float] = time.time,
+) -> float:
+    paths = library_paths(root)
+    db_path = paths["base"] / EDGAR_RATE_LIMIT_FILENAME
+    lock_path = paths["base"] / EDGAR_RATE_LIMIT_LOCK_FILENAME
+    with _exclusive_lock(lock_path) as _handle, _connect_rate_limit_db(db_path) as conn:
+        row = conn.execute(
+            "SELECT cooldown_until FROM rate_limit_state WHERE scope = ?",
+            (scope,),
+        ).fetchone()
+    cooldown_until = float(row["cooldown_until"] or 0.0) if row else 0.0
+    return max(0.0, cooldown_until - now_func())
+
+
+def _edgar_note_retry_delay(
+    root: Path,
+    delay_seconds: float,
+    *,
+    scope: str = EDGAR_RATE_LIMIT_SCOPE,
+    now_func: Callable[[], float] = time.time,
+) -> None:
+    if delay_seconds <= 0:
+        return
+    paths = library_paths(root)
+    db_path = paths["base"] / EDGAR_RATE_LIMIT_FILENAME
+    lock_path = paths["base"] / EDGAR_RATE_LIMIT_LOCK_FILENAME
+    cooldown_until = now_func() + delay_seconds
+    with _exclusive_lock(lock_path) as _handle, _connect_rate_limit_db(db_path) as conn:
+        row = conn.execute(
+            "SELECT cooldown_until FROM rate_limit_state WHERE scope = ?",
+            (scope,),
+        ).fetchone()
+        cooldown_until = max(cooldown_until, float(row["cooldown_until"] or 0.0) if row else 0.0)
+        conn.execute(
+            """
+            INSERT INTO rate_limit_state(
+              scope, last_request_at, next_available_at, cooldown_until, min_interval_seconds, updated_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(scope) DO UPDATE SET
+              cooldown_until = excluded.cooldown_until,
+              updated_at = excluded.updated_at
+            """,
+            (scope, 0.0, 0.0, cooldown_until, EDGAR_MIN_REQUEST_INTERVAL_SECONDS, _now()),
+        )
+        conn.commit()
+    _fsync_parent(db_path)
+
+
+def _edgar_heartbeat(
+    events: list[dict[str, Any]] | None,
+    phase: str,
+    label: str,
+    delay_seconds: float,
+    *,
+    scope: str = EDGAR_RATE_LIMIT_SCOPE,
+    attempt: int | None = None,
+    reason: str | None = None,
+) -> None:
+    if events is None:
+        return
+    fields: dict[str, Any] = {
+        "phase": phase,
+        "label": _compact_edgar_label(label),
+        "scope": scope,
+        "delay_seconds": round(max(0.0, delay_seconds), 3),
+    }
+    if attempt is not None:
+        fields["attempt"] = attempt
+    if reason:
+        fields["reason"] = reason
+    _progress_event(events, "heartbeat", **fields)
+
+
+def _edgar_call(
+    root: Path,
+    label: str,
+    func: Callable[[], Any],
+    *,
+    max_attempts: int = EDGAR_RETRY_MAX_ATTEMPTS,
+    min_interval_seconds: float = EDGAR_MIN_REQUEST_INTERVAL_SECONDS,
+    sleep_func: Callable[[float], None] = time.sleep,
+    random_func: Callable[[], float] = random.random,
+    now_func: Callable[[], float] = time.time,
+    progress_events: list[dict[str, Any]] | None = None,
+) -> Any:
+    attempts = max(1, int(max_attempts))
+    last_exc: BaseException | None = None
+    for attempt in range(attempts):
+        _edgar_throttle(
+            root,
+            min_interval_seconds=min_interval_seconds,
+            sleep_func=sleep_func,
+            now_func=now_func,
+            progress_events=progress_events,
+            label=label,
+        )
+        try:
+            return func()
+        except Exception as exc:
+            last_exc = exc
+            if attempt + 1 >= attempts or not _is_retryable_edgar_exception(exc):
+                raise
+            delay = _retry_delay_seconds(attempt, exc, random_func=random_func, now_func=now_func)
+            if min_interval_seconds > 0:
+                _edgar_note_retry_delay(root, delay, now_func=now_func)
+            _edgar_heartbeat(
+                progress_events,
+                "sec_retry_wait",
+                label,
+                delay,
+                attempt=attempt + 1,
+                reason=_edgar_retry_reason(exc),
+            )
+            sleep_func(delay)
+    assert last_exc is not None
+    raise RuntimeError(f"EDGAR call failed after retry loop: {label}") from last_exc
+
+
+def _write_text(path: Path, text: str | None) -> dict[str, Any]:
+    _atomic_write_text(path, text)
     return {"path": str(path), "bytes": path.stat().st_size}
 
 
@@ -1353,12 +1912,12 @@ def _write_dataframe_files(base: Path, dataframe: Any) -> dict[str, Any]:
     json_path = base.with_suffix(".json")
     result: dict[str, Any] = {"rows": row_count, "columns": columns}
     try:
-        dataframe.to_csv(csv_path, index=False)
+        _atomic_write_with_path(csv_path, lambda tmp_path: dataframe.to_csv(tmp_path, index=False))
         result["csv"] = {"path": str(csv_path), "bytes": csv_path.stat().st_size}
     except Exception as exc:
         result["csv_error"] = str(exc)
     try:
-        dataframe.to_json(json_path, orient="records", date_format="iso")
+        _atomic_write_with_path(json_path, lambda tmp_path: dataframe.to_json(tmp_path, orient="records", date_format="iso"))
         result["json"] = {"path": str(json_path), "bytes": json_path.stat().st_size}
     except Exception as exc:
         result["json_error"] = str(exc)
@@ -1378,36 +1937,90 @@ def _statement_dataframe(statement_or_method: Any, view: str = "standard") -> tu
         return statement, to_dataframe()
 
 
-def _dump_company_pack(root: Path, filing: Any, identifier: str, items: list[str], concepts: list[str]) -> dict[str, Any]:
+def _write_section_manifest(artifact_dir: Path, markdown_path: Path, items: list[str]) -> tuple[dict[str, Any], list[dict[str, str]]]:
+    if not markdown_path.is_file():
+        warning = {"path": "filing.md", "message": "filing markdown was not available for section splitting"}
+        manifest = {
+            "success": True,
+            "optional": True,
+            "section_extraction_success": False,
+            "requested_items": items,
+            "missing_items": items,
+            "source": "filing.md",
+            "warnings": [warning],
+            "errors": [],
+        }
+        _write_json_file(artifact_dir / "sections" / "manifest.json", manifest)
+        return manifest, [warning]
+    try:
+        raw_manifest = write_located_sections(markdown_path, items)
+        manifest, warnings = make_company_pack_sections_optional(
+            {
+                **raw_manifest,
+                "source": "filing.md",
+                "note": "Item section bodies were split from filing.md and remain available as bounded artifact files.",
+            }
+        )
+    except Exception as exc:
+        warning = {"path": "sections", "message": f"section splitting failed; filing.md remains available: {exc}"}
+        manifest = {
+            "success": True,
+            "optional": True,
+            "section_extraction_success": False,
+            "requested_items": items,
+            "source": "filing.md",
+            "warnings": [warning],
+            "errors": [],
+        }
+        warnings = [warning]
+    _write_json_file(artifact_dir / "sections" / "manifest.json", manifest)
+    return manifest, warnings
+
+
+def _dump_company_pack(
+    root: Path,
+    filing: Any,
+    identifier: str,
+    items: list[str],
+    concepts: list[str],
+    progress_events: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
     metadata = _filing_metadata(filing, identifier)
     artifact_dir = _company_artifact_dir(root, identifier, metadata)
-    base_row = _dump_live_filing(root, filing, identifier)
+    base_row = _dump_live_filing(root, filing, identifier, progress_events=progress_events)
     files = sorted(path for path in artifact_dir.rglob("*") if path.is_file())
     errors: list[dict[str, str]] = list(base_row.get("errors") or [])
+    warnings: list[dict[str, str]] = []
 
-    sections_manifest = {
-        "success": True,
-        "requested_items": items,
-        "source": "filing.md",
-        "note": "Section body extraction is intentionally deferred; filing.md and sections.txt are indexed for observation.",
-    }
-    _write_json_file(artifact_dir / "sections" / "manifest.json", sections_manifest)
+    sections_manifest, section_warnings = _write_section_manifest(artifact_dir, artifact_dir / "filing.md", items)
+    warnings.extend(section_warnings)
 
     statement_files: dict[str, Any] = {}
     try:
-        obj = filing.obj()
+        obj = _edgar_call(root, "filing.obj", lambda: filing.obj(), progress_events=progress_events)
         financials = getattr(obj, "financials", None) if obj else None
         if financials:
             statements_base = artifact_dir / "statements"
             for name in ("income_statement", "balance_sheet", "cash_flow_statement"):
-                statement, dataframe = _statement_dataframe(getattr(financials, name, None))
+                statement, dataframe = _edgar_call(
+                    root,
+                    f"financials.{name}.to_dataframe",
+                    lambda name=name: _statement_dataframe(getattr(financials, name, None)),
+                    progress_events=progress_events,
+                )
                 entry: dict[str, Any] = {}
                 if dataframe is not None:
                     entry.update(_write_dataframe_files(statements_base / name, dataframe))
                 to_markdown = getattr(statement, "to_markdown", None)
                 if callable(to_markdown):
                     try:
-                        entry["markdown"] = _write_text((statements_base / name).with_suffix(".md"), to_markdown())
+                        markdown = _edgar_call(
+                            root,
+                            f"financials.{name}.to_markdown",
+                            lambda: to_markdown(),
+                            progress_events=progress_events,
+                        )
+                        entry["markdown"] = _write_text((statements_base / name).with_suffix(".md"), markdown)
                     except Exception as exc:
                         entry["markdown_error"] = str(exc)
                 if entry:
@@ -1421,7 +2034,7 @@ def _dump_company_pack(root: Path, filing: Any, identifier: str, items: list[str
 
     fact_files: dict[str, Any] = {}
     try:
-        xbrl = filing.xbrl()
+        xbrl = _edgar_call(root, "filing.xbrl", lambda: filing.xbrl(), progress_events=progress_events)
         if xbrl is None:
             fact_files["skipped"] = "filing.xbrl() returned None"
         else:
@@ -1429,7 +2042,12 @@ def _dump_company_pack(root: Path, filing: Any, identifier: str, items: list[str
             for concept in concepts:
                 query_concept = concept if ":" in concept else f"us-gaap:{concept}"
                 try:
-                    dataframe = xbrl.query().by_concept(query_concept, exact=True).to_dataframe()
+                    dataframe = _edgar_call(
+                        root,
+                        f"xbrl.query.by_concept:{query_concept}",
+                        lambda query_concept=query_concept: xbrl.query().by_concept(query_concept, exact=True).to_dataframe(),
+                        progress_events=progress_events,
+                    )
                     fact_files[concept] = {
                         "query_concept": query_concept,
                         **_write_dataframe_files(facts_base / _safe_filename(query_concept), dataframe),
@@ -1454,6 +2072,7 @@ def _dump_company_pack(root: Path, filing: Any, identifier: str, items: list[str
         "requested_items": items,
         "requested_concepts": concepts,
         "errors": errors,
+        "warnings": warnings,
         "generated_at_utc": _now(),
     }
     manifest_file = artifact_dir / "company_pack_manifest.json"
@@ -1473,10 +2092,16 @@ def _dump_company_pack(root: Path, filing: Any, identifier: str, items: list[str
     if _detail_is_max():
         row["company_pack_manifest_resolved_path"] = str(manifest_file.resolve())
     row["errors"] = errors
+    row["warnings"] = warnings
     return row
 
 
-def _dump_live_filing(root: Path, filing: Any, identifier: str) -> dict[str, Any]:
+def _dump_live_filing(
+    root: Path,
+    filing: Any,
+    identifier: str,
+    progress_events: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
     metadata = _filing_metadata(filing, identifier)
     artifact_dir = _company_artifact_dir(root, identifier, metadata)
     files: list[Path] = []
@@ -1490,7 +2115,7 @@ def _dump_live_filing(root: Path, filing: Any, identifier: str) -> dict[str, Any
         ("text", "filing.txt", lambda: filing.text()),
     ):
         try:
-            value = producer()
+            value = _edgar_call(root, f"filing.{kind}", producer, progress_events=progress_events)
             path = artifact_dir / filename
             _write_text(path, str(value or ""))
             files.append(path)
@@ -1500,7 +2125,13 @@ def _dump_live_filing(root: Path, filing: Any, identifier: str) -> dict[str, Any
     sections = getattr(filing, "sections", None)
     if callable(sections):
         try:
-            value = "\n".join(str(item) for item in sections())
+            section_items = _edgar_call(
+                root,
+                "filing.sections",
+                lambda: list(sections()),
+                progress_events=progress_events,
+            )
+            value = "\n".join(str(item) for item in section_items)
             path = artifact_dir / "sections.txt"
             _write_text(path, value)
             files.append(path)
@@ -1547,13 +2178,33 @@ def _download_live_filings(root: Path, identifier: str, forms: list[str], limit:
     from edgar import Company, set_identity
 
     set_identity(_live_identity_value())
-    company = Company(identifier)
+    progress_events: list[dict[str, Any]] = []
+    _progress_event(progress_events, "kickoff", identifier=identifier, forms=forms, per_form_limit=limit)
+    company = _edgar_call(root, f"Company:{identifier}", lambda: Company(identifier), progress_events=progress_events)
     downloaded: list[dict[str, Any]] = []
     unavailable: list[dict[str, str]] = []
     for form in forms:
         try:
-            rows = _as_filing_list(company.get_filings(form=form, amendments=True).latest(limit))
+            started = time.monotonic()
+            _progress_event(progress_events, "probe_start", form=form)
+            rows = _as_filing_list(
+                _edgar_call(
+                    root,
+                    f"get_filings.latest:{identifier}:{form}",
+                    lambda form=form: company.get_filings(form=form, amendments=True).latest(limit),
+                    progress_events=progress_events,
+                )
+            )
+            _progress_event(
+                progress_events,
+                "probe_done",
+                form=form,
+                found=bool(rows),
+                status="ok" if rows else "not_available",
+                elapsed_seconds=round(time.monotonic() - started, 3),
+            )
         except Exception as exc:
+            _progress_event(progress_events, "probe_done", form=form, status="error", reason=_edgar_retry_reason(exc))
             unavailable.append({"form": form, "message": str(exc)})
             continue
         if not rows:
@@ -1561,7 +2212,7 @@ def _download_live_filings(root: Path, identifier: str, forms: list[str], limit:
             continue
         for filing in rows[:limit]:
             try:
-                downloaded.append(_dump_live_filing(root, filing, identifier))
+                downloaded.append(_dump_live_filing(root, filing, identifier, progress_events=progress_events))
             except Exception as exc:
                 unavailable.append({"form": form, "message": str(exc)})
 
@@ -1587,7 +2238,13 @@ def _download_live_filings(root: Path, identifier: str, forms: list[str], limit:
                 xctx["result_id"],
                 _now(),
                 _now(),
-                _json({"downloaded_count": len(downloaded), "unavailable_count": len(unavailable)}),
+                _json(
+                    {
+                        "downloaded_count": len(downloaded),
+                        "unavailable_count": len(unavailable),
+                        "progress_event_count": len(progress_events),
+                    }
+                ),
             ),
         )
         conn.commit()
@@ -1600,6 +2257,8 @@ def _download_live_filings(root: Path, identifier: str, forms: list[str], limit:
         "unavailable_count": len(unavailable),
         "downloaded_filings": downloaded[:50],
         "unavailable": unavailable[:50],
+        "heartbeat_summary": _heartbeat_summary(progress_events),
+        "progress_events": progress_events[-100:],
         "registry": registry_stats(root),
     }
 
@@ -1615,19 +2274,39 @@ def _download_live_company_pack(
     from edgar import Company, set_identity
 
     set_identity(_live_identity_value())
-    company = Company(identifier)
+    progress_events: list[dict[str, Any]] = []
+    _progress_event(progress_events, "kickoff", identifier=identifier, form=form)
+    company = _edgar_call(root, f"Company:{identifier}", lambda: Company(identifier), progress_events=progress_events)
     unavailable: list[dict[str, str]] = []
     downloaded: list[dict[str, Any]] = []
     try:
-        rows = _as_filing_list(company.get_filings(form=form, amendments=True).latest(1))
+        started = time.monotonic()
+        _progress_event(progress_events, "probe_start", form=form)
+        rows = _as_filing_list(
+            _edgar_call(
+                root,
+                f"get_filings.latest:{identifier}:{form}",
+                lambda: company.get_filings(form=form, amendments=True).latest(1),
+                progress_events=progress_events,
+            )
+        )
+        _progress_event(
+            progress_events,
+            "probe_done",
+            form=form,
+            found=bool(rows),
+            status="ok" if rows else "not_available",
+            elapsed_seconds=round(time.monotonic() - started, 3),
+        )
     except Exception as exc:
         rows = []
+        _progress_event(progress_events, "probe_done", form=form, status="error", reason=_edgar_retry_reason(exc))
         unavailable.append({"form": form, "message": str(exc)})
     if not rows:
         unavailable.append({"form": form, "message": "no filings found"})
     for filing in rows[:1]:
         try:
-            downloaded.append(_dump_company_pack(root, filing, identifier, items, concepts))
+            downloaded.append(_dump_company_pack(root, filing, identifier, items, concepts, progress_events=progress_events))
         except Exception as exc:
             unavailable.append({"form": form, "message": str(exc)})
 
@@ -1653,7 +2332,13 @@ def _download_live_company_pack(
                 xctx["result_id"],
                 _now(),
                 _now(),
-                _json({"downloaded_count": len(downloaded), "unavailable_count": len(unavailable)}),
+                _json(
+                    {
+                        "downloaded_count": len(downloaded),
+                        "unavailable_count": len(unavailable),
+                        "progress_event_count": len(progress_events),
+                    }
+                ),
             ),
         )
         conn.commit()
@@ -1668,8 +2353,435 @@ def _download_live_company_pack(
         "unavailable_count": len(unavailable),
         "downloaded_filings": downloaded[:5],
         "unavailable": unavailable[:10],
+        "heartbeat_summary": _heartbeat_summary(progress_events),
+        "progress_events": progress_events[-100:],
         "registry": registry_stats(root),
     }
+
+
+def _progress_event(events: list[dict[str, Any]], event: str, **fields: Any) -> None:
+    events.append({"event": event, "ts": _now(), **fields})
+
+
+def _heartbeat_summary(events: list[dict[str, Any]]) -> dict[str, Any]:
+    heartbeats = [event for event in events if event.get("event") == "heartbeat"]
+    last = heartbeats[-1] if heartbeats else None
+    compact_keys = ("phase", "label", "scope", "delay_seconds", "attempt", "reason")
+    return {
+        "heartbeat_count": len(heartbeats),
+        "retry_wait_count": sum(1 for event in heartbeats if event.get("phase") == "sec_retry_wait"),
+        "queue_wait_count": sum(1 for event in heartbeats if event.get("phase") == "sec_queue_wait"),
+        "cooldown_wait_count": sum(1 for event in heartbeats if event.get("phase") == "sec_cooldown_wait"),
+        "last": {key: last[key] for key in compact_keys if last and key in last} if last else None,
+    }
+
+
+def _no_filing_status(message: str) -> str:
+    lowered = message.lower()
+    return "not_available" if any(marker in lowered for marker in NO_FILING_MARKERS) else "error"
+
+
+def _latest_filings_for_form(
+    root: Path | None,
+    company: Any,
+    form: str,
+    limit: int,
+    progress_events: list[dict[str, Any]] | None = None,
+) -> tuple[list[Any], dict[str, str] | None]:
+    try:
+        producer = lambda: company.get_filings(form=form, amendments=True).latest(limit)
+        value = (
+            _edgar_call(root, f"get_filings.latest:{form}", producer, progress_events=progress_events)
+            if root is not None
+            else producer()
+        )
+        rows = _as_filing_list(value)
+    except Exception as exc:
+        return [], {"form": form, "status": _no_filing_status(str(exc)), "message": str(exc)}
+    if not rows:
+        return [], {"form": form, "status": "not_available", "message": "no filings found"}
+    return rows[:limit], None
+
+
+def _select_super_pack_candidates(
+    company: Any,
+    *,
+    root: Path | None = None,
+    annual_forms: list[str],
+    quarterly_forms: list[str],
+    update_forms: list[str],
+    update_limit: int,
+    progress_events: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    events = progress_events if progress_events is not None else []
+    selections: list[dict[str, Any]] = []
+    unavailable: list[dict[str, Any]] = []
+
+    def choose_first_available(role: str, forms: list[str]) -> None:
+        for form in forms:
+            started = time.monotonic()
+            _progress_event(events, "probe_start", role=role, form=form)
+            rows, error = _latest_filings_for_form(root, company, form, 1, progress_events=events)
+            _progress_event(
+                events,
+                "probe_done",
+                role=role,
+                form=form,
+                found=bool(rows),
+                status="ok" if rows else (error or {}).get("status", "not_available"),
+                elapsed_seconds=round(time.monotonic() - started, 3),
+            )
+            if rows:
+                selections.append({"role": role, "form": form, "filings": rows[:1]})
+                return
+            if error:
+                unavailable.append({"role": role, **error})
+
+    choose_first_available("latest_annual", annual_forms)
+    choose_first_available("latest_quarterly", quarterly_forms)
+
+    for form in update_forms:
+        started = time.monotonic()
+        _progress_event(events, "probe_start", role="latest_update", form=form)
+        rows, error = _latest_filings_for_form(root, company, form, update_limit, progress_events=events)
+        _progress_event(
+            events,
+            "probe_done",
+            role="latest_update",
+            form=form,
+            found=bool(rows),
+            status="ok" if rows else (error or {}).get("status", "not_available"),
+            elapsed_seconds=round(time.monotonic() - started, 3),
+        )
+        if rows:
+            selections.append({"role": "latest_update", "form": form, "filings": rows})
+        elif error:
+            unavailable.append({"role": "latest_update", **error})
+
+    return {"selections": selections, "unavailable": unavailable}
+
+
+def _selection_form_count(selections: list[dict[str, Any]]) -> int:
+    return sum(len(selection.get("filings") or []) for selection in selections)
+
+
+def validate_super_pack(root: Path, args: list[str]) -> dict[str, Any]:
+    try:
+        identifier = str(_option(args, "--identifier", required=True)).strip()
+        if not identifier:
+            raise ValueError("--identifier cannot be empty")
+        source = str(_option(args, "--source", "live"))
+        if source not in {"live", "fixture"}:
+            raise ValueError("--source must be live or fixture")
+        annual_forms = _forms_option(args, "--annual-forms", SUPER_PACK_ANNUAL_FORMS)
+        quarterly_forms = _forms_option(args, "--quarterly-forms", SUPER_PACK_QUARTERLY_FORMS)
+        update_forms = _forms_option(args, "--update-forms", SUPER_PACK_UPDATE_FORMS)
+        update_limit = _int_option(args, "--update-limit", 1, minimum=0, maximum=5)
+        concepts = _csv_tokens(
+            _option(args, "--concepts", COMPANY_PACK_DEFAULT_CONCEPTS),
+            COMPANY_PACK_DEFAULT_CONCEPTS,
+        )
+        if source == "fixture":
+            fixture_root = Path(str(_option(args, "--source-root", required=True)))
+            if not fixture_root.is_absolute():
+                fixture_root = root / fixture_root
+            if not fixture_root.is_dir():
+                raise ValueError(f"fixture source root is not a directory: {fixture_root}")
+        else:
+            try:
+                import edgar  # noqa: F401
+            except Exception as exc:
+                raise ValueError(f"edgartools import failed: {exc}") from exc
+            if not _edgar_identity_status()["available"]:
+                raise ValueError("live EDGAR super pack requires XCTX_EDGAR_IDENTITY or EDGAR_IDENTITY")
+    except ValueError as exc:
+        return {
+            "ok": False,
+            "error": str(exc),
+            "next_moves": [
+                _super_pack_plan_cmd("AAPL"),
+                _company_pack_plan_cmd("AAPL", "10-K"),
+            ],
+        }
+    return {
+        "ok": True,
+        "object_type": "edgar_super_pack_preflight",
+        "identifier": identifier,
+        "source": source,
+        "selection_strategy": {
+            "annual_forms": annual_forms,
+            "quarterly_forms": quarterly_forms,
+            "update_forms": update_forms,
+            "update_limit_per_form": update_limit,
+            "annual_and_quarterly_behavior": "first available form in priority order",
+            "update_behavior": "latest filings per update form",
+        },
+        "concepts": concepts,
+        "item_strategy": "auto per selected form unless --items overrides it",
+        "edgar_identity": _edgar_identity_status(),
+    }
+
+
+def _dump_super_pack_selection(
+    root: Path,
+    *,
+    identifier: str,
+    selection: dict[str, Any],
+    raw_items: str | None,
+    concepts: list[str],
+    seen_accessions: set[str],
+    progress_events: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    downloaded: list[dict[str, Any]] = []
+    unavailable: list[dict[str, Any]] = []
+    role = str(selection["role"])
+    requested_form = str(selection["form"])
+    for filing in selection.get("filings") or []:
+        accession = _filing_accession(filing)
+        if accession in seen_accessions:
+            unavailable.append(
+                {
+                    "role": role,
+                    "form": requested_form,
+                    "accession": accession,
+                    "status": "duplicate",
+                    "message": "same accession already materialized in this super pack",
+                }
+            )
+            continue
+        seen_accessions.add(accession)
+        form = _normalize_form(str(getattr(filing, "form", None) or requested_form))
+        started = time.monotonic()
+        _progress_event(progress_events, "download_start", role=role, form=form, accession=accession)
+        try:
+            if form in SUPER_PACK_COMPANY_PACK_FORMS:
+                row = _dump_company_pack(
+                    root,
+                    filing,
+                    identifier,
+                    _items_for_form(form, raw_items),
+                    concepts,
+                    progress_events=progress_events,
+                )
+                materialization = "company_pack"
+            else:
+                row = _dump_live_filing(root, filing, identifier, progress_events=progress_events)
+                materialization = "filing_body"
+            row["super_pack_role"] = role
+            row["super_pack_materialization"] = materialization
+            downloaded.append(row)
+            _progress_event(
+                progress_events,
+                "download_done",
+                role=role,
+                form=form,
+                accession=accession,
+                status="ok",
+                elapsed_seconds=round(time.monotonic() - started, 3),
+            )
+        except Exception as exc:
+            message = str(exc)
+            unavailable.append(
+                {
+                    "role": role,
+                    "form": form,
+                    "accession": accession,
+                    "status": "error",
+                    "message": message,
+                }
+            )
+            _progress_event(
+                progress_events,
+                "download_done",
+                role=role,
+                form=form,
+                accession=accession,
+                status="error",
+                message=message,
+                elapsed_seconds=round(time.monotonic() - started, 3),
+            )
+    return downloaded, unavailable
+
+
+def _download_live_super_pack(
+    root: Path,
+    identifier: str,
+    annual_forms: list[str],
+    quarterly_forms: list[str],
+    update_forms: list[str],
+    update_limit: int,
+    raw_items: str | None,
+    concepts: list[str],
+    xctx: dict[str, str],
+) -> dict[str, Any]:
+    from edgar import Company, set_identity
+
+    set_identity(_live_identity_value())
+    progress_events: list[dict[str, Any]] = []
+    _progress_event(
+        progress_events,
+        "kickoff",
+        identifier=identifier,
+        annual_forms=annual_forms,
+        quarterly_forms=quarterly_forms,
+        update_forms=update_forms,
+        update_limit=update_limit,
+    )
+    company = _edgar_call(root, f"Company:{identifier}", lambda: Company(identifier), progress_events=progress_events)
+    selection = _select_super_pack_candidates(
+        company,
+        root=root,
+        annual_forms=annual_forms,
+        quarterly_forms=quarterly_forms,
+        update_forms=update_forms,
+        update_limit=update_limit,
+        progress_events=progress_events,
+    )
+    downloaded: list[dict[str, Any]] = []
+    unavailable: list[dict[str, Any]] = list(selection["unavailable"])
+    seen_accessions: set[str] = set()
+    for selected in selection["selections"]:
+        selected_downloaded, selected_unavailable = _dump_super_pack_selection(
+            root,
+            identifier=identifier,
+            selection=selected,
+            raw_items=raw_items,
+            concepts=concepts,
+            seen_accessions=seen_accessions,
+            progress_events=progress_events,
+        )
+        downloaded.extend(selected_downloaded)
+        unavailable.extend(selected_unavailable)
+    hard_failures = [item for item in unavailable if item.get("status") == "error"]
+    status = "ok" if downloaded and not hard_failures else ("partial" if downloaded else "error")
+    _progress_event(
+        progress_events,
+        "complete",
+        identifier=identifier,
+        status=status,
+        selected_filing_count=_selection_form_count(selection["selections"]),
+        downloaded_count=len(downloaded),
+        unavailable_count=len(unavailable),
+    )
+    forms_summary = ",".join([*annual_forms, *quarterly_forms, *update_forms])
+    with _connect_rw(root) as conn:
+        conn.execute(
+            """
+            INSERT OR REPLACE INTO work_runs(
+              run_id, operation, identifier, forms, source, status, plan_id, commit_id, result_id,
+              created_at, finished_at, summary_json
+            )
+            VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                xctx["result_id"],
+                "super_pack",
+                identifier,
+                forms_summary,
+                "live",
+                status,
+                xctx["plan_id"],
+                xctx["commit_id"],
+                xctx["result_id"],
+                _now(),
+                _now(),
+                _json(
+                    {
+                        "downloaded_count": len(downloaded),
+                        "unavailable_count": len(unavailable),
+                        "progress_event_count": len(progress_events),
+                    }
+                ),
+            ),
+        )
+        conn.commit()
+    return {
+        "object_type": "edgar_super_pack_result",
+        "source": "live",
+        "identifier": identifier,
+        "selection_strategy": {
+            "annual_forms": annual_forms,
+            "quarterly_forms": quarterly_forms,
+            "update_forms": update_forms,
+            "update_limit_per_form": update_limit,
+        },
+        "items_strategy": "auto per selected form" if raw_items in (None, "", "auto") else "explicit",
+        "concepts_requested": concepts,
+        "selected_filing_count": _selection_form_count(selection["selections"]),
+        "downloaded_count": len(downloaded),
+        "unavailable_count": len(unavailable),
+        "downloaded_filings": downloaded[:25],
+        "unavailable": unavailable[:50],
+        "heartbeat_summary": _heartbeat_summary(progress_events),
+        "progress_events": progress_events[-100:],
+        "registry": registry_stats(root),
+    }
+
+
+def commit_super_pack(root: Path, args: list[str]) -> dict[str, Any]:
+    xctx = _xctx_context(args)
+    identifier = str(_option(args, "--identifier", required=True)).strip()
+    source = str(_option(args, "--source", "live"))
+    annual_forms = _forms_option(args, "--annual-forms", SUPER_PACK_ANNUAL_FORMS)
+    quarterly_forms = _forms_option(args, "--quarterly-forms", SUPER_PACK_QUARTERLY_FORMS)
+    update_forms = _forms_option(args, "--update-forms", SUPER_PACK_UPDATE_FORMS)
+    update_limit = _int_option(args, "--update-limit", 1, minimum=0, maximum=5)
+    raw_items = _option(args, "--items")
+    concepts = _csv_tokens(_option(args, "--concepts", COMPANY_PACK_DEFAULT_CONCEPTS), COMPANY_PACK_DEFAULT_CONCEPTS)
+    if source == "fixture":
+        source_root = Path(str(_option(args, "--source-root", required=True)))
+        if not source_root.is_absolute():
+            source_root = root / source_root
+        indexed_root = _copy_into_artifact_root(root, source_root, xctx["result_id"])
+        result = index_artifact_root(
+            root,
+            indexed_root,
+            source="fixture_super_pack",
+            run_context=xctx,
+            operation="super_pack",
+        )
+        result.update(
+            {
+                "object_type": "edgar_super_pack_result",
+                "source": "fixture",
+                "identifier": identifier,
+                "selection_strategy": {
+                    "annual_forms": annual_forms,
+                    "quarterly_forms": quarterly_forms,
+                    "update_forms": update_forms,
+                    "update_limit_per_form": update_limit,
+                },
+                "result_id": xctx["result_id"],
+                "artifact_inventory_cmd": (
+                    "./xctx discover stock_intelligence_hub::edgar_filing_library::list_artifacts "
+                    f"--identifier {identifier}"
+                ),
+            }
+        )
+        return result
+    if source != "live":
+        raise ValueError("--source must be live or fixture")
+    result = _download_live_super_pack(
+        root,
+        identifier,
+        annual_forms,
+        quarterly_forms,
+        update_forms,
+        update_limit,
+        raw_items,
+        concepts,
+        xctx,
+    )
+    result["result_id"] = xctx["result_id"]
+    result["artifact_inventory_cmd"] = (
+        "./xctx discover stock_intelligence_hub::edgar_filing_library::list_artifacts "
+        f"--identifier {identifier}"
+    )
+    result["latest_filing_cmd"] = (
+        "./xctx discover stock_intelligence_hub::edgar_filing_library::get_latest_filing "
+        f"--identifier {identifier} --form 10-K"
+    )
+    return result
 
 
 def commit_company_pack(root: Path, args: list[str]) -> dict[str, Any]:
@@ -1677,7 +2789,7 @@ def commit_company_pack(root: Path, args: list[str]) -> dict[str, Any]:
     identifier = str(_option(args, "--identifier", required=True)).strip()
     form = _normalize_form(str(_option(args, "--form", "10-K")))
     source = str(_option(args, "--source", "live"))
-    items = _csv_tokens(_option(args, "--items", COMPANY_PACK_DEFAULT_ITEMS), COMPANY_PACK_DEFAULT_ITEMS)
+    items = _items_for_form(form, _option(args, "--items"))
     concepts = _csv_tokens(_option(args, "--concepts", COMPANY_PACK_DEFAULT_CONCEPTS), COMPANY_PACK_DEFAULT_CONCEPTS)
     if source == "fixture":
         source_root = Path(str(_option(args, "--source-root", required=True)))
@@ -1881,7 +2993,8 @@ def _observe_artifact_file(root: Path, artifact_id: int, preview_chars: int) -> 
             "object_type": "edgar_filing_library_error",
             "error": "filing registry is not initialized",
             "next_moves": [
-                "./xctx plan stock_intelligence_hub::edgar_filing_library::index_local_artifacts --artifact-root <existing-edgar-artifact-root>"
+                _super_pack_plan_cmd("AAPL"),
+                _index_local_artifacts_cmd(),
             ],
         }
     with conn:
@@ -1911,7 +3024,7 @@ def _observe_artifact_file(root: Path, artifact_id: int, preview_chars: int) -> 
             "ok": False,
             "object_type": "edgar_filing_library_error",
             "error": f"unknown artifact file id: {artifact_id}",
-            "next_moves": ["./xctx discover stock_intelligence_hub::edgar_filing_library::list_artifacts"],
+            "next_moves": [_list_artifacts_cmd(), _super_pack_plan_cmd("AAPL")],
         }
     artifact = _artifact_projection(root, row)
     path = Path(str(row["path"]))
@@ -1940,8 +3053,9 @@ def observe_filing(root: Path, identifier: str, args: list[str]) -> dict[str, An
             "object_type": "edgar_filing_library_status",
             "stats": registry_stats(root),
             "next_moves": [
-                "./xctx discover stock_intelligence_hub::edgar_filing_library::list_available_filings",
-                "./xctx plan stock_intelligence_hub::edgar_filing_library::download_key_filings --identifier AAPL --forms critical",
+                _super_pack_plan_cmd("AAPL"),
+                _list_available_filings_cmd(),
+                _list_artifacts_cmd(kind="csv"),
             ],
         }
     artifact_id = _artifact_numeric_id(target)
@@ -1952,7 +3066,7 @@ def observe_filing(root: Path, identifier: str, args: list[str]) -> dict[str, An
             "ok": False,
             "object_type": "edgar_filing_library_error",
             "error": f"invalid artifact file ref: {target}",
-            "next_moves": ["./xctx discover stock_intelligence_hub::edgar_filing_library::list_artifacts"],
+            "next_moves": [_list_artifacts_cmd(), _super_pack_plan_cmd("AAPL")],
         }
     accession = target[len("filing:") :] if target.startswith("filing:") else target
     accession = _normalize_accession(accession)
@@ -1963,7 +3077,8 @@ def observe_filing(root: Path, identifier: str, args: list[str]) -> dict[str, An
             "object_type": "edgar_filing_library_error",
             "error": "filing registry is not initialized",
             "next_moves": [
-                "./xctx plan stock_intelligence_hub::edgar_filing_library::download_key_filings --identifier AAPL --forms critical"
+                _super_pack_plan_cmd("AAPL"),
+                _index_local_artifacts_cmd(),
             ],
         }
     with conn:
@@ -1974,8 +3089,9 @@ def observe_filing(root: Path, identifier: str, args: list[str]) -> dict[str, An
                 "object_type": "edgar_filing_library_error",
                 "error": f"unknown filing accession: {accession}",
                 "next_moves": [
-                    "./xctx discover stock_intelligence_hub::edgar_filing_library::list_available_filings",
-                    "./xctx plan stock_intelligence_hub::edgar_filing_library::download_key_filings --identifier AAPL --forms critical",
+                    _super_pack_plan_cmd("AAPL"),
+                    _list_available_filings_cmd(),
+                    _download_key_plan_cmd("AAPL"),
                 ],
             }
         artifacts = _artifact_rows(root, conn, accession)

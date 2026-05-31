@@ -61,6 +61,7 @@ markers = [
     "unit: fast framework/unit coverage",
     "integration: connector/subprocess integration coverage",
     "local_gate: required local development gate coverage",
+    "live_edgar: opt-in live SEC EDGAR coverage; skipped unless explicitly enabled",
     "slow: slow protocol matrix coverage",
     "timeout(seconds): per-test timeout in seconds",
 ]
