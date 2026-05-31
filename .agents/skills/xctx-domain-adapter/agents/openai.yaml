@@ -1,0 +1,4 @@
+interface:
+  display_name: "xctx Domain Adapter"
+  short_description: "Build scoped xctx domain adapters"
+  default_prompt: "Use $xctx-domain-adapter to add or extend an xctx domain or subdomain adapter."

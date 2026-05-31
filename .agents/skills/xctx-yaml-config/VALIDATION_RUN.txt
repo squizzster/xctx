@@ -11,7 +11,8 @@ Full gate:
 3. python3 -m pytest -q --durations=30
 
 Expected current pytest result:
-- 102 passed
+- full collected suite passes
+- package install smoke may skip offline when build dependencies are unavailable
 
 Subset runs:
 - allowed for debugging only

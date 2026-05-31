@@ -11,7 +11,7 @@ python3 -m pytest -q --durations=30
 Expected:
 
 ```text
-102 passed
+full collected suite passes; package install smoke may skip offline when build dependencies are unavailable
 ```
 
 ## Probe Matrix

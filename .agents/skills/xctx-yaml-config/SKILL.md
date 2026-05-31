@@ -1,201 +1,54 @@
 ---
 name: xctx-yaml-config
-description: Modify xctx YAML domains, subdomains, actions, scoped affordances, command options, routing, statuses, connectors, and repair paths while preserving the generic root protocol boundary.
+description: Modify xctx YAML domains, subdomains, actions, scoped affordances, command options, routing, statuses, connectors, and repair paths while preserving the generic root protocol boundary. Use for scoped YAML/config edits; use xctx-domain-adapter first for full adapter or live external integration work.
 ---
 
-# xctx YAML Config Skill
+# xctx YAML Config
 
-## Authority
+Use this for YAML/config surface changes. Current code, tests, and loaded YAML are source of truth. Do not add legacy aliases, compatibility shims, or root shortcuts unless the user explicitly approves a migration.
 
-```yaml
-workspace_status: live_local_development
-public_compatibility_surface: false
-skill_is_source_of_truth: false
-source_of_truth:
-  - current_code
-  - current_tests
-  - loaded_yaml
-compatibility_policy:
-  default: clean_current_contract
-  preserve_old_behavior_only_if: explicit_release_or_migration_requirement
-```
-
-If this skill conflicts with current code/tests/YAML, inspect the implementation and update the stale side. Do not add aliases, shims, wrappers, or layered checks for obsolete behavior unless the user explicitly creates a migration requirement.
+For full domain/subdomain adapter creation, use `xctx-domain-adapter` first and this skill for the YAML portion.
 
 ## Root Contract
 
-```yaml
-visible_commands: [discover, observe, plan, execute, audit, repair]
-hidden_commands: [other]
-root_surfaces:
-  - ./xctx
-  - ./xctx --version
-  - ./xctx discover
-root_must_refuse:
-  - ./xctx help
-  - ./xctx --help
-  - ./xctx -h
-root_may_show:
-  - generic_commands
-  - configured_agent_domains
-  - generic_next_moves
-root_must_not_show:
-  - scoped_action_names
-  - scoped_option_names
-  - domain_identity_semantics
-  - adapter_vocabulary
-  - implicit_domain_selection
-```
+- Visible root commands: `discover`, `observe`, `plan`, `execute`, `audit`, `repair`.
+- Hidden extension lane: `other`.
+- Removed/refused root commands include `help`, `--help`, `-h`, `status`, `identify`, `doctor`, `write`, and `discovery`.
+- Root/version/discover may show generic commands, configured domains, and generic next moves.
+- Root surfaces must not show scoped action names, scoped option names, domain identity semantics, adapter vocabulary, or implicit domain selection.
 
-## Boundary Contract
+## Boundary Rules
 
-```yaml
-libs/xctx:
-  owns:
-    - command_policy
-    - argv_parser_shape
-    - record_envelopes
-    - generic_ref_shapes
-    - option_syntax
-    - audit_shape
-    - plan_execute_receipts
-    - repair_shape
-  forbids:
-    - ticker_semantics
-    - filing_semantics
-    - filesystem_semantics
-    - provider_logic
-    - arbitrary_adapter_imports
-scoped_yaml_and_adapters:
-  own:
-    - domain_nouns
-    - action_meaning
-    - list_payload_shape
-    - identity_ranking
-    - data_source_behavior
-    - observe_materialization
-```
+- `libs/xctx` owns generic command policy, parser shape, envelopes, ref shapes, option syntax, audit shape, plan/execute receipts, and repair shape.
+- Scoped YAML and adapters own domain nouns, action meaning, list payloads, identity ranking, provider behavior, storage, and observation materialization.
+- Domain semantics must not enter generic runtime files.
+- Domain affordances live under `subdomain.actions.<action>` with `domain_affordance: true`; public names must be unique within the domain and must not collide with subdomain ids.
+- CLI options live under the owning action and use supported primitive types: `str`, `int`, `float`, `bool`.
+- Connector config must not use import escape hatches such as `profile`, `module`, `adapter_module`, `python_module`, or `import_path`.
+- Connector paths must stay workspace-relative and inside the workspace.
 
-## Pressure Questions
+## Edit Checklist
 
-Apply to every YAML, adapter, framework, and docs change:
+Ask these before every YAML/config change:
 
-```yaml
-checks:
-  - id: source_truth
-    question: Does this match current code, tests, and loaded YAML?
-  - id: root_surface
-    question: Are root/version/discover generic and help aliases refused?
-  - id: explicit_scope
-    question: Does each domain operation require domain or subdomain scope?
-  - id: core_purity
-    question: Did all domain nouns stay out of libs/xctx generic runtime?
-  - id: action_ownership
-    question: Is each affordance declared on the subdomain action that owns it?
-  - id: error_shape
-    question: Is actual failure text in error and recovery guidance in next_moves?
-  - id: audit_fail_closed
-    question: Do malformed audit data and adapter failures become failing checks?
-  - id: redaction
-    question: Are protocol-facing secrets redacted in strings and dict values?
-  - id: full_validation
-    question: Did make full-test or its exact commands pass?
-```
+- Does this match current code, tests, and loaded YAML?
+- Does every domain operation require explicit domain or subdomain scope?
+- Is each affordance declared on the action that owns it?
+- Are actual errors in `error`, and recovery guidance in `next_moves`?
+- Do adapter/audit failures fail closed?
+- Are secrets and identities redacted?
+- Are stale docs, examples, and hints removed or updated?
 
-## YAML Rules
-
-```yaml
-forbidden_universe_keys:
-  - active_agent_domain
-  - active_system
-  - systems
-  - identity_resolution
-  - root_affordances
-  - command_shortcuts
-  - agent_routing
-domain_affordance:
-  location: subdomain.actions.<action>
-  required: domain_affordance: true
-  optional_name: domain_action_name
-  response_must_disclose: [agent_domain, agent_subdomain, implemented_by, implemented_by_run_cmd]
-  constraints:
-    - unique_within_domain
-    - must_not_collide_with_subdomain_id
-    - unscoped_equivalent_refused
-  ambiguity_behavior:
-    - duplicate_or_colliding_shortcuts_fail_closed
-    - next_moves_offer_fully_qualified_domain_subdomain_action_commands
-cli_options:
-  location: owning_action.cli_options
-  supported_types: [str, int, float, bool]
-  root_publication: forbidden
-  wrong_target: fail_before_wrong_adapter
-collection:
-  optional_controls: [--limit, --cursor, --projection]
-  cursor_semantics: adapter_owned
-```
-
-## Discover Observe Boundary
-
-```yaml
-discover:
-  returns:
-    - object_identity
-    - classification
-    - coverage
-    - counts
-    - examples
-    - observe_commands
-    - next_moves
-  forbids:
-    - raw_documents
-    - raw_price_series
-    - full_materialized_object_state
-    - CSV_payloads
-observe:
-  returns:
-    - materialized_selected_object
-    - current_state_or_contents
-```
-
-## Connector Contract
-
-```yaml
-entrypoint_file: connector_supervisor.py
-connector_kinds:
-  - xctx_native_passthrough
-  - external_command
-paths:
-  target_entrypoint: workspace_relative_file_inside_workspace
-  safe_root: workspace_relative_path_inside_workspace
-forbidden_connector_keys:
-  - profile
-  - module
-  - adapter_module
-  - python_module
-  - import_path
-adapter_paths:
-  domain: libs/xctx_connectors/domains/<domain>/external_command_adapter.py
-  subdomain: libs/xctx_connectors/domains/<domain>/subdomains/<subdomain>/external_command_adapter.py
-payload_contract:
-  xctx_receives: single_json_object_for_live_data
-  raw_external_output: never_returned_unparsed
-failure_payloads:
-  - xctx_connector_error
-  - xctx_native_passthrough_error
-```
+Detailed templates live in [references/yaml_templates.md](references/yaml_templates.md). Probe guidance lives in [references/validation_matrix.md](references/validation_matrix.md).
 
 ## Validation
+
+Run at minimum:
 
 ```bash
 python3 .agents/skills/xctx-yaml-config/scripts/check_xctx_yaml_surface.py
 python3 -m compileall -q bin connector_supervisor.py examples libs tests
-python3 -m pytest -q --durations=30
+python3 -m pytest -q
 ```
 
-Expected current pytest result:
-
-```text
-full collected suite passes; package install smoke may skip offline when build deps are unavailable
-run `make package-install-smoke` for the explicit online package smoke
-```
+Also run targeted `./xctx` black-box probes for the changed root/domain/subdomain/action surface, including failure paths and `--max` when detail behavior matters.
