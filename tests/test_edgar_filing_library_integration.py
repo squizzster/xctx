@@ -144,8 +144,42 @@ def test_live_download_plan_requires_identity_before_ledger(monkeypatch, tmp_pat
 
     assert rc == 1
     assert payload["ok"] is False
-    assert payload["error"] == "live EDGAR download requires EDGAR_IDENTITY or XCTX_EDGAR_IDENTITY"
+    assert payload["error"] == "live EDGAR download requires XCTX_EDGAR_IDENTITY or EDGAR_IDENTITY"
     assert "plan_id" not in json.dumps(payload)
+
+
+def test_edgar_identity_prefers_xctx_and_accepts_edgar_fallback(monkeypatch, tmp_path) -> None:
+    monkeypatch.setenv("XCTX_RUNTIME_DIR", str(tmp_path / "runtime"))
+    monkeypatch.setenv("EDGAR_IDENTITY", "legacy@example.com Legacy Person")
+    monkeypatch.setenv("XCTX_EDGAR_IDENTITY", "scoped@example.com Scoped Person")
+
+    rc, discovered = run_runtime_json(["discover", "stock_intelligence_hub::edgar_filing_library"])
+
+    assert rc == 0
+    assert discovered["results"]["live_data"]["edgar_identity"] == {
+        "available": True,
+        "source": "XCTX_EDGAR_IDENTITY",
+        "value_printed": False,
+    }
+    assert "Scoped Person" not in json.dumps(discovered)
+    assert "Legacy Person" not in json.dumps(discovered)
+
+    monkeypatch.delenv("XCTX_EDGAR_IDENTITY", raising=False)
+
+    rc, planned = run_runtime_json(
+        [
+            "plan",
+            "stock_intelligence_hub::edgar_filing_library::download_key_filings",
+            "--identifier",
+            "AAPL",
+            "--forms",
+            "10-K",
+        ]
+    )
+
+    assert rc == 0
+    assert planned["ok"] is True
+    assert planned["results"]["plan_id"].startswith("plan:sha256:")
 
 
 def test_index_local_artifacts_plan_commit_lists_and_observes_filings(monkeypatch, tmp_path) -> None:
@@ -461,5 +495,5 @@ def test_live_company_pack_plan_requires_identity_before_ledger(monkeypatch, tmp
 
     assert rc == 1
     assert payload["ok"] is False
-    assert payload["error"] == "live EDGAR company pack requires EDGAR_IDENTITY or XCTX_EDGAR_IDENTITY"
+    assert payload["error"] == "live EDGAR company pack requires XCTX_EDGAR_IDENTITY or EDGAR_IDENTITY"
     assert "plan_id" not in json.dumps(payload)

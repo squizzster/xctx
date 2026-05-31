@@ -300,7 +300,7 @@ def registry_stats(root: Path) -> dict[str, Any]:
 
 
 def _edgar_identity_status() -> dict[str, Any]:
-    for key in ("EDGAR_IDENTITY", "XCTX_EDGAR_IDENTITY"):
+    for key in ("XCTX_EDGAR_IDENTITY", "EDGAR_IDENTITY"):
         value = os.environ.get(key)
         if value and value.strip():
             return {"available": True, "source": key, "value_printed": False}
@@ -1175,7 +1175,7 @@ def validate_download_key_filings(root: Path, args: list[str]) -> dict[str, Any]
             except Exception as exc:
                 raise ValueError(f"edgartools import failed: {exc}") from exc
             if not _edgar_identity_status()["available"]:
-                raise ValueError("live EDGAR download requires EDGAR_IDENTITY or XCTX_EDGAR_IDENTITY")
+                raise ValueError("live EDGAR download requires XCTX_EDGAR_IDENTITY or EDGAR_IDENTITY")
     except ValueError as exc:
         return {
             "ok": False,
@@ -1237,7 +1237,7 @@ def validate_company_pack(root: Path, args: list[str]) -> dict[str, Any]:
             except Exception as exc:
                 raise ValueError(f"edgartools import failed: {exc}") from exc
             if not _edgar_identity_status()["available"]:
-                raise ValueError("live EDGAR company pack requires EDGAR_IDENTITY or XCTX_EDGAR_IDENTITY")
+                raise ValueError("live EDGAR company pack requires XCTX_EDGAR_IDENTITY or EDGAR_IDENTITY")
     except ValueError as exc:
         return {
             "ok": False,
@@ -1260,11 +1260,11 @@ def validate_company_pack(root: Path, args: list[str]) -> dict[str, Any]:
 
 
 def _live_identity_value() -> str:
-    for key in ("EDGAR_IDENTITY", "XCTX_EDGAR_IDENTITY"):
+    for key in ("XCTX_EDGAR_IDENTITY", "EDGAR_IDENTITY"):
         value = os.environ.get(key)
         if value and value.strip():
             return value.strip()
-    raise ValueError("live EDGAR download requires EDGAR_IDENTITY or XCTX_EDGAR_IDENTITY")
+    raise ValueError("live EDGAR download requires XCTX_EDGAR_IDENTITY or EDGAR_IDENTITY")
 
 
 def _filing_accession(filing: Any) -> str:

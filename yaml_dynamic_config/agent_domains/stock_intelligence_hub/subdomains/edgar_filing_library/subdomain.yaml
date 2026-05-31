@@ -18,6 +18,8 @@ connector:
   max_output_bytes: 60000
   env_passthrough:
     - XCTX_EDGAR_IDENTITY
+  adapter_env_passthrough:
+    - EDGAR_IDENTITY
 data:
   storage_engine: sqlite
   path: .xctx_runtime/stock_intelligence_hub/edgar_filing_library/registry.sqlite
