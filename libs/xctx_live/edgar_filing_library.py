@@ -213,16 +213,18 @@ def _connect_existing(root: Path) -> sqlite3.Connection | None:
     path = library_paths(root)["registry"]
     if not path.exists():
         return None
-    conn = sqlite3.connect(f"file:{path.resolve()}?mode=ro", uri=True)
+    conn = sqlite3.connect(f"file:{path.resolve()}?mode=ro", uri=True, timeout=30)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA busy_timeout = 30000")
     return conn
 
 
 def _connect_rw(root: Path) -> sqlite3.Connection:
     path = library_paths(root)["registry"]
     path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(path)
+    conn = sqlite3.connect(path, timeout=30)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA busy_timeout = 30000")
     conn.execute("PRAGMA foreign_keys = ON")
     _ensure_schema(conn)
     return conn

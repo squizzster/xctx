@@ -170,8 +170,9 @@ def _connect(root: Path) -> sqlite3.Connection:
     paths = library_paths(root)
     paths["registry"].parent.mkdir(parents=True, exist_ok=True)
     paths["artifacts"].mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(paths["registry"])
+    conn = sqlite3.connect(paths["registry"], timeout=30)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA busy_timeout = 30000")
     _init_schema(conn)
     return conn
 
@@ -180,8 +181,9 @@ def _connect_existing(root: Path) -> sqlite3.Connection | None:
     path = library_paths(root)["registry"]
     if not path.exists():
         return None
-    conn = sqlite3.connect(path)
+    conn = sqlite3.connect(path, timeout=30)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA busy_timeout = 30000")
     _init_schema(conn)
     return conn
 
@@ -749,8 +751,10 @@ def _result_id(run_id: str, index: int, result: dict[str, Any]) -> str:
     return "web_result:" + hashlib.sha256(seed.encode("utf-8")).hexdigest()[:24]
 
 
-def _artifact_id(path: Path) -> str:
-    return "web_artifact:" + _file_sha256(path)
+def _artifact_id(path: Path, *, run_id: str, kind: str) -> str:
+    sha = _file_sha256(path)
+    seed = _json({"run_id": run_id, "kind": kind, "sha256": sha})
+    return "web_artifact:" + hashlib.sha256(seed.encode("utf-8")).hexdigest()
 
 
 def _write_run_artifacts(
@@ -838,13 +842,14 @@ def _index_run(
         for kind in ("raw_json", "results_json", "markdown", "manifest"):
             path = paths[kind]
             sha = _file_sha256(path)
+            artifact_id = _artifact_id(path, run_id=run_id, kind=kind)
             conn.execute(
                 """
                 INSERT OR REPLACE INTO artifacts(artifact_id, run_id, kind, path, bytes, sha256, created_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
-                    "web_artifact:" + sha,
+                    artifact_id,
                     run_id,
                     kind,
                     str(path),
@@ -923,10 +928,10 @@ def _commit(root: Path, args: list[str], operation: str) -> dict[str, Any]:
     )
     artifacts = [
         {
-            "id": _artifact_id(paths[kind]),
+            "id": _artifact_id(paths[kind], run_id=run_id, kind=kind),
             "kind": kind,
             "path": _display_path(root, paths[kind]),
-            "observe_cmd": f"./xctx observe {WEB_SEARCH_REF} {_artifact_id(paths[kind])}",
+            "observe_cmd": f"./xctx observe {WEB_SEARCH_REF} {_artifact_id(paths[kind], run_id=run_id, kind=kind)}",
         }
         for kind in ("raw_json", "results_json", "markdown", "manifest")
     ]
