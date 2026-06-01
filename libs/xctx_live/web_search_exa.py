@@ -29,6 +29,7 @@ LIST_MAX_LIMIT = 100
 FAST_DEFAULT_RESULTS = 6
 DEEP_DEFAULT_RESULTS = 3
 PAGE_DEFAULT_MAX_CHARACTERS = 4096
+OBSERVE_HELPER_PREVIEW_CHARS = 1200
 SEARCH_DEFAULT_QPS = 8
 CONTENTS_DEFAULT_QPS = 80
 RETRY_MAX_ATTEMPTS = 4
@@ -304,6 +305,11 @@ def _exa_sdk_available() -> bool:
     return importlib.util.find_spec("exa_py") is not None
 
 
+def _detail_level() -> str:
+    level = str(os.environ.get("XCTX_DETAIL_LEVEL") or "basic").strip().lower()
+    return level if level in {"basic", "more", "max"} else "basic"
+
+
 def _load_exa_class() -> Any:
     from exa_py import Exa  # noqa: PLC0415
 
@@ -346,6 +352,8 @@ def _list_results_cmd() -> str:
 def discover_exa_search(root: Path, projection: str = "compact") -> dict[str, Any]:
     if projection not in {"compact", "full"}:
         raise ValueError("--projection must be compact or full")
+    if projection == "compact" and _detail_level() in {"more", "max"}:
+        projection = "full"
     stats = registry_stats(root)
     paths = library_paths(root)
     payload: dict[str, Any] = {
@@ -667,20 +675,44 @@ def _coerce_result(item: Any) -> dict[str, Any]:
 
 def _result_text(result: dict[str, Any]) -> str:
     parts: list[str] = []
+    seen: set[str] = set()
+
+    def add_part(value: Any) -> None:
+        if not isinstance(value, str):
+            return
+        text = value.strip()
+        if not text or text in seen:
+            return
+        seen.add(text)
+        parts.append(text)
+
     for key in ("summary", "text", "highlight", "snippet"):
-        value = result.get(key)
-        if isinstance(value, str) and value.strip():
-            parts.append(value.strip())
+        add_part(result.get(key))
     highlights = result.get("highlights")
     if isinstance(highlights, list):
         for item in highlights:
             if isinstance(item, str):
-                parts.append(item.strip())
+                add_part(item)
             elif isinstance(item, dict):
+                add_part(item.get("text") or item.get("highlight"))
+    return "\n\n".join(parts)
+
+
+def _primary_result_text(result: dict[str, Any]) -> str:
+    for key in ("text", "summary", "highlight", "snippet"):
+        value = result.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    highlights = result.get("highlights")
+    if isinstance(highlights, list):
+        for item in highlights:
+            if isinstance(item, str) and item.strip():
+                return item.strip()
+            if isinstance(item, dict):
                 text = item.get("text") or item.get("highlight")
-                if isinstance(text, str):
-                    parts.append(text.strip())
-    return "\n\n".join(part for part in parts if part)
+                if isinstance(text, str) and text.strip():
+                    return text.strip()
+    return ""
 
 
 def _results_to_markdown(operation: str, request: dict[str, Any], results: list[dict[str, Any]]) -> str:
@@ -1295,6 +1327,85 @@ def _preview_text(text: str, limit: int) -> dict[str, Any] | None:
     }
 
 
+def _preview_cmd(target: str, chars: int = OBSERVE_HELPER_PREVIEW_CHARS) -> str:
+    return f"./xctx observe {WEB_SEARCH_REF} {target} --web-preview-chars {chars}"
+
+
+def _content_helper(target: str, text: str, *, source: str) -> dict[str, Any]:
+    return {
+        "source": source,
+        "content_chars": len(text),
+        "bounded_preview_flag": "--web-preview-chars N",
+        "preview_cmd": _preview_cmd(target),
+    }
+
+
+def _jq_child_path(prefix: str, key: str) -> str:
+    if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", key):
+        return f".{key}" if prefix == "." else f"{prefix}.{key}"
+    return f".[{json.dumps(key)}]" if prefix == "." else f"{prefix}[{json.dumps(key)}]"
+
+
+def _json_content_paths(value: Any, prefix: str = ".") -> list[dict[str, Any]]:
+    paths: list[dict[str, Any]] = []
+    if isinstance(value, dict):
+        for key in ("text", "summary", "content", "markdown", "preview"):
+            text = value.get(key)
+            if isinstance(text, str) and text:
+                paths.append({"path": _jq_child_path(prefix, key), "chars": len(text)})
+        results = value.get("results")
+        if isinstance(results, list) and results:
+            paths.extend(_json_content_paths(results[0], f"{_jq_child_path(prefix, 'results')}[0]"))
+    elif isinstance(value, list) and value:
+        paths.extend(_json_content_paths(value[0], f"{prefix}[0]"))
+    return paths[:8]
+
+
+def _json_shape_helper(value: Any) -> dict[str, Any]:
+    helper: dict[str, Any] = {"safe_jq_examples": ["."]}
+    if isinstance(value, list):
+        helper.update(
+            {
+                "root_type": "array",
+                "root_length": len(value),
+                "root_access_path": ".[0]" if value else ".",
+            }
+        )
+        if value and isinstance(value[0], dict):
+            helper["first_item_keys"] = sorted(str(key) for key in value[0].keys())
+            helper["safe_jq_examples"].append(".[0]")
+        helper["content_paths"] = _json_content_paths(value)
+        for item in helper["content_paths"][:3]:
+            helper["safe_jq_examples"].append(str(item["path"]))
+        return helper
+    if isinstance(value, dict):
+        helper.update({"root_type": "object", "top_keys": sorted(str(key) for key in value.keys())})
+        results = value.get("results")
+        if isinstance(results, list):
+            helper["results_path"] = ".results"
+            helper["result_count"] = len(results)
+            helper["safe_jq_examples"].append(".results")
+            if results:
+                helper["first_result_path"] = ".results[0]"
+                helper["safe_jq_examples"].append(".results[0]")
+                if isinstance(results[0], dict):
+                    helper["first_result_keys"] = sorted(str(key) for key in results[0].keys())
+        helper["content_paths"] = _json_content_paths(value)
+        for item in helper["content_paths"][:3]:
+            helper["safe_jq_examples"].append(str(item["path"]))
+        return helper
+    helper["root_type"] = type(value).__name__
+    return helper
+
+
+def _artifact_json_helper(path: Path) -> dict[str, Any] | None:
+    try:
+        value = _read_json(path)
+    except (OSError, json.JSONDecodeError):
+        return None
+    return _json_shape_helper(value)
+
+
 def _parse_preview_chars(args: list[str]) -> int:
     value = _option(args, "--preview-chars", default="0")
     return _parse_int(value, default=0, minimum=0, maximum=4000, flag="--preview-chars")
@@ -1407,11 +1518,14 @@ def _observe_result(root: Path, result_id: str, preview_chars: int) -> dict[str,
         "raw_keys": sorted(raw.keys()) if isinstance(raw, dict) else [],
         "next_moves": [
             {"run_cmd": f"./xctx observe {WEB_SEARCH_REF} search_run:{row['run_id']}"},
+            {"run_cmd": _preview_cmd(result_id), "why": "Return a bounded preview of the stored result content."},
             {"run_cmd": _search_plan_cmd(row["title"] or row["url"])},
         ],
     }
+    text = _primary_result_text(raw) or row["text_preview"] or ""
+    payload["content_helper"] = _content_helper(result_id, text, source="result_raw_json")
     if preview_chars > 0:
-        payload["bounded_preview"] = _preview_text(_result_text(raw) or row["text_preview"] or "", preview_chars)
+        payload["bounded_preview"] = _preview_text(text, preview_chars)
     return payload
 
 
@@ -1435,10 +1549,20 @@ def _observe_artifact(root: Path, artifact_id: str, preview_chars: int) -> dict[
             "bytes": row["bytes"],
             "sha256": row["sha256"],
         },
-        "next_moves": [{"run_cmd": f"./xctx observe {WEB_SEARCH_REF} search_run:{row['run_id']}"}],
+        "next_moves": [
+            {"run_cmd": f"./xctx observe {WEB_SEARCH_REF} search_run:{row['run_id']}"},
+            {"run_cmd": _preview_cmd(artifact_id), "why": "Return a bounded preview of the artifact body."},
+        ],
     }
-    if preview_chars > 0 and path.is_file():
-        payload["bounded_preview"] = _preview_text(path.read_text(encoding="utf-8", errors="replace"), preview_chars)
+    if path.is_file():
+        text = path.read_text(encoding="utf-8", errors="replace")
+        payload["content_helper"] = _content_helper(artifact_id, text, source="artifact_file")
+        if row["kind"] in {"raw_json", "results_json", "manifest"}:
+            json_helper = _artifact_json_helper(path)
+            if json_helper is not None:
+                payload["json_helper"] = json_helper
+        if preview_chars > 0:
+            payload["bounded_preview"] = _preview_text(text, preview_chars)
     return payload
 
 

@@ -7,7 +7,9 @@ full_description: >-
   a runtime SQLite registry of search runs, result cards, artifact files, and
   provider rate-limit state; supports planned-effect live acquisition and
   fixture-backed import; and observes only bounded previews unless an artifact
-  is explicitly requested with a preview limit.
+  is explicitly requested with a preview limit. Artifact observations include
+  adapter-owned content and JSON-shape helpers so agents do not need to guess
+  whether saved JSON starts at .results, .[0], or another safe path.
 data_description: >-
   Runtime SQLite registry under XCTX_RUNTIME_DIR or .xctx_runtime, plus search
   artifacts under the web_search/exa_search/artifacts runtime directory. The
@@ -352,7 +354,7 @@ actions:
     priority: 70
     entrypoint_command: observe
     mode_kind: observe
-    desc: Observe Exa search status, a search_run:<id>, web_result:<id>, or web_artifact:<id> without returning unbounded bodies.
+    desc: Observe Exa search status, a search_run:<id>, web_result:<id>, or web_artifact:<id> without returning unbounded bodies. Web results and artifacts include preview commands; JSON artifacts also report root shape and safe jq paths.
     argument_patterns:
       - "status"
       - "search_run:<id>"
@@ -377,5 +379,7 @@ actions:
         run_cmd: ./xctx observe web_search::exa_search search_run:<id>
       - query: observe a web result with preview
         run_cmd: ./xctx observe web_search::exa_search web_result:<id> --web-preview-chars 800
+      - query: inspect JSON artifact shape before reading local artifact files
+        run_cmd: ./xctx observe web_search::exa_search web_artifact:<id>
     returns: web_search_exa_observation
     run_cmd: "./xctx observe web_search::exa_search <status|search_run:id|web_result:id|web_artifact:id> [--web-preview-chars N]"
