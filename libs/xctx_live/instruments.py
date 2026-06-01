@@ -394,6 +394,7 @@ def load_reference_instruments(root: Path) -> list[dict[str, Any]]:
                 "ticker_aliases": ticker_aliases,
                 "exchange": _exchange_name(mic),
                 "mic": mic,
+                "security_type_code": str(row["security_type"] or "").upper(),
                 "security_type": _security_type(str(row["security_type"] or "")),
                 "currency": _currency_from_raw_json(str(row["raw_json"] or "{}")),
                 "status": "active" if int(row["active_flag"] or 0) else "inactive",
@@ -445,6 +446,7 @@ def public_instrument(record: dict[str, Any], *, include_aliases: bool = False) 
         "cik",
         "exchange",
         "mic",
+        "security_type_code",
         "security_type",
         "currency",
         "status",
@@ -744,7 +746,55 @@ def parse_list_options(args: list[str]) -> dict[str, Any]:
 def _matches_filter(record: dict[str, Any], key: str, expected: str | None) -> bool:
     if expected is None:
         return True
-    return str(record.get(key, "")).lower() == str(expected).lower()
+    return str(record.get(key, "")).strip().lower() == str(expected).strip().lower()
+
+
+def _filter_text(value: Any) -> str:
+    return str(value or "").strip().lower()
+
+
+def _filter_value_set(*values: Any) -> set[str]:
+    return {text for value in values if (text := _filter_text(value))}
+
+
+def _exchange_filter_values(record: dict[str, Any]) -> set[str]:
+    exchange = record.get("exchange")
+    mic = record.get("mic")
+    values: list[Any] = [exchange, mic]
+    if mic:
+        values.append(_exchange_name(str(mic)))
+    exchange_key = _filter_text(exchange)
+    mic_key = _filter_text(mic)
+    for code, label in EXCHANGE_NAMES.items():
+        if exchange_key in {_filter_text(code), _filter_text(label)} or mic_key == _filter_text(code):
+            values.extend([code, label])
+    return _filter_value_set(*values)
+
+
+def _security_type_filter_values(record: dict[str, Any]) -> set[str]:
+    security_type = record.get("security_type")
+    code = record.get("security_type_code")
+    values: list[Any] = [security_type, code, _security_type(str(security_type or ""))]
+    if code:
+        values.append(_security_type(str(code)))
+    security_key = _filter_text(security_type)
+    code_key = _filter_text(code)
+    for raw_code, label in SECURITY_TYPE_NAMES.items():
+        if security_key in {_filter_text(raw_code), _filter_text(label)} or code_key == _filter_text(raw_code):
+            values.extend([raw_code, label])
+    return _filter_value_set(*values)
+
+
+def _matches_exchange_filter(record: dict[str, Any], expected: str | None) -> bool:
+    if expected is None:
+        return True
+    return _filter_text(expected) in _exchange_filter_values(record)
+
+
+def _matches_security_type_filter(record: dict[str, Any], expected: str | None) -> bool:
+    if expected is None:
+        return True
+    return _filter_text(expected) in _security_type_filter_values(record)
 
 
 def _list_run_cmd(options: dict[str, Any], cursor: int | None = None) -> str:
@@ -773,8 +823,8 @@ def list_instruments(root: Path, args: list[str]) -> dict[str, Any]:
         item
         for item in instruments
         if _matches_filter(item, "status", options["status"])
-        and _matches_filter(item, "exchange", options["exchange"])
-        and _matches_filter(item, "security_type", options["security_type"])
+        and _matches_exchange_filter(item, options["exchange"])
+        and _matches_security_type_filter(item, options["security_type"])
     ]
     requested_cursor = int(options["cursor"])
     if requested_cursor > len(filtered):

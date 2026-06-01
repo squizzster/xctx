@@ -82,3 +82,64 @@ def test_market_data_sqlite_missing_env_override_fails_without_traceback(monkeyp
     assert payload["ok"] is False
     assert "market data sqlite not found from env_override" in payload["error"]
     assert "Traceback" not in payload["error"]
+
+
+def test_market_data_list_filters_accept_provider_codes_and_display_labels() -> None:
+    rc, coded_payload = run_runtime_json(
+        [
+            "discover",
+            "stock_intelligence_hub::market_data_gateway::list_instruments",
+            "--limit",
+            "3",
+            "--exchange",
+            "XNAS",
+            "--security-type",
+            "CS",
+        ]
+    )
+
+    assert rc == 0
+    coded = coded_payload["results"]["live_data"]
+    coded_tickers = [item["ticker"] for item in coded["instruments"]]
+    assert coded["filters"] == {"exchange": "XNAS", "security_type": "CS"}
+    assert coded["pagination"]["returned_count"] == 3
+    assert coded["filtered_count"] >= 3
+    assert all(item["exchange"] == "Nasdaq" for item in coded["instruments"])
+    assert all(item["security_type"] == "common_stock" for item in coded["instruments"])
+
+    rc, display_payload = run_runtime_json(
+        [
+            "discover",
+            "stock_intelligence_hub::market_data_gateway::list_instruments",
+            "--limit",
+            "3",
+            "--exchange",
+            "Nasdaq",
+            "--security-type",
+            "common_stock",
+        ]
+    )
+
+    assert rc == 0
+    display = display_payload["results"]["live_data"]
+    assert [item["ticker"] for item in display["instruments"]] == coded_tickers
+
+    rc, full_payload = run_runtime_json(
+        [
+            "discover",
+            "stock_intelligence_hub::market_data_gateway::list_instruments",
+            "--limit",
+            "1",
+            "--exchange",
+            "XNAS",
+            "--security-type",
+            "CS",
+            "--projection",
+            "full",
+        ]
+    )
+
+    assert rc == 0
+    full_record = full_payload["results"]["live_data"]["instruments"][0]
+    assert full_record["mic"] == "XNAS"
+    assert full_record["security_type_code"] == "CS"

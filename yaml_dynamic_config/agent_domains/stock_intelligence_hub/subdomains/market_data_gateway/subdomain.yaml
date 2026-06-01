@@ -82,7 +82,7 @@ actions:
     entrypoint_command: list
     query_required: false
     mode_kind: list
-    desc: Enumerate a compact canonical instrument index with optional pagination and simple filters.
+    desc: Enumerate a compact canonical instrument index with optional pagination and filters. Exchange and security-type filters accept display labels or provider codes, e.g. Nasdaq or XNAS, common_stock or CS.
     collection:
       result_path: instruments
       default_limit: 25
@@ -102,8 +102,8 @@ actions:
       - "[--cursor CURSOR]"
       - "[--projection compact|full]"
       - "[--status STATUS]"
-      - "[--exchange EXCHANGE]"
-      - "[--security-type TYPE]"
+      - "[--exchange Nasdaq|XNAS]"
+      - "[--security-type common_stock|CS]"
     examples:
       - query: list default compact instrument page
         run_cmd: ./xctx discover stock_intelligence_hub::market_data_gateway::list_instruments
@@ -111,8 +111,10 @@ actions:
         run_cmd: ./xctx discover stock_intelligence_hub::market_data_gateway::list_instruments --limit 10 --cursor 10
       - query: list full detail instrument records explicitly
         run_cmd: ./xctx discover stock_intelligence_hub::market_data_gateway::list_instruments --limit 10 --projection full
+      - query: list Nasdaq common stocks using provider codes
+        run_cmd: ./xctx discover stock_intelligence_hub::market_data_gateway::list_instruments --limit 10 --exchange XNAS --security-type CS
     returns: market_data_gateway_instrument_list
-    run_cmd: ./xctx discover stock_intelligence_hub::market_data_gateway::list_instruments [--limit N] [--cursor CURSOR] [--projection compact|full] [--status STATUS] [--exchange EXCHANGE] [--security-type TYPE]
+    run_cmd: ./xctx discover stock_intelligence_hub::market_data_gateway::list_instruments [--limit N] [--cursor CURSOR] [--projection compact|full] [--status STATUS] [--exchange Nasdaq|XNAS] [--security-type common_stock|CS]
   observe:
     priority: 40
     entrypoint_command: observe
